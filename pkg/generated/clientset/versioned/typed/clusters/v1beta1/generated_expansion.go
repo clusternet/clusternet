@@ -18,3 +18,5 @@ limitations under the License.
 package v1beta1
 
 type ClusterRegistrationRequestExpansion interface{}
+
+type ManagedClusterExpansion interface{}

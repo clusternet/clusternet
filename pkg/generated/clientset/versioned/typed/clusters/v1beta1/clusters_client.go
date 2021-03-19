@@ -26,6 +26,7 @@ import (
 type ClustersV1beta1Interface interface {
 	RESTClient() rest.Interface
 	ClusterRegistrationRequestsGetter
+	ManagedClustersGetter
 }
 
 // ClustersV1beta1Client is used to interact with features provided by the clusters.clusternet.io group.
@@ -35,6 +36,10 @@ type ClustersV1beta1Client struct {
 
 func (c *ClustersV1beta1Client) ClusterRegistrationRequests() ClusterRegistrationRequestInterface {
 	return newClusterRegistrationRequests(c)
+}
+
+func (c *ClustersV1beta1Client) ManagedClusters(namespace string) ManagedClusterInterface {
+	return newManagedClusters(c, namespace)
 }
 
 // NewForConfig creates a new ClustersV1beta1Client for the given config.

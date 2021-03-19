@@ -20,3 +20,11 @@ package v1beta1
 // ClusterRegistrationRequestListerExpansion allows custom methods to be added to
 // ClusterRegistrationRequestLister.
 type ClusterRegistrationRequestListerExpansion interface{}
+
+// ManagedClusterListerExpansion allows custom methods to be added to
+// ManagedClusterLister.
+type ManagedClusterListerExpansion interface{}
+
+// ManagedClusterNamespaceListerExpansion allows custom methods to be added to
+// ManagedClusterNamespaceLister.
+type ManagedClusterNamespaceListerExpansion interface{}

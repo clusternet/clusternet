@@ -31,6 +31,10 @@ func (c *FakeClustersV1beta1) ClusterRegistrationRequests() v1beta1.ClusterRegis
 	return &FakeClusterRegistrationRequests{c}
 }
 
+func (c *FakeClustersV1beta1) ManagedClusters(namespace string) v1beta1.ManagedClusterInterface {
+	return &FakeManagedClusters{c, namespace}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeClustersV1beta1) RESTClient() rest.Interface {

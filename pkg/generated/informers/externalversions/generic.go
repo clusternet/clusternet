@@ -54,6 +54,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=clusters.clusternet.io, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("clusterregistrationrequests"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Clusters().V1beta1().ClusterRegistrationRequests().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("managedclusters"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Clusters().V1beta1().ManagedClusters().Informer()}, nil
 
 	}
 

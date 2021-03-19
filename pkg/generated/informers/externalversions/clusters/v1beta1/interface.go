@@ -25,6 +25,8 @@ import (
 type Interface interface {
 	// ClusterRegistrationRequests returns a ClusterRegistrationRequestInformer.
 	ClusterRegistrationRequests() ClusterRegistrationRequestInformer
+	// ManagedClusters returns a ManagedClusterInformer.
+	ManagedClusters() ManagedClusterInformer
 }
 
 type version struct {
@@ -41,4 +43,9 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // ClusterRegistrationRequests returns a ClusterRegistrationRequestInformer.
 func (v *version) ClusterRegistrationRequests() ClusterRegistrationRequestInformer {
 	return &clusterRegistrationRequestInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// ManagedClusters returns a ManagedClusterInformer.
+func (v *version) ManagedClusters() ManagedClusterInformer {
+	return &managedClusterInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
