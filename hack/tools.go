@@ -19,4 +19,7 @@ limitations under the License.
 // This package imports things required by build scripts, to force `go mod` to see them as dependencies
 package hack
 
-import _ "k8s.io/code-generator"
+import (
+	_ "k8s.io/code-generator"
+	_ "sigs.k8s.io/controller-tools/cmd/controller-gen@v0.2.5"
+)
