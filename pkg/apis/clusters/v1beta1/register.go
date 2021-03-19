@@ -53,6 +53,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&ClusterRegistrationRequest{},
 		&ClusterRegistrationRequestList{},
+		&ManagedCluster{},
+		&ManagedClusterList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
