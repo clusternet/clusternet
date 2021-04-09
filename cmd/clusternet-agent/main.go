@@ -36,7 +36,8 @@ func main() {
 	klog.InitFlags(nil)
 	defer klog.Flush()
 
-	command := app.NewClusternetAgentCmd()
+	ctx := utils.GracefulStopWithContext()
+	command := app.NewClusternetAgentCmd(ctx)
 
 	pflag.CommandLine.SetNormalizeFunc(utils.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)

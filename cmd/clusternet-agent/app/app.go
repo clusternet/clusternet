@@ -17,6 +17,8 @@ limitations under the License.
 package app
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
@@ -34,7 +36,7 @@ var (
 )
 
 // NewClusternetAgentCmd creates a *cobra.Command object with default parameters
-func NewClusternetAgentCmd() *cobra.Command {
+func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 	opts := NewOptions()
 
 	cmd := &cobra.Command{
