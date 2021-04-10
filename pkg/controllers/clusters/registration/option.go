@@ -22,6 +22,9 @@ import (
 	"strings"
 
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/sets"
+
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 )
 
 // ClusterRegistrationOptions holds the command-line options about cluster registration
@@ -30,6 +33,8 @@ type ClusterRegistrationOptions struct {
 	ClusterName string
 	// ClusterNamePrefix specifies the cluster name prefix for registration
 	ClusterNamePrefix string
+	// ClusterType denotes the cluster type
+	ClusterType string
 
 	ParentURL      string
 	BootstrapToken string
@@ -43,6 +48,7 @@ func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	return &ClusterRegistrationOptions{
 		UnsafeParentCA:    true,
 		ClusterNamePrefix: RegistrationNamePrefix,
+		ClusterType:       string(clusterapi.EdgeClusterSelfProvisioned),
 	}
 }
 
@@ -56,12 +62,14 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&opts.BootstrapToken, ClusterRegistrationToken, opts.BootstrapToken,
 		"The boostrap token is used to temporarily authenticate with parent cluster while registering "+
 			"a unregistered child cluster. On success, parent cluster credentials will be stored to a secret "+
-			"in child cluster. On every restart, this credentials will be firstly used if found.")
+			"in child cluster. On every restart, this credentials will be firstly used if found")
 	fs.StringVar(&opts.ClusterName, ClusterRegistrationName, opts.ClusterName,
-		"Specify the cluster registration name.")
+		"Specify the cluster registration name")
 	fs.StringVar(&opts.ClusterNamePrefix, ClusterRegistrationNamePrefix, opts.ClusterNamePrefix,
 		fmt.Sprintf("Specify a random cluster name with this prefix for registration if --%s is not specified",
 			ClusterRegistrationName))
+	fs.StringVar(&opts.ClusterType, ClusterRegistrationType, opts.ClusterType,
+		"Specify the cluster type")
 }
 
 // Complete completes all the required options.
@@ -87,7 +95,16 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 		}
 	}
 
+	if len(opts.ClusterType) > 0 && !supportedClusterTypes.Has(opts.ClusterType) {
+		allErrs = append(allErrs, fmt.Errorf("invalid cluster type %q, please specify one from %s", opts.ClusterType, supportedClusterTypes.List()))
+	}
+
 	// TODO: check bootstrap token
 
 	return allErrs
 }
+
+var supportedClusterTypes = sets.NewString(
+	string(clusterapi.EdgeClusterSelfProvisioned),
+	// todo: add more types
+)

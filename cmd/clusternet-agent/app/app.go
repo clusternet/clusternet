@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/templates"
 
+	"github.com/clusternet/clusternet/pkg/controllers/clusters/registration"
 	"github.com/clusternet/clusternet/pkg/version"
 )
 
@@ -60,6 +61,13 @@ func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 			})
 
 			// TODO: add logic
+			agentCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			agent, err := registration.NewAgent(agentCtx, opts.kubeconfig, opts.clusterRegistration)
+			if err != nil {
+				klog.Exit(err)
+			}
+			agent.Run()
 		},
 	}
 

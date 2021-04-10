@@ -25,6 +25,14 @@ import (
 
 type EdgeClusterType string
 
+// These are the valid values for EdgeClusterType
+const (
+	// self provisioned edge cluster
+	EdgeClusterSelfProvisioned EdgeClusterType = "Self-Provisioned"
+
+	// todo: add more types
+)
+
 // ClusterRegistrationRequestSpec defines the desired state of ClusterRegistrationRequest
 type ClusterRegistrationRequestSpec struct {
 	// ClusterID, a Random (Version 4) UUID, is a unique value in time and space value representing for child cluster.

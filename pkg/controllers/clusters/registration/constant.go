@@ -16,6 +16,10 @@ limitations under the License.
 
 package registration
 
+import (
+	"time"
+)
+
 // flags
 const (
 	// ClusterRegistrationURL flag denotes the url of parent cluster
@@ -33,19 +37,34 @@ const (
 
 	// ClusterRegistrationNamePrefix is a prefix for cluster registration name
 	ClusterRegistrationNamePrefix = "cluster-reg-name-prefix"
+
+	// ClusterRegistrationType flag specifies the cluster type
+	ClusterRegistrationType = "cluster-reg-type"
 )
 
 // default values
 const (
 	SelfClusterLeaseName      = "self-cluster"
 	SelfClusterLeaseNamespace = "edge-system"
+	ParentClusterSecretName   = "parent-cluster"
 
 	// RegistrationNamePrefix is a prefix name for cluster registration
 	RegistrationNamePrefix = "clusternet-cluster-"
+
+	// agent name
+	RegisterAgentName = "clusternet-agent"
 )
 
 // labels
 const (
 	ClusterRegistrationLabel = "clusters.clusternet.io/registered-by"
 	ClusterIDLabel           = "clusters.clusternet.io/cluster-id"
+	ClusterNameLabel         = "clusters.clusternet.io/cluster-name"
+)
+
+// lease lock
+const (
+	DefaultLeaseDuration = 60 * time.Second
+	DefaultRenewDeadline = 15 * time.Second
+	DefaultRetryPeriod   = 5 * time.Second
 )
