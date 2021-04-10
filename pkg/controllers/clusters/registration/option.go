@@ -18,22 +18,22 @@ package registration
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 // ClusterRegistrationOptions holds the command-line options about cluster registration
 type ClusterRegistrationOptions struct {
 	// ClusterName denotes the cluster name you want to register/display in parent cluster
 	ClusterName string
+	// ClusterNamePrefix specifies the cluster name prefix for registration
+	ClusterNamePrefix string
 
-	ClusterPrefix string
-
-	ParentURL        string
-	Token            string
-	UnsafeParentCA   bool
-	ParentKubeConfig string
+	ParentURL      string
+	BootstrapToken string
+	UnsafeParentCA bool
 
 	// TODO: check ca hash
 }
@@ -41,8 +41,8 @@ type ClusterRegistrationOptions struct {
 // NewClusterRegistrationOptions creates a new *ClusterRegistrationOptions with sane defaults
 func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	return &ClusterRegistrationOptions{
-		ParentKubeConfig: DefaultParentKubeConfig,
-		UnsafeParentCA:   true,
+		UnsafeParentCA:    true,
+		ClusterNamePrefix: RegistrationNamePrefix,
 	}
 }
 
@@ -51,33 +51,43 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	// flags for cluster registration
 	fs.StringVar(&opts.ParentURL, ClusterRegistrationURL, opts.ParentURL,
 		"The parent cluster url you want to register to")
-	fs.BoolVar(&opts.UnsafeParentCA, UnsafeParentCA, opts.UnsafeParentCA,
+	fs.BoolVar(&opts.UnsafeParentCA, ClusterRegistrationUnsafeParentCA, opts.UnsafeParentCA,
 		"For token-based cluster registration, allowing registering without validating parent cluster CA")
-	fs.StringVar(&opts.Token, ClusterRegistrationToken, opts.Token,
-		fmt.Sprintf("If the file specified by --%s does not exist, this boostrap token is used to "+
-			"temporarily authenticate with parent cluster while registering as a child cluster. "+
-			"On success, a kubeconfig file of parent cluster will be written to the path specified by --%s "+
-			"to avoid re-registering on every restart",
-			ClusterRegistrationKubeconfig, ClusterRegistrationKubeconfig))
-	fs.StringVar(&opts.ParentKubeConfig, ClusterRegistrationKubeconfig, opts.ParentKubeConfig,
-		"Path to a kubeconfig file for parent cluster")
+	fs.StringVar(&opts.BootstrapToken, ClusterRegistrationToken, opts.BootstrapToken,
+		"The boostrap token is used to temporarily authenticate with parent cluster while registering "+
+			"a unregistered child cluster. On success, parent cluster credentials will be stored to a secret "+
+			"in child cluster. On every restart, this credentials will be firstly used if found.")
+	fs.StringVar(&opts.ClusterName, ClusterRegistrationName, opts.ClusterName,
+		"Specify the cluster registration name.")
+	fs.StringVar(&opts.ClusterNamePrefix, ClusterRegistrationNamePrefix, opts.ClusterNamePrefix,
+		fmt.Sprintf("Specify a random cluster name with this prefix for registration if --%s is not specified",
+			ClusterRegistrationName))
+}
+
+// Complete completes all the required options.
+func (opts *ClusterRegistrationOptions) Complete() []error {
+	allErrs := []error{}
+
+	opts.ClusterNamePrefix = strings.TrimSpace(opts.ClusterNamePrefix)
+	if !strings.HasSuffix(opts.ClusterNamePrefix, "-") {
+		allErrs = append(allErrs, fmt.Errorf(`wrong value for --%s, which should ends with "-"`, ClusterRegistrationNamePrefix))
+	}
+
+	return allErrs
 }
 
 // Validate validates all the required options.
-func (opts *ClusterRegistrationOptions) Validate() field.ErrorList {
-	allErrs := field.ErrorList{}
+func (opts *ClusterRegistrationOptions) Validate() []error {
+	allErrs := []error{}
 
-	if len(opts.ParentKubeConfig) == 0 {
-		if len(opts.ParentURL) == 0 {
-			allErrs = append(allErrs, field.Required(field.NewPath(ClusterRegistrationURL),
-				fmt.Sprintf("must be set if flag \"--%s\" is not specified", ClusterRegistrationKubeconfig)))
-		}
-
-		if len(opts.Token) == 0 {
-			allErrs = append(allErrs, field.Required(field.NewPath(ClusterRegistrationToken),
-				fmt.Sprintf("must be set if flag \"--%s\" is not specified", ClusterRegistrationKubeconfig)))
+	if len(opts.ParentURL) > 0 {
+		_, err := url.ParseRequestURI(opts.ParentURL)
+		if err != nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid value for --%s: %v", ClusterRegistrationURL, err))
 		}
 	}
+
+	// TODO: check bootstrap token
 
 	return allErrs
 }

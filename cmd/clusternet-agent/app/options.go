@@ -18,7 +18,7 @@ package app
 
 import (
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/registration"
 )
@@ -34,15 +34,26 @@ type options struct {
 	clusterRegistration *registration.ClusterRegistrationOptions
 }
 
+// Complete completes all the required options.
+func (opts *options) Complete() error {
+	allErrs := []error{}
+
+	// complete cluster registration options
+	errs := opts.clusterRegistration.Complete()
+	allErrs = append(allErrs, errs...)
+
+	return utilerrors.NewAggregate(allErrs)
+}
+
 // Validate validates all the required options.
 func (opts *options) Validate() error {
-	allErrs := field.ErrorList{}
+	allErrs := []error{}
 
 	// validate cluster registration options
 	errs := opts.clusterRegistration.Validate()
 	allErrs = append(allErrs, errs...)
 
-	return allErrs.ToAggregate()
+	return utilerrors.NewAggregate(allErrs)
 }
 
 // AddFlags adds the flags to the flagset.

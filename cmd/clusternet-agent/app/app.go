@@ -48,6 +48,9 @@ func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 				klog.Exit(err)
 			}
 
+			if err := opts.Complete(); err != nil {
+				klog.Exit(err)
+			}
 			if err := opts.Validate(); err != nil {
 				klog.Exit(err)
 			}

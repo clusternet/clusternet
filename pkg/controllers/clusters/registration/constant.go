@@ -16,20 +16,36 @@ limitations under the License.
 
 package registration
 
+// flags
 const (
-	// ClusterRegistrationURL denotes the url of parent cluster
+	// ClusterRegistrationURL flag denotes the url of parent cluster
 	ClusterRegistrationURL = "cluster-reg-parent-url"
 
-	// ClusterRegistrationToken is the token used to temporarily authenticate with parent cluster
+	// ClusterRegistrationToken flag is the token used to temporarily authenticate with parent cluster
 	// while registering as a child cluster.
 	ClusterRegistrationToken = "cluster-reg-token"
 
-	// ClusterRegistrationKubeconfig specifies the path to a kubeconfig file for parent cluster
-	ClusterRegistrationKubeconfig = "cluster-reg-parent-kubeconfig"
+	// ClusterRegistrationUnsafeParentCA flag instruct to skip parent cluster CA verification (for token-based cluster registration)
+	ClusterRegistrationUnsafeParentCA = "cluster-reg-unsafe-parent-ca"
 
-	// UnsafeParentCA flag instruct to skip parent cluster CA verification (for token-based cluster registration)
-	UnsafeParentCA = "cluster-reg-unsafe-parent-ca"
+	// ClusterRegistrationName flag specifies the cluster registration name
+	ClusterRegistrationName = "cluster-reg-name"
 
-	// DefaultParentKubeConfig is used to store the retrieved parent cluster kubeconfig
-	DefaultParentKubeConfig = "/etc/clusternet/kubeconfig/parent-cluster.config"
+	// ClusterRegistrationNamePrefix is a prefix for cluster registration name
+	ClusterRegistrationNamePrefix = "cluster-reg-name-prefix"
+)
+
+// default values
+const (
+	SelfClusterLeaseName      = "self-cluster"
+	SelfClusterLeaseNamespace = "edge-system"
+
+	// RegistrationNamePrefix is a prefix name for cluster registration
+	RegistrationNamePrefix = "clusternet-cluster-"
+)
+
+// labels
+const (
+	ClusterRegistrationLabel = "clusters.clusternet.io/registered-by"
+	ClusterIDLabel           = "clusters.clusternet.io/cluster-id"
 )
