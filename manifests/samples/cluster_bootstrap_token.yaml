@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  # Name MUST be of form "bootstrap-token-<token id>"
+  name: bootstrap-token-07401b
+  namespace: kube-system
+
+# Type MUST be 'bootstrap.kubernetes.io/token'
+type: bootstrap.kubernetes.io/token
+stringData:
+  # Human readable description. Optional.
+  description: "The bootstrap token used by clusternet cluster registration."
+
+  # Token ID and secret. Required.
+  token-id: 07401b
+  token-secret: f395accd246ae52d
+
+  # Expiration. Optional.
+  expiration: 2025-05-10T03:22:11Z
+
+  # Allowed usages.
+  usage-bootstrap-authentication: "true"
+  usage-bootstrap-signing: "true"
+
+  # Extra groups to authenticate the token as. Must start with "system:bootstrappers:"
+  auth-extra-groups: system:bootstrappers:clusternet:register-cluster-token
