@@ -60,7 +60,7 @@ const (
 	ClusternetHubName   = "clusternet-hub"
 
 	// default resync time
-	DefaultResync = time.Second * 30
+	DefaultResync = time.Minute * 30
 	// default number of threads
 	DefaultThreadiness = 2
 	// DefaultAPICallRetryInterval defines how long func should wait before retrying a failed API operation

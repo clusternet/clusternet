@@ -24,6 +24,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -116,7 +117,7 @@ func (agent *Agent) Run() {
 // registerSelfCluster begins registering. It starts registering and blocked until the context is done.
 func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kubernetes.Interface) {
 	// complete your controller loop here
-	klog.Info("start registering current child cluster ...")
+	klog.Info("start registering current cluster as a child cluster...")
 
 	registerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -128,7 +129,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kube
 			if err != nil {
 				return
 			}
-			klog.Infof("current child cluster cluster id is %s", clusterID)
+			klog.Infof("current cluster id is %q", clusterID)
 			agent.ClusterID = &clusterID
 		}
 
@@ -141,6 +142,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kube
 				return
 			}
 		}
+		// todo: secret exists?
 
 		// bootstrap cluster registration
 		if err := bootstrapClusterRegistration(registerCtx, agent.Options, *agent.ClusterID); err != nil {
@@ -175,30 +177,52 @@ func bootstrapClusterRegistration(ctx context.Context, regOpts *ClusterRegistrat
 
 	// get bootstrap kubeconfig
 	bootstrapKubeConfig := utils.CreateKubeConfigWithToken(regOpts.ParentURL, regOpts.BootstrapToken, regOpts.UnsafeParentCA)
-	klog.Infof("kubeconfig %#v", *bootstrapKubeConfig)
 	clientConfig, err := clientcmd.NewDefaultClientConfig(*bootstrapKubeConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
 		return fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
 
 	// create ClusterRegistrationRequest
-	clientSet := clusternetClientSet.NewForConfigOrDie(clientConfig)
-	crr, err := clientSet.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
-		newClusterRegistrationRequest(clusterID, regOpts.ClusterType, regOpts.ClusterName),
+	client := clusternetClientSet.NewForConfigOrDie(clientConfig)
+	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
+		newClusterRegistrationRequest(clusterID, regOpts.ClusterType, generateClusterName(regOpts.ClusterName, regOpts.ClusterNamePrefix)),
 		metav1.CreateOptions{})
 
 	if err != nil {
 		if !apierrors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create ClusterRegistrationRequest: %v", err)
 		}
-		klog.Info("ClusterRegistrationRequest %s has already been created, waiting for approval...",
-			fmt.Sprintf("%s-%s", RegisterAgentName, string(clusterID)))
+		klog.Infof("a ClusterRegistrationRequest has already been created for cluster %q", clusterID)
+		// todo: update spec?
 	} else {
-		klog.Infof("successfully create ClusterRegistrationRequest %s, waiting for approval...", crr.UID)
+		klog.Infof("successfully create ClusterRegistrationRequest %q", klog.KObj(crr))
 	}
 
-	// waiting for approval
-	// todo
+	crrName := generateClusterRegistrationRequestName(clusterID)
+	waitingCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	// wait until stopCh is closed or request is approved
+	wait.JitterUntil(func() {
+		crr, err = client.ClustersV1beta1().ClusterRegistrationRequests().Get(ctx, crrName, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get ClusterRegistrationRequest %s: %v", crrName, err)
+			return
+		}
+		if clusterName, ok := crr.Labels[ClusterNameLabel]; ok {
+			regOpts.ClusterName = clusterName
+			klog.Infof("found existing cluster name %q, reuse it", clusterName)
+		}
+
+		if crr.Status.Result == clusterapi.RequestApproved {
+			klog.Infof("the registration request for cluster %s gets approved", clusterID)
+			cancel()
+			return
+		}
+
+		klog.V(4).Infof("the registration request for cluster %q (%q) is still waiting for approval...", clusterID, regOpts.ClusterName)
+		return
+
+	}, DefaultRetryPeriod, 0.4, true, waitingCtx.Done())
 
 	return nil
 }
@@ -229,12 +253,12 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 	}
 }
 
-func newClusterRegistrationRequest(clusterID types.UID, clusterType string, clusterName string) *clusterapi.ClusterRegistrationRequest {
+func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName string) *clusterapi.ClusterRegistrationRequest {
 	return &clusterapi.ClusterRegistrationRequest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("%s-%s", RegisterAgentName, string(clusterID)),
+			Name: generateClusterRegistrationRequestName(clusterID),
 			Labels: map[string]string{
-				ClusterRegistrationLabel: RegisterAgentName,
+				ClusterRegisteredByLabel: ClusternetAgentName,
 				ClusterIDLabel:           string(clusterID),
 				ClusterNameLabel:         clusterName,
 			},
@@ -245,4 +269,16 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType string, clus
 			ClusterName: clusterName,
 		},
 	}
+}
+
+func generateClusterRegistrationRequestName(clusterID types.UID) string {
+	return fmt.Sprintf("%s-%s", CRRObjectNamePrefix, string(clusterID))
+}
+
+func generateClusterName(clusterName, clusterNamePrefix string) string {
+	if len(clusterName) == 0 {
+		clusterName = fmt.Sprintf("%s-%s", clusterNamePrefix, utilrand.String(DefaultRandomUIDLength))
+		klog.V(4).Infof("generate a random string %q as cluster name for later use", clusterName)
+	}
+	return clusterName
 }
