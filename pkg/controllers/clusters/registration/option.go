@@ -19,6 +19,7 @@ package registration
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -26,6 +27,8 @@ import (
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 )
+
+var validateClusterNameRegex = regexp.MustCompile(nameFmt)
 
 // ClusterRegistrationOptions holds the command-line options about cluster registration
 type ClusterRegistrationOptions struct {
@@ -76,10 +79,8 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 func (opts *ClusterRegistrationOptions) Complete() []error {
 	allErrs := []error{}
 
+	opts.ClusterName = strings.TrimSpace(opts.ClusterName)
 	opts.ClusterNamePrefix = strings.TrimSpace(opts.ClusterNamePrefix)
-	if !strings.HasSuffix(opts.ClusterNamePrefix, "-") {
-		allErrs = append(allErrs, fmt.Errorf(`wrong value for --%s, which should ends with "-"`, ClusterRegistrationNamePrefix))
-	}
 
 	return allErrs
 }
@@ -95,8 +96,25 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 		}
 	}
 
+	if len(opts.ClusterName) > 0 {
+		if len(opts.ClusterName) > ClusterNameMaxLength {
+			allErrs = append(allErrs, fmt.Errorf("cluster name %s is longer than %d", opts.ClusterName, ClusterNameMaxLength))
+		}
+
+		if !validateClusterNameRegex.MatchString(opts.ClusterName) {
+			allErrs = append(allErrs,
+				fmt.Errorf("invalid name for --%s, regex used for validation is %q", ClusterRegistrationName, nameFmt))
+		}
+	}
+
 	if len(opts.ClusterType) > 0 && !supportedClusterTypes.Has(opts.ClusterType) {
-		allErrs = append(allErrs, fmt.Errorf("invalid cluster type %q, please specify one from %s", opts.ClusterType, supportedClusterTypes.List()))
+		allErrs = append(allErrs, fmt.Errorf("invalid cluster type %q, please specify one from %s",
+			opts.ClusterType, supportedClusterTypes.List()))
+	}
+
+	if len(opts.ClusterNamePrefix) > ClusterNameMaxLength-DefaultRandomUIDLength-1 {
+		allErrs = append(allErrs, fmt.Errorf("cluster name prefix %s is longer than %d",
+			opts.ClusterName, ClusterNameMaxLength-DefaultRandomUIDLength))
 	}
 
 	// TODO: check bootstrap token
