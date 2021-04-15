@@ -16,7 +16,19 @@ spec:
     singular: clusterregistrationrequest
   scope: Cluster
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - description: The unique id for the cluster
+      jsonPath: .spec.clusterId
+      name: Cluster-ID
+      type: string
+    - description: The status of current cluster registration request
+      jsonPath: .status.result
+      name: Status
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: ClusterRegistrationRequest is the Schema for the clusterregistrationrequests API
@@ -37,7 +49,9 @@ spec:
                 pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
                 type: string
               clusterName:
-                description: ClusterName is the cluster name.
+                description: ClusterName is the cluster name. a lower case alphanumeric characters or '-', and must start and end with an alphanumeric character
+                maxLength: 30
+                pattern: '[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*'
                 type: string
               clusterType:
                 description: ClusterType denotes the type of the child cluster.
@@ -51,11 +65,15 @@ spec:
               dedicatedNamespace:
                 description: DedicatedNamespace is a dedicated namespace for the edge cluster, which is created in the parent cluster.
                 type: string
-              extraNamespaces:
-                description: ExtraNamespaces are auxiliary namespaces for future use.
-                items:
-                  type: string
-                type: array
+              errorMessage:
+                description: ErrorMessage tells the reason why the request is not approved successfully.
+                type: string
+              managedClusterName:
+                description: ManagedClusterName is the name of ManagedCluster object in the parent cluster corresponding to the child cluster
+                type: string
+              result:
+                description: Result indicates whether this request has been approved. When all necessary objects have been created and ready for child cluster registration, this field will be set to "Approved". If any illegal updates on this object, "Illegal" will be set to this filed.
+                type: string
             type: object
         type: object
     served: true

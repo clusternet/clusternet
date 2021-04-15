@@ -29,10 +29,6 @@ spec:
       jsonPath: .spec.clusterType
       name: Cluster-Type
       type: string
-    - description: The cluster aliases
-      jsonPath: .spec.clusterAliases
-      name: Cluster-Aliases
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
