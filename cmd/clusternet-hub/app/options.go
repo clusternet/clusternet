@@ -21,9 +21,14 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
+const (
+	// kubeConfig flag sets the kubeconfig file to use when talking to current child cluster.
+	kubeConfig = "kubeconfig"
+)
+
 // ClusterRegistrationOptions holds the command-line options for command
 type options struct {
-	// todo
+	kubeconfig string
 }
 
 // Complete completes all the required options.
@@ -46,7 +51,8 @@ func (opts *options) Validate() error {
 
 // AddFlags adds the flags to the flagset.
 func (opts *options) AddFlags(fs *pflag.FlagSet) {
-	// todo
+	fs.StringVar(&opts.kubeconfig, kubeConfig, opts.kubeconfig,
+		"Path to a kubeconfig file for current cluster. Only required if out-of-cluster")
 }
 
 // NewOptions creates a new *options with sane defaults
