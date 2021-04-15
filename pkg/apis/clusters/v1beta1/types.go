@@ -28,7 +28,7 @@ type EdgeClusterType string
 // These are the valid values for EdgeClusterType
 const (
 	// self provisioned edge cluster
-	EdgeClusterSelfProvisioned EdgeClusterType = "Self-Provisioned"
+	EdgeClusterSelfProvisioned EdgeClusterType = "SelfProvisioned"
 
 	// todo: add more types
 )
@@ -53,25 +53,57 @@ type ClusterRegistrationRequestSpec struct {
 	ClusterType EdgeClusterType `json:"clusterType,omitempty"`
 
 	// ClusterName is the cluster name.
+	// a lower case alphanumeric characters or '-', and must start and end with an alphanumeric character
 	//
 	// +optional
 	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=30
+	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	ClusterName string `json:"clusterName,omitempty"`
 }
 
 // ClusterRegistrationRequestStatus defines the observed state of ClusterRegistrationRequest
 type ClusterRegistrationRequestStatus struct {
 	// DedicatedNamespace is a dedicated namespace for the edge cluster, which is created in the parent cluster.
+	//
+	// +optional
 	DedicatedNamespace string `json:"dedicatedNamespace,omitempty"`
-	// ExtraNamespaces are auxiliary namespaces for future use.
-	ExtraNamespaces []string `json:"extraNamespaces,omitempty"`
+
+	// Result indicates whether this request has been approved.
+	// When all necessary objects have been created and ready for child cluster registration,
+	// this field will be set to "Approved". If any illegal updates on this object, "Illegal" will be set to this filed.
+	//
+	// +optional
+	Result ApprovedResult `json:"result,omitempty"`
+
+	// ErrorMessage tells the reason why the request is not approved successfully.
+	//
+	// +optional
+	ErrorMessage string `json:"errorMessage,omitempty"`
+
+	// ManagedClusterName is the name of ManagedCluster object in the parent cluster corresponding to the child cluster
+	//
+	// +optional
+	ManagedClusterName string `json:"managedClusterName,omitempty"`
 }
+
+type ApprovedResult string
+
+// These are the possible results for a cluster registration request.
+const (
+	RequestDenied   ApprovedResult = "Denied"
+	RequestApproved ApprovedResult = "Approved"
+	RequestFailed   ApprovedResult = "Failed"
+)
 
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Cluster"
+// +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.result`,description="The status of current cluster registration request"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ClusterRegistrationRequest is the Schema for the clusterregistrationrequests API
 type ClusterRegistrationRequest struct {
@@ -123,7 +155,6 @@ type ManagedClusterStatus struct {
 // +kubebuilder:printcolumn:name="Namespace",type=string,JSONPath=`.metadata.namespace`,description="current namespace"
 // +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.metadata.uid`,description="The unique id for the cluster"
 // +kubebuilder:printcolumn:name="Cluster-Type",type=string,JSONPath=`.spec.clusterType`,description="The type of the cluster"
-// +kubebuilder:printcolumn:name="Cluster-Aliases",type=string,JSONPath=`.spec.clusterAliases`,description="The cluster aliases"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ManagedCluster is the Schema for the managedclusters API
