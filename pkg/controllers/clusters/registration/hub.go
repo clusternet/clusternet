@@ -57,7 +57,7 @@ type Hub struct {
 
 // NewHub returns a new Hub.
 func NewHub(ctx context.Context, kubeConfig string) (*Hub, error) {
-	config, err := utils.GetKubeConfig(kubeConfig)
+	config, err := utils.GetKubeConfig(kubeConfig, 10)
 	if err != nil {
 		return nil, err
 	}

@@ -71,7 +71,7 @@ func NewAgent(ctx context.Context, childKubeConfigFile string, regOpts *ClusterR
 	identity := hostname + "_" + string(uuid.NewUUID())
 	klog.V(4).Infof("current identity lock id %q", identity)
 
-	childKubeConfig, err := utils.GetKubeConfig(childKubeConfigFile)
+	childKubeConfig, err := utils.GetKubeConfig(childKubeConfigFile, 1)
 	if err != nil {
 		return nil, err
 	}

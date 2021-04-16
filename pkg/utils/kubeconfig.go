@@ -59,7 +59,7 @@ func CreateKubeConfigWithToken(serverURL string, token string, insecureSkipTLSVe
 }
 
 // GetKubeConfig loads kubeconfig
-func GetKubeConfig(kubeConfigPath string) (*rest.Config, error) {
+func GetKubeConfig(kubeConfigPath string, flowRate int) (*rest.Config, error) {
 	if len(kubeConfigPath) == 0 {
 		// use in-cluster config
 		return rest.InClusterConfig()
@@ -73,6 +73,14 @@ func GetKubeConfig(kubeConfigPath string) (*rest.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
+
+	if flowRate < 0 {
+		flowRate = 1
+	}
+
+	// here we magnify the default qps and burst
+	config.QPS = rest.DefaultQPS * float32(flowRate)
+	config.Burst = rest.DefaultBurst * flowRate
 
 	return config, nil
 }
