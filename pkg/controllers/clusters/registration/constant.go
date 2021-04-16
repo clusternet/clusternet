@@ -29,9 +29,6 @@ const (
 	// while registering as a child cluster.
 	ClusterRegistrationToken = "cluster-reg-token"
 
-	// ClusterRegistrationUnsafeParentCA flag instruct to skip parent cluster CA verification (for token-based cluster registration)
-	ClusterRegistrationUnsafeParentCA = "cluster-reg-unsafe-parent-ca"
-
 	// ClusterRegistrationName flag specifies the cluster registration name
 	ClusterRegistrationName = "cluster-reg-name"
 
@@ -44,9 +41,10 @@ const (
 
 // default values
 const (
-	SelfClusterLeaseName      = "self-cluster"
-	SelfClusterLeaseNamespace = "edge-system"
-	ParentClusterSecretName   = "parent-cluster"
+	SelfClusterLeaseName    = "self-cluster"
+	EdgeSystemNamespace     = "edge-system"
+	ParentClusterSecretName = "parent-cluster"
+	ParentURLKey            = "parent-url"
 
 	// RegistrationNamePrefix is a prefix name for cluster registration
 	RegistrationNamePrefix = "clusternet-cluster"
@@ -81,7 +79,8 @@ const (
 	ClusterNameLabel          = "clusters.clusternet.io/cluster-name"
 	ClusterBootstrappingLabel = "clusters.clusternet.io/bootstrapping"
 
-	RBACDefaults = "rbac-defaults"
+	CredentialsAuto = "credentials-auto"
+	RBACDefaults    = "rbac-defaults"
 )
 
 // annotations

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
@@ -53,11 +53,12 @@ type Agent struct {
 	// Options for cluster registration
 	Options *ClusterRegistrationOptions
 
-	// kubeconfig for child cluster
-	childKubeConfig *rest.Config
+	// clientset for child cluster
+	childKubeClientSet kubernetes.Interface
 
-	// parent cluster kubeconfig, only for bootstrapping usage, i.e., limited access to parent cluster
-	parentBootstrapKubeConfig *rest.Config
+	// dedicated kubeconfig for accessing parent cluster, which is auto populated by the parent cluster
+	// when cluster registration request gets approved
+	parentDedicatedKubeConfig *rest.Config
 }
 
 // NewAgent returns a new Agent.
@@ -71,16 +72,16 @@ func NewAgent(ctx context.Context, childKubeConfigFile string, regOpts *ClusterR
 	identity := hostname + "_" + string(uuid.NewUUID())
 	klog.V(4).Infof("current identity lock id %q", identity)
 
-	childKubeConfig, err := utils.GetKubeConfig(childKubeConfigFile, 1)
+	childKubeConfig, err := utils.LoadsKubeConfig(childKubeConfigFile, 1)
 	if err != nil {
 		return nil, err
 	}
 
 	agent := &Agent{
-		AgentContext:    ctx,
-		Identity:        identity,
-		childKubeConfig: childKubeConfig,
-		Options:         regOpts,
+		AgentContext:       ctx,
+		Identity:           identity,
+		childKubeClientSet: kubernetes.NewForConfigOrDie(childKubeConfig), // create clientset for child cluster
+		Options:            regOpts,
 	}
 	return agent, nil
 }
@@ -88,16 +89,13 @@ func NewAgent(ctx context.Context, childKubeConfigFile string, regOpts *ClusterR
 func (agent *Agent) Run() {
 	klog.Info("starting agent controller ...")
 
-	// create clientset for child cluster
-	clientSet := kubernetes.NewForConfigOrDie(agent.childKubeConfig)
-
 	// start the leader election code loop
-	leaderelection.RunOrDie(agent.AgentContext, *newLeaderElectionConfigWithDefaultValue(agent.Identity, clientSet,
+	leaderelection.RunOrDie(agent.AgentContext, *newLeaderElectionConfigWithDefaultValue(agent.Identity, agent.childKubeClientSet,
 		leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				// we're notified when we start - this is where you would
 				// usually put your code
-				agent.registerSelfCluster(ctx, clientSet)
+				agent.registerSelfCluster(ctx, agent.childKubeClientSet)
 			},
 			OnStoppedLeading: func() {
 				klog.Error("leader election got lost")
@@ -119,6 +117,8 @@ func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kube
 	// complete your controller loop here
 	klog.Info("start registering current cluster as a child cluster...")
 
+	tryToUseSecret := true
+
 	registerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	wait.JitterUntil(func() {
@@ -134,19 +134,36 @@ func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kube
 		}
 
 		// get parent cluster kubeconfig
-		_, err := childClientSet.CoreV1().Secrets(SelfClusterLeaseNamespace).Get(registerCtx,
-			ParentClusterSecretName, metav1.GetOptions{})
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
+		if tryToUseSecret {
+			secret, err := childClientSet.CoreV1().Secrets(EdgeSystemNamespace).Get(registerCtx,
+				ParentClusterSecretName, metav1.GetOptions{})
+			if err != nil && !apierrors.IsNotFound(err) {
 				klog.Errorf("failed to get secret: %v", err)
 				return
 			}
+			if err == nil {
+				klog.Infof("found existing secret '%s/%s' that can be used to access parent cluster",
+					EdgeSystemNamespace, ParentClusterSecretName)
+
+				if string(secret.Data[ParentURLKey]) != agent.Options.ParentURL {
+					klog.Warningf("the parent url got changed from %q to %q", secret.Data[ParentURLKey], agent.Options.ParentURL)
+					klog.Warningf("will try to re-register current cluster")
+				} else {
+					parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.Options.ParentURL,
+						string(secret.Data[corev1.ServiceAccountTokenKey]), secret.Data[corev1.ServiceAccountRootCAKey], 2)
+					if err == nil {
+						agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
+					}
+				}
+			}
 		}
-		// todo: secret exists?
 
 		// bootstrap cluster registration
-		if err := bootstrapClusterRegistration(registerCtx, agent.Options, *agent.ClusterID); err != nil {
+		if err := agent.bootstrapClusterRegistrationIfNeeded(registerCtx); err != nil {
 			klog.Error(err)
+			klog.Warning("something went wrong when using existing parent cluster credentials, switch to use bootstrap token instead")
+			tryToUseSecret = false
+			agent.parentDedicatedKubeConfig = nil
 			return
 		}
 
@@ -156,75 +173,150 @@ func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kube
 }
 
 func (agent *Agent) getClusterID(ctx context.Context, childClientSet kubernetes.Interface) (types.UID, error) {
-	lease, err := childClientSet.CoordinationV1().Leases(SelfClusterLeaseNamespace).Get(ctx, SelfClusterLeaseName, metav1.GetOptions{})
+	lease, err := childClientSet.CoordinationV1().Leases(EdgeSystemNamespace).Get(ctx, SelfClusterLeaseName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("unable to retrieve %s/%s Lease object: %v", SelfClusterLeaseNamespace, SelfClusterLeaseName, err)
+		klog.Errorf("unable to retrieve %s/%s Lease object: %v", EdgeSystemNamespace, SelfClusterLeaseName, err)
 		return "", err
 	}
 	return lease.UID, nil
 }
 
-func bootstrapClusterRegistration(ctx context.Context, regOpts *ClusterRegistrationOptions, clusterID types.UID) error {
-	klog.Infof("try to bootstrap cluster registration")
+func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) error {
+	klog.Infof("try to bootstrap cluster registration if needed")
 
-	// todo: move to option.Validate() ?
-	if len(regOpts.ParentURL) == 0 {
-		klog.Exitf("please specify a parent cluster url by flag --%s", ClusterRegistrationURL)
-	}
-	if len(regOpts.BootstrapToken) == 0 {
-		klog.Exitf("please specify a token for parent cluster accessing by flag --%s", ClusterRegistrationToken)
-	}
-
-	// get bootstrap kubeconfig
-	bootstrapKubeConfig := utils.CreateKubeConfigWithToken(regOpts.ParentURL, regOpts.BootstrapToken, regOpts.UnsafeParentCA)
-	clientConfig, err := clientcmd.NewDefaultClientConfig(*bootstrapKubeConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+	clientConfig, err := agent.getBootstrapKubeConfigForParentCluster()
 	if err != nil {
-		return fmt.Errorf("error while creating kubeconfig: %v", err)
+		return err
 	}
-
 	// create ClusterRegistrationRequest
 	client := clusternetClientSet.NewForConfigOrDie(clientConfig)
 	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
-		newClusterRegistrationRequest(clusterID, regOpts.ClusterType, generateClusterName(regOpts.ClusterName, regOpts.ClusterNamePrefix)),
+		newClusterRegistrationRequest(*agent.ClusterID, agent.Options.ClusterType, generateClusterName(agent.Options.ClusterName, agent.Options.ClusterNamePrefix)),
 		metav1.CreateOptions{})
 
 	if err != nil {
 		if !apierrors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create ClusterRegistrationRequest: %v", err)
 		}
-		klog.Infof("a ClusterRegistrationRequest has already been created for cluster %q", clusterID)
+		klog.Infof("a ClusterRegistrationRequest has already been created for cluster %q", *agent.ClusterID)
 		// todo: update spec?
 	} else {
 		klog.Infof("successfully create ClusterRegistrationRequest %q", klog.KObj(crr))
 	}
 
-	crrName := generateClusterRegistrationRequestName(clusterID)
+	// wait until stopCh is closed or request is approved
+	err = agent.waitingForApproval(ctx, client)
+
+	return err
+}
+
+func (agent *Agent) getBootstrapKubeConfigForParentCluster() (*rest.Config, error) {
+	if agent.parentDedicatedKubeConfig != nil {
+		return agent.parentDedicatedKubeConfig, nil
+	}
+
+	// todo: move to option.Validate() ?
+	if len(agent.Options.ParentURL) == 0 {
+		klog.Exitf("please specify a parent cluster url by flag --%s", ClusterRegistrationURL)
+	}
+	if len(agent.Options.BootstrapToken) == 0 {
+		klog.Exitf("please specify a token for parent cluster accessing by flag --%s", ClusterRegistrationToken)
+	}
+
+	// get bootstrap kubeconfig from token
+	clientConfig, err := utils.GenerateKubeConfigFromToken(agent.Options.ParentURL, agent.Options.BootstrapToken, nil, 1)
+	if err != nil {
+		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
+	}
+
+	return clientConfig, nil
+}
+
+func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetClientSet.Interface) error {
+	var crr *clusterapi.ClusterRegistrationRequest
+	var err error
+
+	// wait until stopCh is closed or request is approved
 	waitingCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	// wait until stopCh is closed or request is approved
 	wait.JitterUntil(func() {
-		crr, err = client.ClustersV1beta1().ClusterRegistrationRequests().Get(ctx, crrName, metav1.GetOptions{})
+		crrName := generateClusterRegistrationRequestName(*agent.ClusterID)
+		crr, err = client.ClustersV1beta1().ClusterRegistrationRequests().Get(waitingCtx, crrName, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get ClusterRegistrationRequest %s: %v", crrName, err)
 			return
 		}
 		if clusterName, ok := crr.Labels[ClusterNameLabel]; ok {
-			regOpts.ClusterName = clusterName
+			agent.Options.ClusterName = clusterName
 			klog.Infof("found existing cluster name %q, reuse it", clusterName)
 		}
 
 		if crr.Status.Result == clusterapi.RequestApproved {
-			klog.Infof("the registration request for cluster %s gets approved", clusterID)
+			klog.Infof("the registration request for cluster %q gets approved", *agent.ClusterID)
+			// cancel on success
 			cancel()
 			return
 		}
 
-		klog.V(4).Infof("the registration request for cluster %q (%q) is still waiting for approval...", clusterID, regOpts.ClusterName)
+		klog.V(4).Infof("the registration request for cluster %q (%q) is still waiting for approval...",
+			agent.ClusterID, agent.Options.ClusterName)
 		return
 
 	}, DefaultRetryPeriod, 0.4, true, waitingCtx.Done())
 
+	parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.Options.ParentURL,
+		string(crr.Status.DedicatedToken), crr.Status.CACertificate, 2)
+	if err != nil {
+		return err
+	}
+	agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
+
+	// once the request gets approved
+	// run in goroutine to store auto-populated credentials to Secret "parent-cluster" in "edge-system" namespace
+	go func() {
+		agent.storeParentClusterCredentials(agent.AgentContext, crr)
+	}()
 	return nil
+}
+
+func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clusterapi.ClusterRegistrationRequest) {
+	klog.V(4).Infof("store parent cluster credentials to secret for later use")
+	secretCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: ParentClusterSecretName,
+			Labels: map[string]string{
+				ClusterBootstrappingLabel: CredentialsAuto,
+				ClusterIDLabel:            string(*agent.ClusterID),
+				ClusterNameLabel:          agent.Options.ClusterName,
+			},
+		},
+		Data: map[string][]byte{
+			corev1.ServiceAccountRootCAKey:    crr.Status.CACertificate,
+			corev1.ServiceAccountTokenKey:     crr.Status.DedicatedToken,
+			corev1.ServiceAccountNamespaceKey: []byte(crr.Status.DedicatedNamespace),
+			ParentURLKey:                      []byte(agent.Options.ParentURL),
+		},
+	}
+	wait.JitterUntil(func() {
+		_, err := agent.childKubeClientSet.CoreV1().Secrets(EdgeSystemNamespace).Create(secretCtx, secret, metav1.CreateOptions{})
+		if err == nil {
+			klog.V(5).Infof("successfully store parent cluster credentials")
+			cancel()
+			return
+		} else {
+			if apierrors.IsAlreadyExists(err) {
+				klog.V(5).Infof("found existed parent cluster credentials, will try to update if needed")
+				_, err = agent.childKubeClientSet.CoreV1().Secrets(EdgeSystemNamespace).Update(secretCtx, secret, metav1.UpdateOptions{})
+				if err == nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}, DefaultRetryPeriod, 0.4, true, secretCtx.Done())
 }
 
 func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernetes.Interface, callbacks leaderelection.LeaderCallbacks) *leaderelection.LeaderElectionConfig {
@@ -232,7 +324,7 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 		Lock: &resourcelock.LeaseLock{
 			LeaseMeta: metav1.ObjectMeta{
 				Name:      SelfClusterLeaseName,
-				Namespace: SelfClusterLeaseNamespace,
+				Namespace: EdgeSystemNamespace,
 			},
 			Client: clientset.CoordinationV1(),
 			LockConfig: resourcelock.ResourceLockConfig{

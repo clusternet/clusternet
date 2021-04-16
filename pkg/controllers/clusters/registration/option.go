@@ -41,7 +41,6 @@ type ClusterRegistrationOptions struct {
 
 	ParentURL      string
 	BootstrapToken string
-	UnsafeParentCA bool
 
 	// TODO: check ca hash
 }
@@ -49,7 +48,6 @@ type ClusterRegistrationOptions struct {
 // NewClusterRegistrationOptions creates a new *ClusterRegistrationOptions with sane defaults
 func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	return &ClusterRegistrationOptions{
-		UnsafeParentCA:    true,
 		ClusterNamePrefix: RegistrationNamePrefix,
 		ClusterType:       string(clusterapi.EdgeClusterSelfProvisioned),
 	}
@@ -60,8 +58,6 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	// flags for cluster registration
 	fs.StringVar(&opts.ParentURL, ClusterRegistrationURL, opts.ParentURL,
 		"The parent cluster url you want to register to")
-	fs.BoolVar(&opts.UnsafeParentCA, ClusterRegistrationUnsafeParentCA, opts.UnsafeParentCA,
-		"For token-based cluster registration, allowing registering without validating parent cluster CA")
 	fs.StringVar(&opts.BootstrapToken, ClusterRegistrationToken, opts.BootstrapToken,
 		"The boostrap token is used to temporarily authenticate with parent cluster while registering "+
 			"a unregistered child cluster. On success, parent cluster credentials will be stored to a secret "+

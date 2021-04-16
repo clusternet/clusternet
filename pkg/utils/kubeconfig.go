@@ -24,16 +24,22 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-// CreateBasicKubeConfig creates a basic, general KubeConfig object that then can be extended
-func CreateBasicKubeConfig(serverURL, clusterName, userName string, insecureSkipTLSVerify bool) *clientcmdapi.Config {
+// createBasicKubeConfig creates a basic, general KubeConfig object that then can be extended
+func createBasicKubeConfig(serverURL, clusterName, userName string, caCert []byte) *clientcmdapi.Config {
 	// Use the cluster and the username as the context name
 	contextName := fmt.Sprintf("%s@%s", userName, clusterName)
+
+	var insecureSkipTLSVerify bool
+	if caCert == nil {
+		insecureSkipTLSVerify = true
+	}
 
 	return &clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{
 			clusterName: {
-				Server:                serverURL,
-				InsecureSkipTLSVerify: insecureSkipTLSVerify,
+				Server:                   serverURL,
+				InsecureSkipTLSVerify:    insecureSkipTLSVerify,
+				CertificateAuthorityData: caCert,
 			},
 		},
 		Contexts: map[string]*clientcmdapi.Context{
@@ -47,19 +53,19 @@ func CreateBasicKubeConfig(serverURL, clusterName, userName string, insecureSkip
 	}
 }
 
-// CreateKubeConfigWithToken creates a KubeConfig object with access to the API server with a token
-func CreateKubeConfigWithToken(serverURL string, token string, insecureSkipTLSVerify bool) *clientcmdapi.Config {
-	userName := "userName"
-	clusterName := "clusterName"
-	config := CreateBasicKubeConfig(serverURL, clusterName, userName, insecureSkipTLSVerify)
+// createKubeConfigWithToken creates a KubeConfig object with access to the API server with a token
+func createKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcmdapi.Config {
+	userName := "clusternet"
+	clusterName := "clusternet-cluster"
+	config := createBasicKubeConfig(serverURL, clusterName, userName, caCert)
 	config.AuthInfos[userName] = &clientcmdapi.AuthInfo{
 		Token: token,
 	}
 	return config
 }
 
-// GetKubeConfig loads kubeconfig
-func GetKubeConfig(kubeConfigPath string, flowRate int) (*rest.Config, error) {
+// LoadsKubeConfig tries to load kubeconfig from specified kubeconfig file or in-cluster config
+func LoadsKubeConfig(kubeConfigPath string, flowRate int) (*rest.Config, error) {
 	if len(kubeConfigPath) == 0 {
 		// use in-cluster config
 		return rest.InClusterConfig()
@@ -73,14 +79,28 @@ func GetKubeConfig(kubeConfigPath string, flowRate int) (*rest.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
+	return applyDefaultRateLimiter(config, flowRate), nil
+}
 
+// GenerateKubeConfigFromToken composes a kubeconfig from token
+func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRate int) (*rest.Config, error) {
+	clientConfig := createKubeConfigWithToken(serverURL, token, caCert)
+	config, err := clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
+	}
+
+	return applyDefaultRateLimiter(config, flowRate), nil
+}
+
+func applyDefaultRateLimiter(config *rest.Config, flowRate int) *rest.Config {
 	if flowRate < 0 {
 		flowRate = 1
 	}
 
-	// here we magnify the default qps and burst
+	// here we magnify the default qps and burst in client-go
 	config.QPS = rest.DefaultQPS * float32(flowRate)
 	config.Burst = rest.DefaultBurst * flowRate
 
-	return config, nil
+	return config
 }
