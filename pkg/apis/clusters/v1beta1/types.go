@@ -69,6 +69,18 @@ type ClusterRegistrationRequestStatus struct {
 	// +optional
 	DedicatedNamespace string `json:"dedicatedNamespace,omitempty"`
 
+	// DedicatedToken is populated by clusternet-hub when Result is RequestApproved.
+	// With this token, the client could have full access on the resources created in DedicatedNamespace.
+	//
+	// +optional
+	DedicatedToken []byte `json:"token,omitempty"`
+
+	// CACertificate is the public certificate that is the root of trust for parent cluster
+	// The certificate is encoded in PEM format.
+	//
+	// +optional
+	CACertificate []byte `json:"caCertificate,omitempty"`
+
 	// Result indicates whether this request has been approved.
 	// When all necessary objects have been created and ready for child cluster registration,
 	// this field will be set to "Approved". If any illegal updates on this object, "Illegal" will be set to this filed.
@@ -146,6 +158,7 @@ type ManagedClusterSpec struct {
 
 // ManagedClusterStatus defines the observed state of ManagedCluster
 type ManagedClusterStatus struct {
+	// todo heartbeat status
 }
 
 // +genclient

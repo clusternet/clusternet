@@ -19,6 +19,9 @@ package registration
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -31,8 +34,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
-	"strings"
-	"sync"
 
 	"github.com/clusternet/clusternet/pkg/apis/clusters"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -229,12 +230,21 @@ func (hub *Hub) handleClusterRegistrationRequests(crr *clusterapi.ClusterRegistr
 		return err
 	}
 
-	// 5. update status
+	// 5. get credentials
+	klog.V(5).Infof("get generated credentials for cluster %q (%q)", crr.Spec.ClusterID, crr.Spec.ClusterName)
+	secret, err := getCredentialsForChildCluster(hub.HubContext, hub.kubeclientset, retry.DefaultBackoff, sa.Name, sa.Namespace)
+	if err != nil {
+		return err
+	}
+
+	// 6. update status
 	err = hub.crrController.UpdateCRRStatus(crr, &clusterapi.ClusterRegistrationRequestStatus{
 		Result:             clusterapi.RequestApproved,
 		ErrorMessage:       "",
 		DedicatedNamespace: ns.Name,
 		ManagedClusterName: mc.Name,
+		DedicatedToken:     secret.Data[corev1.ServiceAccountTokenKey],
+		CACertificate:      secret.Data[corev1.ServiceAccountRootCAKey],
 	})
 	if err != nil {
 		return err
@@ -585,4 +595,31 @@ func ensureRoleBinding(ctx context.Context, rolebinding rbacv1.RoleBinding, clie
 		}
 		return true, nil
 	})
+}
+
+func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clientset, backoff wait.Backoff, saName, saNamespace string) (*corev1.Secret, error) {
+	var secret *corev1.Secret
+	var err error
+
+	err = wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+		// first we get the auto-created secret name from serviceaccount
+		sa, err := client.CoreV1().ServiceAccounts(saNamespace).Get(ctx, saName, metav1.GetOptions{})
+		if err != nil {
+			klog.ErrorDepth(4, fmt.Sprintf("failed to get ServiceAccount %s/%s: %v, will retry", saNamespace, saName, err))
+			return false, nil
+		}
+		if len(sa.Secrets) == 0 {
+			klog.WarningDepth(4, "waiting for secret get populated in ServiceAccount '%s/%s'...", saNamespace, saName)
+			return false, nil
+		}
+
+		secretName := sa.Secrets[0].Name
+		secret, err = client.CoreV1().Secrets(saNamespace).Get(ctx, secretName, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get Secret %s/%s: %v, will retry", saNamespace, saName, err)
+			return false, nil
+		}
+		return true, nil
+	})
+	return secret, err
 }

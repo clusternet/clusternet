@@ -268,8 +268,16 @@ func (c *Controller) UpdateCRRStatus(crr *clusterapi.ClusterRegistrationRequest,
 	// Or create a copy manually for better performance
 
 	klog.V(5).Infof("try to update ClusterRegistrationRequest %q status", crr.Name)
-	if status.Result != clusterapi.RequestApproved && status.ErrorMessage == "" {
-		return fmt.Errorf("for non approved requests, must set an error message")
+	if status.Result != clusterapi.RequestApproved {
+		if status.ErrorMessage == "" {
+			return fmt.Errorf("for non approved requests, must set an error message")
+		}
+
+		// remove sensitive data if the request is not approved
+		status.DedicatedToken = nil
+		status.ManagedClusterName = ""
+		status.DedicatedNamespace = ""
+		status.CACertificate = nil
 	}
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
