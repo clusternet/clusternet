@@ -62,6 +62,10 @@ spec:
           status:
             description: ClusterRegistrationRequestStatus defines the observed state of ClusterRegistrationRequest
             properties:
+              caCertificate:
+                description: CACertificate is the public certificate that is the root of trust for parent cluster The certificate is encoded in PEM format.
+                format: byte
+                type: string
               dedicatedNamespace:
                 description: DedicatedNamespace is a dedicated namespace for the edge cluster, which is created in the parent cluster.
                 type: string
@@ -73,6 +77,10 @@ spec:
                 type: string
               result:
                 description: Result indicates whether this request has been approved. When all necessary objects have been created and ready for child cluster registration, this field will be set to "Approved". If any illegal updates on this object, "Illegal" will be set to this filed.
+                type: string
+              token:
+                description: DedicatedToken is populated by clusternet-hub when Result is RequestApproved. With this token, the client could have full access on the resources created in DedicatedNamespace.
+                format: byte
                 type: string
             type: object
         type: object
