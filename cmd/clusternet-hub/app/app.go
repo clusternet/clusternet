@@ -43,7 +43,7 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     cmdName,
 		Example: longExample,
-		Long:    `todo `,
+		Long:    `Running in parent cluster, responsible for multiple cluster managements`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := version.PrintAndExitIfRequested(cmdName); err != nil {
 				klog.Exit(err)
