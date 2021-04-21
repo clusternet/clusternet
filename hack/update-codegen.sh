@@ -21,11 +21,16 @@ set -o pipefail
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 CODEGEN_PKG=${CODEGEN_PKG:-$(cd "${SCRIPT_ROOT}"; ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../../../k8s.io/code-generator)}
 
-for group in clusters; do
-  bash "${CODEGEN_PKG}"/generate-groups.sh "deepcopy,client,informer,lister" \
-    github.com/clusternet/clusternet/pkg/generated \
-    github.com/clusternet/clusternet/pkg/apis \
-    "${group}:v1beta1" \
-    --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
-    --go-header-file "${SCRIPT_ROOT}"/hack/boilerplate.go.txt
-done
+bash "${CODEGEN_PKG}/generate-groups.sh" all \
+  github.com/clusternet/clusternet/pkg/generated \
+  github.com/clusternet/clusternet/pkg/apis \
+  "clusters:v1beta1 proxies:v1alpha1" \
+  --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
+  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
+
+bash "${CODEGEN_PKG}/generate-internal-groups.sh" "deepcopy,defaulter,conversion,openapi" \
+  github.com/clusternet/clusternet/pkg/generated \
+  github.com/clusternet/clusternet/pkg/apis github.com/clusternet/clusternet/pkg/apis \
+  "proxies:v1alpha1" \
+  --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
+  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"

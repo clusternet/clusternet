@@ -29,7 +29,7 @@ test: generate fmt vet
 # Generate CRDs
 crds: controller-gen
 	@echo "Generating CRDs at manifests/crds"
-	@$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./pkg/apis/..." output:crd:dir=manifests/crds
+	@$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./pkg/apis/clusters/..." output:crd:dir=manifests/crds
 
 # Run go fmt against code
 fmt:
