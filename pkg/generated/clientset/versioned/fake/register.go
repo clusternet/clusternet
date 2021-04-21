@@ -19,6 +19,7 @@ package fake
 
 import (
 	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	proxiesv1alpha1 "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -31,6 +32,7 @@ var codecs = serializer.NewCodecFactory(scheme)
 
 var localSchemeBuilder = runtime.SchemeBuilder{
 	clustersv1beta1.AddToScheme,
+	proxiesv1alpha1.AddToScheme,
 }
 
 // AddToScheme adds all types of this clientset into the given scheme. This allows composition

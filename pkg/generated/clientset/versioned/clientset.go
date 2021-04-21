@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/clusters/v1beta1"
+	proxiesv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/proxies/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -29,6 +30,7 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	ClustersV1beta1() clustersv1beta1.ClustersV1beta1Interface
+	ProxiesV1alpha1() proxiesv1alpha1.ProxiesV1alpha1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -36,11 +38,17 @@ type Interface interface {
 type Clientset struct {
 	*discovery.DiscoveryClient
 	clustersV1beta1 *clustersv1beta1.ClustersV1beta1Client
+	proxiesV1alpha1 *proxiesv1alpha1.ProxiesV1alpha1Client
 }
 
 // ClustersV1beta1 retrieves the ClustersV1beta1Client
 func (c *Clientset) ClustersV1beta1() clustersv1beta1.ClustersV1beta1Interface {
 	return c.clustersV1beta1
+}
+
+// ProxiesV1alpha1 retrieves the ProxiesV1alpha1Client
+func (c *Clientset) ProxiesV1alpha1() proxiesv1alpha1.ProxiesV1alpha1Interface {
+	return c.proxiesV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -68,6 +76,10 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
+	cs.proxiesV1alpha1, err = proxiesv1alpha1.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfig(&configShallowCopy)
 	if err != nil {
@@ -81,6 +93,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
 	cs.clustersV1beta1 = clustersv1beta1.NewForConfigOrDie(c)
+	cs.proxiesV1alpha1 = proxiesv1alpha1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &cs
@@ -90,6 +103,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.clustersV1beta1 = clustersv1beta1.New(c)
+	cs.proxiesV1alpha1 = proxiesv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
