@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registration
+package agent
 
 import (
 	"time"
@@ -48,21 +48,6 @@ const (
 
 	// RegistrationNamePrefix is a prefix name for cluster registration
 	RegistrationNamePrefix = "clusternet-cluster"
-	// NamePrefixForChildCluster is a prefix name for generating object name for child cluster, such as namespace, sa, etc
-	NamePrefixForChildCluster = "clusternet-"
-	// CRRObjectNamePrefix is a prefix name for generating ClusterRegistrationRequests
-	CRRObjectNamePrefix = "clusternet"
-
-	// agent name
-	ClusternetAgentName = "clusternet-agent"
-	ClusternetHubName   = "clusternet-hub"
-
-	// default resync time
-	DefaultResync = time.Minute * 30
-	// default number of threads
-	DefaultThreadiness = 2
-	// DefaultAPICallRetryInterval defines how long func should wait before retrying a failed API operation
-	DefaultAPICallRetryInterval = 200 * time.Millisecond
 
 	// max length for clustername
 	ClusterNameMaxLength = 30
@@ -70,31 +55,6 @@ const (
 	DefaultRandomUIDLength = 5
 
 	nameFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
-)
-
-// labels
-const (
-	ClusterRegisteredByLabel  = "clusters.clusternet.io/registered-by"
-	ClusterIDLabel            = "clusters.clusternet.io/cluster-id"
-	ClusterNameLabel          = "clusters.clusternet.io/cluster-name"
-	ClusterBootstrappingLabel = "clusters.clusternet.io/bootstrapping"
-
-	CredentialsAuto = "credentials-auto"
-	RBACDefaults    = "rbac-defaults"
-)
-
-// annotations
-const (
-	// AutoUpdateAnnotationKey is the name of an annotation which prevents reconciliation if set to "false"
-	AutoUpdateAnnotationKey = "clusters.clusternet.io/rbac-autoupdate"
-)
-
-// rbac
-const (
-	// ClusterRegistrationRole is the default clusterrole name for cluster registration requests
-	ClusterRegistrationRole = "clusternet-cluster-registration-clusterrole"
-	// ManagedClusterRole is the default role for ManagedCluster objects
-	ManagedClusterRole = "clusternet-managedcluster-role"
 )
 
 // lease lock

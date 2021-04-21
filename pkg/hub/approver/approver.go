@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registration
+package approver
 
 import (
 	"context"
@@ -39,101 +39,75 @@ import (
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterregistrationrequest"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	"github.com/clusternet/clusternet/pkg/utils"
+	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
-// Hub defines configuration for clusternet-hub
-type Hub struct {
-	HubContext context.Context
-
-	crrController *clusterregistrationrequest.Controller
-
-	clusternetInformerFactory informers.SharedInformerFactory
-
-	kubeclientset       *kubernetes.Clientset
-	clusternetclientset *clusternetClientSet.Clientset
+// CRRApprover defines configuration for ClusterRegistrationRequests approver
+type CRRApprover struct {
+	ctx              context.Context
+	crrController    *clusterregistrationrequest.Controller
+	kubeclient       *kubernetes.Clientset
+	clusternetclient *clusternetClientSet.Clientset
 }
 
-// NewHub returns a new Hub.
-func NewHub(ctx context.Context, kubeConfig string) (*Hub, error) {
-	config, err := utils.LoadsKubeConfig(kubeConfig, 10)
+// NewCRRApprover returns a new CRRApprover for ClusterRegistrationRequest.
+func NewCRRApprover(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetClientSet.Clientset, crrsInformer clusterInformers.ClusterRegistrationRequestInformer) (*CRRApprover, error) {
+	crrApprover := &CRRApprover{
+		ctx:              ctx,
+		kubeclient:       kubeclient,
+		clusternetclient: clusternetclient,
+	}
+
+	newCRRController, err := clusterregistrationrequest.NewController(ctx, kubeclient, clusternetclient, crrsInformer, crrApprover.handleClusterRegistrationRequests)
 	if err != nil {
 		return nil, err
 	}
+	crrApprover.crrController = newCRRController
 
-	// creating the clientset
-	kubeclientset := kubernetes.NewForConfigOrDie(config)
-	clusternetclientset := clusternetClientSet.NewForConfigOrDie(config)
-
-	// creates the informer factory
-	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetclientset, DefaultResync)
-
-	hub := &Hub{
-		HubContext:                ctx,
-		clusternetInformerFactory: clusternetInformerFactory,
-		kubeclientset:             kubeclientset,
-		clusternetclientset:       clusternetclientset,
-	}
-
-	newCRRController, err := clusterregistrationrequest.NewController(ctx, kubeclientset, clusternetclientset,
-		clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests(),
-		hub.handleClusterRegistrationRequests)
-	if err != nil {
-		return nil, err
-	}
-	hub.crrController = newCRRController
-
-	// Start the informer factories to begin populating the informer caches
-	clusternetInformerFactory.Start(ctx.Done())
-
-	return hub, nil
-
+	return crrApprover, nil
 }
 
-func (hub *Hub) Run() error {
-	klog.Info("starting Clusternet Hub ...")
+func (crrApprover *CRRApprover) Run(threadiness int) error {
+	klog.Info("starting Clusternet CRRApprover ...")
 
 	// initializing roles is really important
 	// and nothing works if the roles don't get initialized
-	hub.applyDefaultRBACRules()
-
-	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-	hub.clusternetInformerFactory.Start(hub.HubContext.Done())
+	crrApprover.applyDefaultRBACRules()
 
 	// todo: gorountine
-	hub.crrController.Run(DefaultThreadiness, hub.HubContext.Done())
+	crrApprover.crrController.Run(threadiness, crrApprover.ctx.Done())
 	return nil
 }
 
-func (hub *Hub) applyDefaultRBACRules() {
+func (crrApprover *CRRApprover) applyDefaultRBACRules() {
 	klog.Infof("applying default rbac rules")
 
 	wg := sync.WaitGroup{}
 
-	clusterroles := hub.defaultClusterRoles()
+	clusterroles := crrApprover.defaultClusterRoles()
 	wg.Add(len(clusterroles))
 	for _, cr := range clusterroles {
 		go func() {
 			defer wg.Done()
-			ensureClusterRole(hub.HubContext, cr, hub.kubeclientset)
+			ensureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient)
 		}()
 	}
 
 	wg.Wait()
 }
 
-func (hub *Hub) defaultClusterRoles() []rbacv1.ClusterRole {
+func (crrApprover *CRRApprover) defaultClusterRoles() []rbacv1.ClusterRole {
 	// default cluster roles for initializing
 
 	// minimum role for child cluster registration
 	clusterRoleForCRR := rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        ClusterRegistrationRole,
-			Annotations: map[string]string{AutoUpdateAnnotationKey: "true"},
+			Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
 			Labels: map[string]string{
-				ClusterBootstrappingLabel: RBACDefaults,
-				ClusterRegisteredByLabel:  ClusternetHubName,
+				known.ClusterBootstrappingLabel: known.RBACDefaults,
+				known.ObjectCreatedByLabel:      known.ClusternetHubName,
 			},
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -153,17 +127,17 @@ func (hub *Hub) defaultClusterRoles() []rbacv1.ClusterRole {
 	}
 }
 
-func (hub *Hub) defaultRoles(namespace string) []rbacv1.Role {
+func (crrApprover *CRRApprover) defaultRoles(namespace string) []rbacv1.Role {
 	// default roles for child cluster registration
 
 	roleForManagedCluster := rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        ManagedClusterRole,
 			Namespace:   namespace,
-			Annotations: map[string]string{AutoUpdateAnnotationKey: "true"},
+			Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
 			Labels: map[string]string{
-				ClusterBootstrappingLabel: RBACDefaults,
-				ClusterRegisteredByLabel:  ClusternetHubName,
+				known.ClusterBootstrappingLabel: known.RBACDefaults,
+				known.ObjectCreatedByLabel:      known.ClusternetHubName,
 			},
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -180,18 +154,18 @@ func (hub *Hub) defaultRoles(namespace string) []rbacv1.Role {
 	}
 }
 
-func (hub *Hub) handleClusterRegistrationRequests(crr *clusterapi.ClusterRegistrationRequest) error {
+func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterapi.ClusterRegistrationRequest) error {
 	// If an error occurs during handling, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
 
 	// validate cluster id
-	expectedClusterID := strings.TrimPrefix(crr.Name, fmt.Sprintf("%s-", CRRObjectNamePrefix))
+	expectedClusterID := strings.TrimPrefix(crr.Name, known.NamePrefixForClusternetObjects)
 	if expectedClusterID != string(crr.Spec.ClusterID) {
 		err := fmt.Errorf("ClusterRegistrationRequest %q has got illegal update on spec.clusterID from %q to %q, will skip processing",
 			crr.Name, expectedClusterID, crr.Spec.ClusterID)
 		klog.Error(err)
-		utilruntime.HandleError(hub.crrController.UpdateCRRStatus(crr, &clusterapi.ClusterRegistrationRequestStatus{
+		utilruntime.HandleError(crrApprover.crrController.UpdateCRRStatus(crr, &clusterapi.ClusterRegistrationRequestStatus{
 			Result:       clusterapi.RequestDenied,
 			ErrorMessage: err.Error(),
 		}))
@@ -200,45 +174,45 @@ func (hub *Hub) handleClusterRegistrationRequests(crr *clusterapi.ClusterRegistr
 
 	// 1. create dedicated namespace
 	klog.V(5).Infof("create dedicated namespace for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	ns, err := hub.createNamespaceForChildClusterIfNeeded(crr.Spec.ClusterID, crr.Spec.ClusterName)
+	ns, err := crrApprover.createNamespaceForChildClusterIfNeeded(crr.Spec.ClusterID, crr.Spec.ClusterName)
 	if err != nil {
 		return err
 	}
 
 	// 2. create ManagedCluster object
 	klog.V(5).Infof("create corresponding MangedCluster for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	mc, err := hub.createManagedClusterIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID, crr.Spec.ClusterType)
+	mc, err := crrApprover.createManagedClusterIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID, crr.Spec.ClusterType)
 	if err != nil {
 		return err
 	}
 
 	// 3. create ServiceAccount
 	klog.V(5).Infof("create service account for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	sa, err := hub.createServiceAccountIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID)
+	sa, err := crrApprover.createServiceAccountIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID)
 	if err != nil {
 		return err
 	}
 
 	// 4. binding default rbac rules
 	klog.V(5).Infof("bind related clusterrols/roles for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	err = hub.bindingDefaultClusterRolesIfNeeded(sa.Name, sa.Namespace)
+	err = crrApprover.bindingDefaultClusterRolesIfNeeded(sa.Name, sa.Namespace)
 	if err != nil {
 		return err
 	}
-	err = hub.bindingRoleIfNeeded(sa.Name, sa.Namespace)
+	err = crrApprover.bindingRoleIfNeeded(sa.Name, sa.Namespace)
 	if err != nil {
 		return err
 	}
 
 	// 5. get credentials
 	klog.V(5).Infof("get generated credentials for cluster %q (%q)", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	secret, err := getCredentialsForChildCluster(hub.HubContext, hub.kubeclientset, retry.DefaultBackoff, sa.Name, sa.Namespace)
+	secret, err := getCredentialsForChildCluster(crrApprover.ctx, crrApprover.kubeclient, retry.DefaultBackoff, sa.Name, sa.Namespace)
 	if err != nil {
 		return err
 	}
 
 	// 6. update status
-	err = hub.crrController.UpdateCRRStatus(crr, &clusterapi.ClusterRegistrationRequestStatus{
+	err = crrApprover.crrController.UpdateCRRStatus(crr, &clusterapi.ClusterRegistrationRequestStatus{
 		Result:             clusterapi.RequestApproved,
 		ErrorMessage:       "",
 		DedicatedNamespace: ns.Name,
@@ -253,13 +227,13 @@ func (hub *Hub) handleClusterRegistrationRequests(crr *clusterapi.ClusterRegistr
 	return nil
 }
 
-func (hub *Hub) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clusterName string) (*corev1.Namespace, error) {
+func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clusterName string) (*corev1.Namespace, error) {
 	// checks for a existed dedicated namespace for child cluster
 	// the clusterName here may vary, we use clusterID as the identifier
-	namespaces, err := hub.kubeclientset.CoreV1().Namespaces().List(hub.HubContext, metav1.ListOptions{
+	namespaces, err := crrApprover.kubeclient.CoreV1().Namespaces().List(crrApprover.ctx, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{
-			ClusterRegisteredByLabel: ClusternetAgentName,
-			ClusterIDLabel:           string(clusterID),
+			known.ObjectCreatedByLabel: known.ClusternetAgentName,
+			known.ClusterIDLabel:       string(clusterID),
 		}).String(),
 	})
 	if err != nil {
@@ -276,15 +250,15 @@ func (hub *Hub) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clus
 	klog.V(4).Infof("no dedicated namespace for cluster %s found, will create a new one", clusterID)
 	newNs := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: NamePrefixForChildCluster,
+			GenerateName: known.NamePrefixForClusternetObjects,
 			Labels: map[string]string{
-				ClusterRegisteredByLabel: ClusternetAgentName,
-				ClusterIDLabel:           string(clusterID),
-				ClusterNameLabel:         clusterName,
+				known.ObjectCreatedByLabel: known.ClusternetAgentName,
+				known.ClusterIDLabel:       string(clusterID),
+				known.ClusterNameLabel:     clusterName,
 			},
 		},
 	}
-	newNs, err = hub.kubeclientset.CoreV1().Namespaces().Create(hub.HubContext, newNs, metav1.CreateOptions{})
+	newNs, err = crrApprover.kubeclient.CoreV1().Namespaces().Create(crrApprover.ctx, newNs, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -293,13 +267,13 @@ func (hub *Hub) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clus
 	return newNs, nil
 }
 
-func (hub *Hub) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID, clusterType clusterapi.EdgeClusterType) (*clusterapi.ManagedCluster, error) {
+func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID, clusterType clusterapi.EdgeClusterType) (*clusterapi.ManagedCluster, error) {
 	// checks for a existed ManagedCluster object
 	// the clusterName here may vary, we use clusterID as the identifier
-	mcs, err := hub.clusternetclientset.ClustersV1beta1().ManagedClusters(namespace).List(hub.HubContext, metav1.ListOptions{
+	mcs, err := crrApprover.clusternetclient.ClustersV1beta1().ManagedClusters(namespace).List(crrApprover.ctx, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{
-			ClusterRegisteredByLabel: ClusternetAgentName,
-			ClusterIDLabel:           string(clusterID),
+			known.ObjectCreatedByLabel: known.ClusternetAgentName,
+			known.ClusterIDLabel:       string(clusterID),
 		}).String(),
 	})
 	if err != nil {
@@ -317,9 +291,9 @@ func (hub *Hub) createManagedClusterIfNeeded(namespace, clusterName string, clus
 		ObjectMeta: metav1.ObjectMeta{
 			Name: clusterName,
 			Labels: map[string]string{
-				ClusterRegisteredByLabel: ClusternetAgentName,
-				ClusterIDLabel:           string(clusterID),
-				ClusterNameLabel:         clusterName,
+				known.ObjectCreatedByLabel: known.ClusternetAgentName,
+				known.ClusterIDLabel:       string(clusterID),
+				known.ClusterNameLabel:     clusterName,
 			},
 		},
 		Spec: clusterapi.ManagedClusterSpec{
@@ -328,7 +302,7 @@ func (hub *Hub) createManagedClusterIfNeeded(namespace, clusterName string, clus
 		},
 	}
 
-	mc, err := hub.clusternetclientset.ClustersV1beta1().ManagedClusters(namespace).Create(hub.HubContext, managedCluster, metav1.CreateOptions{})
+	mc, err := crrApprover.clusternetclient.ClustersV1beta1().ManagedClusters(namespace).Create(crrApprover.ctx, managedCluster, metav1.CreateOptions{})
 	if err != nil {
 		klog.Errorf("failed to create ManagedCluster for cluster %q: %v", clusterID, err)
 		return nil, err
@@ -338,13 +312,13 @@ func (hub *Hub) createManagedClusterIfNeeded(namespace, clusterName string, clus
 	return mc, nil
 }
 
-func (hub *Hub) createServiceAccountIfNeeded(namespace, clusterName string, clusterID types.UID) (*corev1.ServiceAccount, error) {
+func (crrApprover *CRRApprover) createServiceAccountIfNeeded(namespace, clusterName string, clusterID types.UID) (*corev1.ServiceAccount, error) {
 	// checks for a existed dedicated service account created for child cluster to access parent cluster
 	// the clusterName here may vary, we use clusterID as the identifier
-	sas, err := hub.kubeclientset.CoreV1().ServiceAccounts(namespace).List(hub.HubContext, metav1.ListOptions{
+	sas, err := crrApprover.kubeclient.CoreV1().ServiceAccounts(namespace).List(crrApprover.ctx, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{
-			ClusterRegisteredByLabel: ClusternetAgentName,
-			ClusterIDLabel:           string(clusterID),
+			known.ObjectCreatedByLabel: known.ClusternetAgentName,
+			known.ClusterIDLabel:       string(clusterID),
 		}).String(),
 	})
 	if err != nil {
@@ -362,15 +336,15 @@ func (hub *Hub) createServiceAccountIfNeeded(namespace, clusterName string, clus
 	klog.V(4).Infof("no dedicated service account for cluster %s found, will create a new one", clusterID)
 	newSA := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: NamePrefixForChildCluster,
+			GenerateName: known.NamePrefixForClusternetObjects,
 			Labels: map[string]string{
-				ClusterRegisteredByLabel: ClusternetAgentName,
-				ClusterIDLabel:           string(clusterID),
-				ClusterNameLabel:         clusterName,
+				known.ObjectCreatedByLabel: known.ClusternetAgentName,
+				known.ClusterIDLabel:       string(clusterID),
+				known.ClusterNameLabel:     clusterName,
 			},
 		},
 	}
-	newSA, err = hub.kubeclientset.CoreV1().ServiceAccounts(namespace).Create(hub.HubContext, newSA, metav1.CreateOptions{})
+	newSA, err = crrApprover.kubeclient.CoreV1().ServiceAccounts(namespace).Create(crrApprover.ctx, newSA, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -379,29 +353,29 @@ func (hub *Hub) createServiceAccountIfNeeded(namespace, clusterName string, clus
 	return newSA, nil
 }
 
-func (hub *Hub) bindingDefaultClusterRolesIfNeeded(serviceAccountName, serivceAccountNamespace string) error {
+func (crrApprover *CRRApprover) bindingDefaultClusterRolesIfNeeded(serviceAccountName, serivceAccountNamespace string) error {
 	allErrs := []error{}
 	wg := sync.WaitGroup{}
 
-	defaultClusterRoles := hub.defaultClusterRoles()
+	defaultClusterRoles := crrApprover.defaultClusterRoles()
 	wg.Add(len(defaultClusterRoles))
 	for _, cr := range defaultClusterRoles {
 		go func() {
 			defer wg.Done()
-			err := ensureClusterRoleBinding(hub.HubContext, rbacv1.ClusterRoleBinding{
+			err := ensureClusterRoleBinding(crrApprover.ctx, rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        cr.Name,
-					Annotations: map[string]string{AutoUpdateAnnotationKey: "true"},
+					Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
 					Labels: map[string]string{
-						ClusterBootstrappingLabel: RBACDefaults,
-						ClusterRegisteredByLabel:  ClusternetHubName,
+						known.ClusterBootstrappingLabel: known.RBACDefaults,
+						known.ObjectCreatedByLabel:      known.ClusternetHubName,
 					},
 				},
 				Subjects: []rbacv1.Subject{
 					{Kind: rbacv1.ServiceAccountKind, Name: serviceAccountName, Namespace: serivceAccountNamespace},
 				},
 				RoleRef: rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: cr.Name},
-			}, hub.kubeclientset, retry.DefaultRetry)
+			}, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure binding for ClusterRole %q: %v", cr.Name, err))
 			}
@@ -412,17 +386,17 @@ func (hub *Hub) bindingDefaultClusterRolesIfNeeded(serviceAccountName, serivceAc
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (hub *Hub) bindingRoleIfNeeded(serviceAccountName, namespace string) error {
+func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespace string) error {
 	allErrs := []error{}
 	wg := sync.WaitGroup{}
 
 	// first we ensure default roles exist
-	roles := hub.defaultRoles(namespace)
+	roles := crrApprover.defaultRoles(namespace)
 	wg.Add(len(roles))
 	for _, r := range roles {
 		go func() {
 			defer wg.Done()
-			err := ensureRole(hub.HubContext, r, hub.kubeclientset, retry.DefaultRetry)
+			err := ensureRole(crrApprover.ctx, r, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure Role %q: %v", r.Name, err))
 			}
@@ -439,21 +413,21 @@ func (hub *Hub) bindingRoleIfNeeded(serviceAccountName, namespace string) error 
 	for _, r := range roles {
 		go func() {
 			defer wg.Done()
-			err := ensureRoleBinding(hub.HubContext, rbacv1.RoleBinding{
+			err := ensureRoleBinding(crrApprover.ctx, rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        r.Name,
 					Namespace:   r.Namespace,
-					Annotations: map[string]string{AutoUpdateAnnotationKey: "true"},
+					Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
 					Labels: map[string]string{
-						ClusterBootstrappingLabel: RBACDefaults,
-						ClusterRegisteredByLabel:  ClusternetHubName,
+						known.ClusterBootstrappingLabel: known.RBACDefaults,
+						known.ObjectCreatedByLabel:      known.ClusternetHubName,
 					},
 				},
 				Subjects: []rbacv1.Subject{
 					{Kind: rbacv1.ServiceAccountKind, Name: serviceAccountName, Namespace: namespace},
 				},
 				RoleRef: rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: r.Name},
-			}, hub.kubeclientset, retry.DefaultRetry)
+			}, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure binding for Role %q: %v", r.Name, err))
 			}
@@ -489,7 +463,7 @@ func ensureClusterRole(ctx context.Context, clusterrole rbacv1.ClusterRole, clie
 			utilruntime.HandleError(err)
 			return
 		}
-		if autoUpdate, ok := cr.Annotations[AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := cr.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().ClusterRoles().Update(ctx, &clusterrole, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the creation
@@ -522,7 +496,7 @@ func ensureClusterRoleBinding(ctx context.Context, clusterrolebinding rbacv1.Clu
 			klog.Errorf("failed to get ClusterRoleBinding %s: %v, will retry", clusterrolebinding.Name, err)
 			return false, nil
 		}
-		if autoUpdate, ok := crb.Annotations[AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := crb.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().ClusterRoleBindings().Update(ctx, &clusterrolebinding, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the updating
@@ -553,7 +527,7 @@ func ensureRole(ctx context.Context, role rbacv1.Role, client *kubernetes.Client
 			klog.ErrorDepth(4, fmt.Errorf("failed to get Role %s/%s: %v, will retry", role.Namespace, role.Name, err))
 			return false, nil
 		}
-		if autoUpdate, ok := r.Annotations[AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := r.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().Roles(role.Namespace).Update(ctx, &role, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the updating
@@ -584,7 +558,7 @@ func ensureRoleBinding(ctx context.Context, rolebinding rbacv1.RoleBinding, clie
 			klog.Errorf("failed to get RoleBinding %s/%s: %v, will retry", rolebinding.Namespace, rolebinding.Name, err)
 			return false, nil
 		}
-		if autoUpdate, ok := rb.Annotations[AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := rb.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().RoleBindings(rolebinding.Namespace).Update(ctx, &rolebinding, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the updating

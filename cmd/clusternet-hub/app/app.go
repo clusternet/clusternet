@@ -24,7 +24,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/templates"
 
-	"github.com/clusternet/clusternet/pkg/controllers/clusters/registration"
+	"github.com/clusternet/clusternet/pkg/hub"
 	"github.com/clusternet/clusternet/pkg/version"
 )
 
@@ -60,7 +60,7 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 				klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 			})
 
-			hub, err := registration.NewHub(ctx, opts.kubeconfig)
+			hub, err := hub.NewHub(ctx, opts.kubeconfig)
 			if err != nil {
 				klog.Exit(err)
 			}

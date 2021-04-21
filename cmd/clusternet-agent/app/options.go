@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/pflag"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
-	"github.com/clusternet/clusternet/pkg/controllers/clusters/registration"
+	"github.com/clusternet/clusternet/pkg/agent"
 )
 
 const (
@@ -31,7 +31,7 @@ const (
 // ClusterRegistrationOptions holds the command-line options for command
 type options struct {
 	kubeconfig          string
-	clusterRegistration *registration.ClusterRegistrationOptions
+	clusterRegistration *agent.ClusterRegistrationOptions
 }
 
 // Complete completes all the required options.
@@ -68,6 +68,6 @@ func (opts *options) AddFlags(fs *pflag.FlagSet) {
 // NewOptions creates a new *options with sane defaults
 func NewOptions() *options {
 	return &options{
-		clusterRegistration: registration.NewClusterRegistrationOptions(),
+		clusterRegistration: agent.NewClusterRegistrationOptions(),
 	}
 }

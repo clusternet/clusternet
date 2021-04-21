@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registration
+package agent
 
 import (
 	"context"
@@ -36,6 +36,7 @@ import (
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
@@ -246,9 +247,9 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 			klog.Errorf("failed to get ClusterRegistrationRequest %s: %v", crrName, err)
 			return
 		}
-		if clusterName, ok := crr.Labels[ClusterNameLabel]; ok {
+		if clusterName, ok := crr.Labels[known.ClusterNameLabel]; ok {
 			agent.Options.ClusterName = clusterName
-			klog.Infof("found existing cluster name %q, reuse it", clusterName)
+			klog.V(5).Infof("found existing cluster name %q, reuse it", clusterName)
 		}
 
 		if crr.Status.Result == clusterapi.RequestApproved {
@@ -259,7 +260,7 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 		}
 
 		klog.V(4).Infof("the registration request for cluster %q (%q) is still waiting for approval...",
-			agent.ClusterID, agent.Options.ClusterName)
+			*agent.ClusterID, agent.Options.ClusterName)
 		return
 
 	}, DefaultRetryPeriod, 0.4, true, waitingCtx.Done())
@@ -288,9 +289,9 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 		ObjectMeta: metav1.ObjectMeta{
 			Name: ParentClusterSecretName,
 			Labels: map[string]string{
-				ClusterBootstrappingLabel: CredentialsAuto,
-				ClusterIDLabel:            string(*agent.ClusterID),
-				ClusterNameLabel:          agent.Options.ClusterName,
+				known.ClusterBootstrappingLabel: known.CredentialsAuto,
+				known.ClusterIDLabel:            string(*agent.ClusterID),
+				known.ClusterNameLabel:          agent.Options.ClusterName,
 			},
 		},
 		Data: map[string][]byte{
@@ -350,9 +351,9 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 		ObjectMeta: metav1.ObjectMeta{
 			Name: generateClusterRegistrationRequestName(clusterID),
 			Labels: map[string]string{
-				ClusterRegisteredByLabel: ClusternetAgentName,
-				ClusterIDLabel:           string(clusterID),
-				ClusterNameLabel:         clusterName,
+				known.ClusterRegisteredByLabel: known.ClusternetAgentName,
+				known.ClusterIDLabel:           string(clusterID),
+				known.ClusterNameLabel:         clusterName,
 			},
 		},
 		Spec: clusterapi.ClusterRegistrationRequestSpec{
@@ -364,7 +365,7 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 }
 
 func generateClusterRegistrationRequestName(clusterID types.UID) string {
-	return fmt.Sprintf("%s-%s", CRRObjectNamePrefix, string(clusterID))
+	return fmt.Sprintf("%s%s", known.NamePrefixForClusternetObjects, string(clusterID))
 }
 
 func generateClusterName(clusterName, clusterNamePrefix string) string {
