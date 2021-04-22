@@ -10,9 +10,13 @@ metadata:
 spec:
   group: clusters.clusternet.io
   names:
+    categories:
+    - clusternet
     kind: ClusterRegistrationRequest
     listKind: ClusterRegistrationRequestList
     plural: clusterregistrationrequests
+    shortNames:
+    - clsrr
     singular: clusterregistrationrequest
   scope: Cluster
   versions:

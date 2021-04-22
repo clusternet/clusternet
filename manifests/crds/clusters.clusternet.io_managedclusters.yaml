@@ -10,19 +10,19 @@ metadata:
 spec:
   group: clusters.clusternet.io
   names:
+    categories:
+    - clusternet
     kind: ManagedCluster
     listKind: ManagedClusterList
     plural: managedclusters
+    shortNames:
+    - mcls
     singular: managedcluster
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: current namespace
-      jsonPath: .metadata.namespace
-      name: Namespace
-      type: string
     - description: The unique id for the cluster
-      jsonPath: .metadata.uid
+      jsonPath: .spec.clusterId
       name: Cluster-ID
       type: string
     - description: The type of the cluster
