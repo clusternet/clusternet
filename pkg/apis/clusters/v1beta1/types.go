@@ -112,7 +112,7 @@ const (
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope="Cluster"
+// +kubebuilder:resource:scope="Cluster",shortName=clsrr
 // +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.result`,description="The status of current cluster registration request"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
@@ -164,9 +164,8 @@ type ManagedClusterStatus struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope="Namespaced"
-// +kubebuilder:printcolumn:name="Namespace",type=string,JSONPath=`.metadata.namespace`,description="current namespace"
-// +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.metadata.uid`,description="The unique id for the cluster"
+// +kubebuilder:resource:scope="Namespaced",shortName=mcls
+// +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
 // +kubebuilder:printcolumn:name="Cluster-Type",type=string,JSONPath=`.spec.clusterType`,description="The type of the cluster"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
