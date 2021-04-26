@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	"k8s.io/component-base/logs"
 
 	"github.com/clusternet/clusternet/cmd/clusternet-hub/app"
 	"github.com/clusternet/clusternet/pkg/utils"
@@ -33,12 +33,11 @@ import (
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	klog.InitFlags(nil)
-	defer klog.Flush()
+	logs.InitLogs()
+	defer logs.FlushLogs()
 
 	ctx := utils.GracefulStopWithContext()
 	command := app.NewClusternetHubCmd(ctx)
-
 	pflag.CommandLine.SetNormalizeFunc(utils.WordSepNormalizeFunc)
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 

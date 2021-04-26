@@ -20,12 +20,14 @@ import (
 	"context"
 	"time"
 
+	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	"github.com/clusternet/clusternet/pkg/hub/approver"
+	"github.com/clusternet/clusternet/pkg/hub/options"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
@@ -38,17 +40,17 @@ const (
 
 // Hub defines configuration for clusternet-hub
 type Hub struct {
-	ctx context.Context
-
-	CRRApprover               *approver.CRRApprover
+	ctx                       context.Context
+	options                   *options.HubServerOptions
+	crrApprover               *approver.CRRApprover
 	clusternetInformerFactory informers.SharedInformerFactory
 	kubeclient                *kubernetes.Clientset
 	clusternetclient          *clusternetClientSet.Clientset
 }
 
 // NewHub returns a new Hub.
-func NewHub(ctx context.Context, kubeConfig string) (*Hub, error) {
-	config, err := utils.LoadsKubeConfig(kubeConfig, 10)
+func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
+	config, err := utils.LoadsKubeConfig(opts.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath, 10)
 	if err != nil {
 		return nil, err
 	}
@@ -65,8 +67,9 @@ func NewHub(ctx context.Context, kubeConfig string) (*Hub, error) {
 	}
 
 	hub := &Hub{
-		CRRApprover:               approver,
 		ctx:                       ctx,
+		crrApprover:               approver,
+		options:                   opts,
 		kubeclient:                kubeclient,
 		clusternetclient:          clusternetclient,
 		clusternetInformerFactory: clusternetInformerFactory,
@@ -80,9 +83,36 @@ func NewHub(ctx context.Context, kubeConfig string) (*Hub, error) {
 }
 
 func (hub *Hub) Run() error {
-	klog.Info("starting Clusternet Hub ...")
+	go func() {
+		hub.crrApprover.Run(DefaultThreadiness)
+	}()
 
-	// TODO: goroutine
-	hub.CRRApprover.Run(DefaultThreadiness)
+	err := hub.RunAPIServer()
+	if err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// RunAPIServer starts a new HubAPIServer given HubServerOptions
+func (hub *Hub) RunAPIServer() error {
+	klog.Info("starting Clusternet Hub APIServer ...")
+	config, err := hub.options.Config()
+	if err != nil {
+		return err
+	}
+
+	server, err := config.Complete().New()
+	if err != nil {
+		return err
+	}
+
+	server.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-apiserver-informers", func(context genericapiserver.PostStartHookContext) error {
+		config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
+		hub.options.LoopbackSharedInformerFactory.Start(context.StopCh)
+		return nil
+	})
+
+	return server.GenericAPIServer.PrepareRun().Run(hub.ctx.Done())
 }

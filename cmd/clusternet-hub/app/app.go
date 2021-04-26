@@ -21,10 +21,12 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/templates"
 
 	"github.com/clusternet/clusternet/pkg/hub"
+	"github.com/clusternet/clusternet/pkg/hub/options"
 	"github.com/clusternet/clusternet/pkg/version"
 )
 
@@ -38,7 +40,7 @@ var (
 
 // NewClusternetHubCmd creates a *cobra.Command object with default parameters
 func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
-	opts := NewOptions()
+	opts := options.NewHubServerOptions()
 
 	cmd := &cobra.Command{
 		Use:     cmdName,
@@ -52,7 +54,7 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 			if err := opts.Complete(); err != nil {
 				klog.Exit(err)
 			}
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(args); err != nil {
 				klog.Exit(err)
 			}
 
@@ -60,12 +62,11 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 				klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 			})
 
-			hub, err := hub.NewHub(ctx, opts.kubeconfig)
+			hub, err := hub.NewHub(ctx, opts)
 			if err != nil {
 				klog.Exit(err)
 			}
-			err = hub.Run()
-			if err != nil {
+			if err := hub.Run(); err != nil {
 				klog.Exit(err)
 			}
 
@@ -73,8 +74,10 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 
-	version.AddVersionFlag(cmd.Flags())
-	opts.AddFlags(cmd.Flags())
+	flags := cmd.Flags()
+	version.AddVersionFlag(flags)
+	opts.RecommendedOptions.AddFlags(flags)
+	utilfeature.DefaultMutableFeatureGate.AddFlag(flags)
 
 	return cmd
 }
