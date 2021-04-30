@@ -75,6 +75,8 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 	}
 
 	flags := cmd.Flags()
+	flags.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
+
 	version.AddVersionFlag(flags)
 	opts.RecommendedOptions.AddFlags(flags)
 	utilfeature.DefaultMutableFeatureGate.AddFlag(flags)

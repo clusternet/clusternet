@@ -45,6 +45,9 @@ const (
 
 // HubServerOptions contains state for master/api server
 type HubServerOptions struct {
+	// No tunnel logging by default
+	TunnelLogging bool
+
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	LoopbackSharedInformerFactory informers.SharedInformerFactory

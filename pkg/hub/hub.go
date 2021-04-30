@@ -103,7 +103,7 @@ func (hub *Hub) RunAPIServer() error {
 		return err
 	}
 
-	server, err := config.Complete().New()
+	server, err := config.Complete().New(hub.options.TunnelLogging)
 	if err != nil {
 		return err
 	}
