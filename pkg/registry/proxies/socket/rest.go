@@ -18,15 +18,12 @@ package socket
 
 import (
 	"context"
-	"fmt"
+	"net/http"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
-	"github.com/clusternet/clusternet/pkg/apis/proxies/validation"
 )
 
 const (
@@ -54,25 +51,23 @@ func (r *REST) New() runtime.Object {
 	return &proxies.Socket{}
 }
 
-func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation rest.ValidateObjectFunc, options *metav1.CreateOptions) (runtime.Object, error) {
-	socket, ok := obj.(*proxies.Socket)
-	if !ok {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("not a Socket object: %#v", obj))
-	}
+// TODO: constraint proxy methods
+var proxyMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
-	if createValidation != nil {
-		if err := createValidation(ctx, obj.DeepCopyObject()); err != nil {
-			return nil, err
-		}
-	}
+// ConnectMethods returns the list of HTTP methods that can be proxied
+func (r *REST) ConnectMethods() []string {
+	return proxyMethods
+}
 
-	if allErrs := validation.ValidateSocket(socket); len(allErrs) > 0 {
-		return nil, allErrs.ToAggregate()
-	}
+// NewConnectOptions returns versioned resource that represents proxy parameters
+func (r *REST) NewConnectOptions() (runtime.Object, bool, string) {
+	return &proxies.Socket{}, false, ""
+}
 
+// Connect returns a handler for the websocket connection
+func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, responder rest.Responder) (http.Handler, error) {
 	// TODO
-
-	return socket, nil
+	return nil, nil
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
@@ -82,3 +77,4 @@ func NewREST() *REST {
 
 var _ rest.CategoriesProvider = &REST{}
 var _ rest.ShortNamesProvider = &REST{}
+var _ rest.Connecter = &REST{}
