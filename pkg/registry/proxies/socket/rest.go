@@ -18,12 +18,14 @@ package socket
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	"github.com/clusternet/clusternet/pkg/apis/proxies"
+	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/exchanger"
 )
 
 const (
@@ -32,7 +34,7 @@ const (
 
 // REST implements a RESTStorage for Proxies API
 type REST struct {
-	// TODO
+	exchanger *exchanger.Exchanger
 }
 
 func (r *REST) ShortNames() []string {
@@ -61,18 +63,24 @@ func (r *REST) ConnectMethods() []string {
 
 // NewConnectOptions returns versioned resource that represents proxy parameters
 func (r *REST) NewConnectOptions() (runtime.Object, bool, string) {
-	return &proxies.Socket{}, false, ""
+	return &proxies.Socket{}, true, ""
 }
 
 // Connect returns a handler for the websocket connection
 func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, responder rest.Responder) (http.Handler, error) {
-	// TODO
-	return nil, nil
+	socket, ok := opts.(*proxies.Socket)
+	if !ok {
+		return nil, fmt.Errorf("invalid options object: %#v", opts)
+	}
+
+	return r.exchanger.Connect(ctx, id, socket, responder)
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
-func NewREST() *REST {
-	return &REST{}
+func NewREST(tunnelLogging bool) *REST {
+	return &REST{
+		exchanger: exchanger.NewExchanger(tunnelLogging),
+	}
 }
 
 var _ rest.CategoriesProvider = &REST{}
