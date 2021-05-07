@@ -5,8 +5,10 @@ go 1.14
 require (
 	github.com/go-openapi/spec v0.19.5
 	github.com/google/gofuzz v1.1.0 // indirect
-	github.com/gorilla/websocket v1.4.2
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/rancher/remotedialer v0.2.6-0.20210318171128-d1ebd5202be4
+	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/cobra v1.1.1
 	github.com/spf13/pflag v1.0.5
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
