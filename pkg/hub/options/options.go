@@ -31,6 +31,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	_ "github.com/clusternet/clusternet/pkg/features"
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	sampleopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
