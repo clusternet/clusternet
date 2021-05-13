@@ -21,8 +21,6 @@ import (
 	"net"
 
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
@@ -34,7 +32,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	"github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	_ "github.com/clusternet/clusternet/pkg/features"
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
@@ -43,8 +40,6 @@ import (
 )
 
 const (
-	defaultEtcdPathPrefix = "/registry/proxies.clusternet.io"
-
 	openAPITitle = "Clusternet"
 )
 
@@ -61,12 +56,8 @@ type HubServerOptions struct {
 // NewHubServerOptions returns a new HubServerOptions
 func NewHubServerOptions() *HubServerOptions {
 	o := &HubServerOptions{
-		RecommendedOptions: genericoptions.NewRecommendedOptions(
-			defaultEtcdPathPrefix,
-			apiserver.Codecs.LegacyCodec(v1alpha1.SchemeGroupVersion),
-		),
+		RecommendedOptions: genericoptions.NewRecommendedOptions("fake", nil),
 	}
-	o.RecommendedOptions.Etcd.StorageConfig.EncodeVersioner = runtime.NewMultiGroupVersioner(v1alpha1.SchemeGroupVersion, schema.GroupKind{Group: v1alpha1.GroupName})
 	return o
 }
 
@@ -94,8 +85,6 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 	if err := o.RecommendedOptions.SecureServing.MaybeDefaultWithSelfSignedCerts("localhost", nil, []net.IP{net.ParseIP("127.0.0.1")}); err != nil {
 		return nil, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
-
-	o.RecommendedOptions.Etcd.StorageConfig.Paging = utilfeature.DefaultFeatureGate.Enabled(features.APIListChunking)
 
 	o.RecommendedOptions.ExtraAdmissionInitializers = func(c *genericapiserver.RecommendedConfig) ([]admission.PluginInitializer, error) {
 		client, err := clientset.NewForConfig(c.LoopbackClientConfig)
@@ -132,7 +121,6 @@ func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
 	// Copied from k8s.io/apiserver/pkg/server/options/recommended.go
 
-	o.RecommendedOptions.Etcd.AddFlags(fs)
 	o.RecommendedOptions.SecureServing.AddFlags(fs)
 	o.RecommendedOptions.Authentication.AddFlags(fs)
 	o.RecommendedOptions.Authorization.AddFlags(fs)
@@ -147,7 +135,6 @@ func (o *HubServerOptions) validateRecommendedOptions() []error {
 	// Copied from k8s.io/apiserver/pkg/server/options/recommended.go
 
 	errors := []error{}
-	errors = append(errors, o.RecommendedOptions.Etcd.Validate()...)
 	errors = append(errors, o.RecommendedOptions.SecureServing.Validate()...)
 	errors = append(errors, o.RecommendedOptions.Authentication.Validate()...)
 	errors = append(errors, o.RecommendedOptions.Authorization.Validate()...)
@@ -162,9 +149,6 @@ func (o *HubServerOptions) validateRecommendedOptions() []error {
 func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.RecommendedConfig) error {
 	// Copied from k8s.io/apiserver/pkg/server/options/recommended.go
 
-	if err := o.RecommendedOptions.Etcd.ApplyTo(&config.Config); err != nil {
-		return err
-	}
 	if err := o.RecommendedOptions.SecureServing.ApplyTo(&config.Config.SecureServing, &config.Config.LoopbackClientConfig); err != nil {
 		return err
 	}
