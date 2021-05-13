@@ -120,34 +120,33 @@ func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
 	// Copied from k8s.io/apiserver/pkg/server/options/recommended.go
+	// and remove unused flags
 
 	o.RecommendedOptions.SecureServing.AddFlags(fs)
 	o.RecommendedOptions.Authentication.AddFlags(fs)
 	o.RecommendedOptions.Authorization.AddFlags(fs)
-	o.RecommendedOptions.Audit.AddFlags(fs)
+	o.RecommendedOptions.Audit.LogOptions.AddFlags(fs)
 	o.RecommendedOptions.Features.AddFlags(fs)
 	o.RecommendedOptions.CoreAPI.AddFlags(fs)
-	o.RecommendedOptions.Admission.AddFlags(fs)
-	o.RecommendedOptions.EgressSelector.AddFlags(fs)
 }
 
 func (o *HubServerOptions) validateRecommendedOptions() []error {
 	// Copied from k8s.io/apiserver/pkg/server/options/recommended.go
+	// and remove unused Validate
 
 	errors := []error{}
 	errors = append(errors, o.RecommendedOptions.SecureServing.Validate()...)
 	errors = append(errors, o.RecommendedOptions.Authentication.Validate()...)
 	errors = append(errors, o.RecommendedOptions.Authorization.Validate()...)
-	errors = append(errors, o.RecommendedOptions.Audit.Validate()...)
+	errors = append(errors, o.RecommendedOptions.Audit.LogOptions.Validate()...)
 	errors = append(errors, o.RecommendedOptions.Features.Validate()...)
 	errors = append(errors, o.RecommendedOptions.CoreAPI.Validate()...)
-	errors = append(errors, o.RecommendedOptions.Admission.Validate()...)
-	errors = append(errors, o.RecommendedOptions.EgressSelector.Validate()...)
 	return errors
 }
 
 func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.RecommendedConfig) error {
 	// Copied from k8s.io/apiserver/pkg/server/options/recommended.go
+	// and remove unused ApplyTo
 
 	if err := o.RecommendedOptions.SecureServing.ApplyTo(&config.Config.SecureServing, &config.Config.LoopbackClientConfig); err != nil {
 		return err
@@ -170,9 +169,6 @@ func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.Re
 	if initializers, err := o.RecommendedOptions.ExtraAdmissionInitializers(config); err != nil {
 		return err
 	} else if err := o.RecommendedOptions.Admission.ApplyTo(&config.Config, config.SharedInformerFactory, config.ClientConfig, o.RecommendedOptions.FeatureGate, initializers...); err != nil {
-		return err
-	}
-	if err := o.RecommendedOptions.EgressSelector.ApplyTo(&config.Config); err != nil {
 		return err
 	}
 	if utilfeature.DefaultFeatureGate.Enabled(features.APIPriorityAndFairness) {
