@@ -19,13 +19,19 @@ package options
 import (
 	"fmt"
 	"net"
+	"net/http"
+	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
+	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
+	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
@@ -70,10 +76,6 @@ func (o *HubServerOptions) Validate(args []string) error {
 
 // Complete fills in fields required to have valid data
 func (o *HubServerOptions) Complete() error {
-	// register admission plugins
-	// TODO
-
-	// add admission plugins to the RecommendedPluginOrder
 	// TODO
 
 	return nil
@@ -98,7 +100,18 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 	}
 
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
-
+	serverConfig.Config.RequestTimeout = time.Duration(40) * time.Second // override default 60s
+	serverConfig.LongRunningFunc = func(r *http.Request, requestInfo *apirequest.RequestInfo) bool {
+		if values := r.URL.Query()["watch"]; len(values) > 0 {
+			switch strings.ToLower(values[0]) {
+			case "true":
+				return true
+			default:
+				return false
+			}
+		}
+		return genericfilters.BasicLongRunningRequestCheck(sets.NewString("watch"), sets.NewString())(r, requestInfo)
+	}
 	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(sampleopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
 	serverConfig.OpenAPIConfig.Info.Title = openAPITitle
 	serverConfig.OpenAPIConfig.Info.Version = "0.1"
