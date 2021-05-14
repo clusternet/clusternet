@@ -110,7 +110,8 @@ func (hub *Hub) RunAPIServer() error {
 
 	server.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-apiserver-informers", func(context genericapiserver.PostStartHookContext) error {
 		config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
-		hub.options.LoopbackSharedInformerFactory.Start(context.StopCh)
+		// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
+		// hub.options.LoopbackSharedInformerFactory.Start(context.StopCh)
 		return nil
 	})
 
