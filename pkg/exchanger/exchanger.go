@@ -26,6 +26,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rancher/remotedialer"
 	"github.com/sirupsen/logrus"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/klog/v2"
@@ -93,6 +94,11 @@ func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket
 	// proxy and re-dial through websocket connection
 	router.HandleFunc("/{scheme}/{host}{path:.*}",
 		func(writer http.ResponseWriter, request *http.Request) {
+			if !e.dialerServer.HasSession(id) {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id)))
+				return
+			}
+
 			vars := mux.Vars(request)
 			location := &url.URL{
 				Scheme:   vars["scheme"],
