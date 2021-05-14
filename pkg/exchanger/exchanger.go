@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/rancher/remotedialer"
@@ -67,22 +68,28 @@ func (e *Exchanger) authorizer(req *http.Request) (string, bool, error) {
 	return clusterID, clusterID != "", nil
 }
 
-func (e *Exchanger) getTransport(server *remotedialer.Server, clusterID string) *http.Transport {
+func (e *Exchanger) getClonedTransport(server *remotedialer.Server, clusterID string) *http.Transport {
+	// return cloned transport to avoid being changed outside
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
 	transport := e.cachedTransports[clusterID]
 	if transport != nil {
-		return transport
+		return transport.Clone()
 	}
 
 	dialer := server.Dialer(clusterID)
 	transport = &http.Transport{
 		DialContext: dialer,
+		// apply default settings from http.DefaultTransport
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
 	}
 
 	e.cachedTransports[clusterID] = transport
-	return transport
+	return transport.Clone()
 }
 
 func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder) (http.Handler, error) {
@@ -115,7 +122,7 @@ func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket
 			// if location.Path is empty, a status code 301 will be returned by below handler with a new location
 			// ends with a '/'. This is essentially a hack for http://issue.k8s.io/4958.
 			handler := proxy.NewUpgradeAwareHandler(location,
-				e.getTransport(e.dialerServer, clusterID),
+				e.getClonedTransport(e.dialerServer, clusterID),
 				false,
 				false,
 				proxy.NewErrorResponder(responder))
