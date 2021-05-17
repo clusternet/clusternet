@@ -113,6 +113,11 @@ func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket
 				Path:     vars["path"],
 				RawQuery: request.URL.RawQuery,
 			}
+			// TODO: support https as well
+			if location.Scheme != "http" {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("scheme %s is not supported now, please use http", location.Scheme)))
+				return
+			}
 			clusterID := vars["cluster"]
 
 			klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), clusterID)
