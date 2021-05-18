@@ -23,24 +23,48 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Run tests
-test: generate fmt vet
+.PHONY: test
+test: generated_files vet
 	go test ./... -coverprofile cover.out
 
 # Generate CRDs
+.PHONY: crds
 crds: controller-gen
 	@echo "Generating CRDs at manifests/crds"
 	@$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./pkg/apis/clusters/..." output:crd:dir=manifests/crds
 
+# Verify all changes
+.PHONY: verify
+verify:
+	hack/verify-all.sh
+
 # Run go fmt against code
+.PHONY: fmt
 fmt:
-	go fmt ./...
+	@find . -type f -name '*.go'| grep -v "/vendor/" | xargs gofmt -w -s
 
 # Run go vet against code
+.PHONY: vet
 vet:
 	go vet ./...
 
-# Generate code
-generate: controller-gen
+# Run golang lint against code
+.PHONY: lint
+lint: golangci-lint
+	@$(GOLANG_LINT) run \
+      --timeout 30m \
+      --disable-all \
+      -E deadcode \
+      -E unused \
+      -E varcheck \
+      -E ineffassign
+
+# Produce auto-generated files needed for the build.
+#
+# Example:
+#   make generated_files
+.PHONY: generated_files
+generated_files: controller-gen
 	@make crds
 	@./hack/update-codegen.sh
 
@@ -59,4 +83,22 @@ ifeq (, $(shell which controller-gen))
 CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
+endif
+
+# find or download golangci-lint
+# download golangci-lint if necessary
+golangci-lint:
+ifeq (, $(shell which golangci-lint))
+	@{ \
+	set -e ;\
+	export GO111MODULE=on; \
+	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
+	cd $$GOLANG_LINT_TMP_DIR ;\
+	go mod init tmp ;\
+	go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.39.0 ;\
+	rm -rf $$GOLANG_LINT_TMP_DIR ;\
+	}
+GOLANG_LINT=$(GOBIN)/golangci-lint
+else
+GOLANG_LINT=$(shell which golangci-lint)
 endif
