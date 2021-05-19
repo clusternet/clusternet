@@ -60,6 +60,11 @@ type Agent struct {
 	// dedicated kubeconfig for accessing parent cluster, which is auto populated by the parent cluster
 	// when cluster registration request gets approved
 	parentDedicatedKubeConfig *rest.Config
+	// secret that stores credentials from parent cluster
+	secretFromParentCluster *corev1.Secret
+
+	// report cluster status
+	statusManager *Manager
 }
 
 // NewAgent returns a new Agent.
@@ -77,12 +82,15 @@ func NewAgent(ctx context.Context, childKubeConfigFile string, regOpts *ClusterR
 	if err != nil {
 		return nil, err
 	}
+	// create clientset for child cluster
+	childKubeClientSet := kubernetes.NewForConfigOrDie(childKubeConfig)
 
 	agent := &Agent{
 		AgentContext:       ctx,
 		Identity:           identity,
-		childKubeClientSet: kubernetes.NewForConfigOrDie(childKubeConfig), // create clientset for child cluster
+		childKubeClientSet: childKubeClientSet,
 		Options:            regOpts,
+		statusManager:      NewStatusManager(childKubeClientSet, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
 	}
 	return agent, nil
 }
@@ -96,7 +104,8 @@ func (agent *Agent) Run() {
 			OnStartedLeading: func(ctx context.Context) {
 				// we're notified when we start - this is where you would
 				// usually put your code
-				agent.registerSelfCluster(ctx, agent.childKubeClientSet)
+				agent.registerSelfCluster(ctx)
+				agent.statusManager.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster)
 			},
 			OnStoppedLeading: func() {
 				klog.Error("leader election got lost")
@@ -114,7 +123,7 @@ func (agent *Agent) Run() {
 }
 
 // registerSelfCluster begins registering. It starts registering and blocked until the context is done.
-func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kubernetes.Interface) {
+func (agent *Agent) registerSelfCluster(ctx context.Context) {
 	// complete your controller loop here
 	klog.Info("start registering current cluster as a child cluster...")
 
@@ -126,7 +135,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kube
 		// get cluster unique id
 		if agent.ClusterID == nil {
 			klog.Infof("retrieving cluster id")
-			clusterID, err := agent.getClusterID(registerCtx, childClientSet)
+			clusterID, err := agent.getClusterID(registerCtx, agent.childKubeClientSet)
 			if err != nil {
 				return
 			}
@@ -136,14 +145,15 @@ func (agent *Agent) registerSelfCluster(ctx context.Context, childClientSet kube
 
 		// get parent cluster kubeconfig
 		if tryToUseSecret {
-			secret, err := childClientSet.CoreV1().Secrets(EdgeSystemNamespace).Get(registerCtx,
+			secret, err := agent.childKubeClientSet.CoreV1().Secrets(EdgeSystemNamespace).Get(registerCtx,
 				ParentClusterSecretName, metav1.GetOptions{})
 			if err != nil && !apierrors.IsNotFound(err) {
-				klog.Errorf("failed to get secret: %v", err)
+				klog.Errorf("failed to get secretFromParentCluster: %v", err)
 				return
 			}
 			if err == nil {
-				klog.Infof("found existing secret '%s/%s' that can be used to access parent cluster",
+				agent.secretFromParentCluster = secret
+				klog.Infof("found existing secretFromParentCluster '%s/%s' that can be used to access parent cluster",
 					EdgeSystemNamespace, ParentClusterSecretName)
 
 				if string(secret.Data[ParentURLKey]) != agent.Options.ParentURL {
@@ -301,6 +311,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 			ParentURLKey:                      []byte(agent.Options.ParentURL),
 		},
 	}
+	agent.secretFromParentCluster = secret
 	wait.JitterUntil(func() {
 		_, err := agent.childKubeClientSet.CoreV1().Secrets(EdgeSystemNamespace).Create(secretCtx, secret, metav1.CreateOptions{})
 		if err == nil {

@@ -37,6 +37,12 @@ const (
 
 	// ClusterRegistrationType flag specifies the cluster type
 	ClusterRegistrationType = "cluster-reg-type"
+
+	// ClusterStatusReportFrequency flag specifies the child cluster status updating frequency
+	ClusterStatusReportFrequency = "cluster-status-update-frequency"
+
+	// ClusterStatusCollectFrequency flag specifies the cluster status collecting frequency
+	ClusterStatusCollectFrequency = "cluster-status-collect-frequency"
 )
 
 // default values
@@ -55,6 +61,9 @@ const (
 	DefaultRandomUIDLength = 5
 
 	nameFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
+
+	DefaultClusterStatusCollectFrequency = 20 * time.Second
+	DefaultClusterStatusReportFrequency  = 3 * time.Minute
 )
 
 // lease lock

@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/spf13/pflag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -39,6 +40,11 @@ type ClusterRegistrationOptions struct {
 	// ClusterType denotes the cluster type
 	ClusterType string
 
+	// ClusterStatusReportFrequency is the frequency at which the agent updates current cluster's status
+	ClusterStatusReportFrequency metav1.Duration
+	// ClusterStatusCollectFrequency is the frequency at which the agent updates current cluster's status
+	ClusterStatusCollectFrequency metav1.Duration
+
 	ParentURL      string
 	BootstrapToken string
 
@@ -48,8 +54,10 @@ type ClusterRegistrationOptions struct {
 // NewClusterRegistrationOptions creates a new *ClusterRegistrationOptions with sane defaults
 func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	return &ClusterRegistrationOptions{
-		ClusterNamePrefix: RegistrationNamePrefix,
-		ClusterType:       string(clusterapi.EdgeClusterSelfProvisioned),
+		ClusterNamePrefix:             RegistrationNamePrefix,
+		ClusterType:                   string(clusterapi.EdgeClusterSelfProvisioned),
+		ClusterStatusReportFrequency:  metav1.Duration{Duration: DefaultClusterStatusReportFrequency},
+		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
 	}
 }
 
@@ -69,6 +77,10 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 			ClusterRegistrationName))
 	fs.StringVar(&opts.ClusterType, ClusterRegistrationType, opts.ClusterType,
 		"Specify the cluster type")
+	fs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
+		"Specifies how often the agent posts current child cluster status to parent cluster")
+	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
+		"Specifies how often the agent collects current child cluster status")
 }
 
 // Complete completes all the required options.
