@@ -59,6 +59,11 @@ lint: golangci-lint
       -E varcheck \
       -E ineffassign
 
+# Run mod tidy against code
+.PHONY: tidy
+tidy:
+	go mod tidy
+
 # Produce auto-generated files needed for the build.
 #
 # Example:
