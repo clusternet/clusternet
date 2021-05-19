@@ -1,0 +1,147 @@
+on:
+  # Run this workflow every time a new commit pushed to upstream/fork repository.
+  # Run workflow on fork repository will help contributors find and resolve issues before sending a PR.
+  push:
+  pull_request:
+jobs:
+  golangci:
+    name: pull-clusternet-golang-ci
+    env:
+      GOPATH: ${{ github.workspace }}
+      GO111MODULE: on
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    strategy:
+      max-parallel: 2
+      ## this will contain a matrix of all of the combinations
+      ## we wish to test again:
+      matrix:
+        go-version: [ 1.14.x, 1.15.x, 1.16.x ]
+        os: [ ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+          path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Cache go modules and build cache
+        uses: actions/cache@v2.1.5
+        with:
+          # In order:
+          # * Module download cache
+          # * Build cache (Linux)
+          # * Build cache (Mac)
+          # * Build cache (Windows)
+          path: |
+            ${{ env.GOPATH }}/pkg/mod
+            ${{ env.GOPATH }}/pkg/sumdb
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          #  %LocalAppData%\go-build
+          key: ${{ matrix.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ matrix.os }}-go-
+      - name: Golang Lint
+        run: make lint
+      - name: Golang Vet
+        run: make vet
+  verify:
+    name: pull-clusternet-verify
+    needs: golangci # rely on golangci successful completion
+    env:
+      GOPATH: ${{ github.workspace }}
+      GO111MODULE: on
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    strategy:
+      max-parallel: 2
+      ## this will contain a matrix of all of the combinations
+      ## we wish to test again:
+      matrix:
+        go-version: [ 1.14.x, 1.15.x, 1.16.x ]
+        os: [ ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+          path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Cache go modules and build cache
+        uses: actions/cache@v2.1.5
+        with:
+          # In order:
+          # * Module download cache
+          # * Build cache (Linux)
+          # * Build cache (Mac)
+          # * Build cache (Windows)
+          path: |
+            ${{ env.GOPATH }}/pkg/mod
+            ${{ env.GOPATH }}/pkg/sumdb
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          #  %LocalAppData%\go-build
+          key: ${{ matrix.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ matrix.os }}-go-
+      - name: verify format, crds and codegen
+        run: |
+          go mod vendor
+          make verify
+  test:
+    name: pull-clusternet-unit-test
+    needs: verify # rely on verify successful completion
+    env:
+      GOPATH: ${{ github.workspace }}
+      GO111MODULE: on
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    strategy:
+      max-parallel: 2
+      ## this will contain a matrix of all of the combinations
+      ## we wish to test again:
+      matrix:
+        go-version: [ 1.14.x, 1.15.x, 1.16.x ]
+        os: [ ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+          path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Cache go modules and build cache
+        uses: actions/cache@v2.1.5
+        with:
+          # In order:
+          # * Module download cache
+          # * Build cache (Linux)
+          # * Build cache (Mac)
+          # * Build cache (Windows)
+          path: |
+            ${{ env.GOPATH }}/pkg/mod
+            ${{ env.GOPATH }}/pkg/sumdb
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          #  %LocalAppData%\go-build
+          key: ${{ matrix.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ matrix.os }}-go-
+      - name: Unit test
+        run: go test ./... -coverprofile cover.out

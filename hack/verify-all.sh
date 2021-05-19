@@ -23,6 +23,3 @@ SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 bash "${SCRIPT_ROOT}/hack/verify-codegen.sh"
 bash "${SCRIPT_ROOT}/hack/verify-crdgen.sh"
 bash "${SCRIPT_ROOT}/hack/verify-gofmt.sh"
-
-make -C "${SCRIPT_ROOT}" vet
-make -C "${SCRIPT_ROOT}" lint
