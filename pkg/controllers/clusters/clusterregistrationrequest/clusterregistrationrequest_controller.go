@@ -129,18 +129,6 @@ func (c *Controller) updateCRR(old, cur interface{}) {
 	oldCrr := old.(*clusterapi.ClusterRegistrationRequest)
 	newCrr := cur.(*clusterapi.ClusterRegistrationRequest)
 
-	// cluster id should not be changed
-	if oldCrr.Spec.ClusterID != newCrr.Spec.ClusterID {
-		err := fmt.Errorf("ClusterRegistrationRequest %q has got illegal update on spec.clusterID from %q to %q, will skip processing",
-			oldCrr.Name, oldCrr.Spec.ClusterID, newCrr.Spec.ClusterID)
-		klog.Error(err)
-		utilruntime.HandleError(c.UpdateCRRStatus(oldCrr, &clusterapi.ClusterRegistrationRequestStatus{
-			Result:       clusterapi.RequestDenied,
-			ErrorMessage: err.Error(),
-		}))
-		return
-	}
-
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldCrr.Spec, newCrr.Spec) {
 		klog.V(4).Infof("no updates on the spec of ClusterRegistrationRequest %q, skipping syncing", oldCrr.Name)
@@ -268,7 +256,7 @@ func (c *Controller) UpdateCRRStatus(crr *clusterapi.ClusterRegistrationRequest,
 	// Or create a copy manually for better performance
 
 	klog.V(5).Infof("try to update ClusterRegistrationRequest %q status", crr.Name)
-	if status.Result != clusterapi.RequestApproved {
+	if status.Result != nil && *status.Result != clusterapi.RequestApproved {
 		if status.ErrorMessage == "" {
 			return fmt.Errorf("for non approved requests, must set an error message")
 		}

@@ -86,7 +86,7 @@ type ClusterRegistrationRequestStatus struct {
 	// this field will be set to "Approved". If any illegal updates on this object, "Illegal" will be set to this filed.
 	//
 	// +optional
-	Result ApprovedResult `json:"result,omitempty"`
+	Result *ApprovedResult `json:"result,omitempty"`
 
 	// ErrorMessage tells the reason why the request is not approved successfully.
 	//

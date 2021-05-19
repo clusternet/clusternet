@@ -159,16 +159,25 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
 
+	result := new(clusterapi.ApprovedResult)
+
 	// validate cluster id
 	expectedClusterID := strings.TrimPrefix(crr.Name, known.NamePrefixForClusternetObjects)
 	if expectedClusterID != string(crr.Spec.ClusterID) {
 		err := fmt.Errorf("ClusterRegistrationRequest %q has got illegal update on spec.clusterID from %q to %q, will skip processing",
 			crr.Name, expectedClusterID, crr.Spec.ClusterID)
 		klog.Error(err)
+
+		*result = clusterapi.RequestDenied
 		utilruntime.HandleError(crrApprover.crrController.UpdateCRRStatus(crr, &clusterapi.ClusterRegistrationRequestStatus{
-			Result:       clusterapi.RequestDenied,
+			Result:       result,
 			ErrorMessage: err.Error(),
 		}))
+		return nil
+	}
+
+	if crr.Status.Result != nil {
+		klog.V(4).Infof("ClusterRegistrationRequest %q has already been processed with Result %q. Skip it.", *crr.Status.Result)
 		return nil
 	}
 
@@ -212,8 +221,9 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 	}
 
 	// 6. update status
+	*result = clusterapi.RequestApproved
 	err = crrApprover.crrController.UpdateCRRStatus(crr, &clusterapi.ClusterRegistrationRequestStatus{
-		Result:             clusterapi.RequestApproved,
+		Result:             result,
 		ErrorMessage:       "",
 		DedicatedNamespace: ns.Name,
 		ManagedClusterName: mc.Name,

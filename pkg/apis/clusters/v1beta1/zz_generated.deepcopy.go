@@ -113,6 +113,11 @@ func (in *ClusterRegistrationRequestStatus) DeepCopyInto(out *ClusterRegistratio
 		*out = make([]byte, len(*in))
 		copy(*out, *in)
 	}
+	if in.Result != nil {
+		in, out := &in.Result, &out.Result
+		*out = new(ApprovedResult)
+		**out = **in
+	}
 	return
 }
 

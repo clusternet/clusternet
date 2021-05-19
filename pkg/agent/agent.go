@@ -252,7 +252,7 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 			klog.V(5).Infof("found existing cluster name %q, reuse it", clusterName)
 		}
 
-		if crr.Status.Result == clusterapi.RequestApproved {
+		if crr.Status.Result != nil && *crr.Status.Result == clusterapi.RequestApproved {
 			klog.Infof("the registration request for cluster %q gets approved", *agent.ClusterID)
 			// cancel on success
 			cancel()
