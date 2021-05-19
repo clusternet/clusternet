@@ -87,11 +87,11 @@ func (crrApprover *CRRApprover) applyDefaultRBACRules() {
 
 	clusterroles := crrApprover.defaultClusterRoles()
 	wg.Add(len(clusterroles))
-	for _, cr := range clusterroles {
-		go func() {
+	for _, clusterrole := range clusterroles {
+		go func(cr rbacv1.ClusterRole) {
 			defer wg.Done()
 			ensureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient)
-		}()
+		}(clusterrole)
 	}
 
 	wg.Wait()
@@ -359,8 +359,8 @@ func (crrApprover *CRRApprover) bindingDefaultClusterRolesIfNeeded(serviceAccoun
 
 	defaultClusterRoles := crrApprover.defaultClusterRoles()
 	wg.Add(len(defaultClusterRoles))
-	for _, cr := range defaultClusterRoles {
-		go func() {
+	for _, clusterrole := range defaultClusterRoles {
+		go func(cr rbacv1.ClusterRole) {
 			defer wg.Done()
 			err := ensureClusterRoleBinding(crrApprover.ctx, rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
@@ -379,7 +379,7 @@ func (crrApprover *CRRApprover) bindingDefaultClusterRolesIfNeeded(serviceAccoun
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure binding for ClusterRole %q: %v", cr.Name, err))
 			}
-		}()
+		}(clusterrole)
 	}
 
 	wg.Wait()
@@ -393,14 +393,14 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 	// first we ensure default roles exist
 	roles := crrApprover.defaultRoles(namespace)
 	wg.Add(len(roles))
-	for _, r := range roles {
-		go func() {
+	for _, role := range roles {
+		go func(r rbacv1.Role) {
 			defer wg.Done()
 			err := ensureRole(crrApprover.ctx, r, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure Role %q: %v", r.Name, err))
 			}
-		}()
+		}(role)
 	}
 	wg.Wait()
 
@@ -410,8 +410,8 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 
 	// then we bind these roles
 	wg.Add(len(roles))
-	for _, r := range roles {
-		go func() {
+	for _, role := range roles {
+		go func(r rbacv1.Role) {
 			defer wg.Done()
 			err := ensureRoleBinding(crrApprover.ctx, rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
@@ -431,7 +431,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure binding for Role %q: %v", r.Name, err))
 			}
-		}()
+		}(role)
 	}
 
 	wg.Wait()
