@@ -60,6 +60,26 @@ spec:
             type: object
           status:
             description: ManagedClusterStatus defines the observed state of ManagedCluster
+            properties:
+              healthz:
+                description: Healthz indicates the healthz status of the cluster which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead. Leave it here only for compatibility.
+                type: boolean
+              k8sVersion:
+                description: k8sVersion is the Kubernetes version of the cluster
+                type: string
+              lastObservedTime:
+                description: lastObservedTime is the time when last status from the series was seen before last heartbeat. RFC 3339 date and time at which the object was acknowledged by the Clusternet Agent.
+                format: date-time
+                type: string
+              livez:
+                description: Livez indicates the livez status of the cluster
+                type: boolean
+              platform:
+                description: platform indicates the running platform of the cluster
+                type: string
+              readyz:
+                description: Readyz indicates the readyz status of the cluster
+                type: boolean
             type: object
         type: object
     served: true
