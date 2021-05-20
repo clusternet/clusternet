@@ -158,7 +158,32 @@ type ManagedClusterSpec struct {
 
 // ManagedClusterStatus defines the observed state of ManagedCluster
 type ManagedClusterStatus struct {
-	// todo heartbeat status
+	// lastObservedTime is the time when last status from the series was seen before last heartbeat.
+	// RFC 3339 date and time at which the object was acknowledged by the Clusternet Agent.
+	// +optional
+	LastObservedTime metav1.Time `json:"lastObservedTime,omitempty"`
+
+	// k8sVersion is the Kubernetes version of the cluster
+	// +optional
+	KubernetesVersion string `json:"k8sVersion,omitempty"`
+
+	// platform indicates the running platform of the cluster
+	// +optional
+	Platform string `json:"platform,omitempty"`
+
+	// Healthz indicates the healthz status of the cluster
+	// which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead.
+	// Leave it here only for compatibility.
+	// +optional
+	Healthz bool `json:"healthz,omitempty"`
+
+	// Livez indicates the livez status of the cluster
+	// +optional
+	Livez bool `json:"livez,omitempty"`
+
+	// Readyz indicates the readyz status of the cluster
+	// +optional
+	Readyz bool `json:"readyz,omitempty"`
 }
 
 // +genclient
