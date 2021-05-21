@@ -7,6 +7,7 @@ require (
 	github.com/go-openapi/spec v0.19.5
 	github.com/google/go-cmp v0.5.4 // indirect
 	github.com/gorilla/mux v1.8.0
+	github.com/gorilla/websocket v1.4.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.12.1 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
