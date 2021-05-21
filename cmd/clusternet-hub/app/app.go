@@ -25,6 +25,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/templates"
 
+	_ "github.com/clusternet/clusternet/pkg/features"
 	"github.com/clusternet/clusternet/pkg/hub"
 	"github.com/clusternet/clusternet/pkg/hub/options"
 	"github.com/clusternet/clusternet/pkg/version"

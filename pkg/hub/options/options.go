@@ -38,7 +38,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
-	_ "github.com/clusternet/clusternet/pkg/features"
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	sampleopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
