@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/controllers/proxies/sockets"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
@@ -105,7 +106,15 @@ func (agent *Agent) Run() {
 				// we're notified when we start - this is where you would
 				// usually put your code
 				agent.registerSelfCluster(ctx)
-				agent.statusManager.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster)
+
+				// setup websocket connection
+				socketConn, err := sockets.NewController(agent.parentDedicatedKubeConfig)
+				if err != nil {
+					klog.Exitf("failed to setup websocket connection: %v", err)
+				}
+
+				go agent.statusManager.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster)
+				go socketConn.Run(ctx, agent.ClusterID)
 			},
 			OnStoppedLeading: func() {
 				klog.Error("leader election got lost")
