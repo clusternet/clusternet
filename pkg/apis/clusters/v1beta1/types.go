@@ -23,12 +23,12 @@ import (
 
 // Important: Run "make generated" to regenerate code after modifying this file
 
-type EdgeClusterType string
+type ClusterType string
 
-// These are the valid values for EdgeClusterType
+// These are the valid values for ClusterType
 const (
 	// self provisioned edge cluster
-	EdgeClusterSelfProvisioned EdgeClusterType = "SelfProvisioned"
+	EdgeClusterSelfProvisioned ClusterType = "EdgeClusterSelfProvisioned"
 
 	// todo: add more types
 )
@@ -50,7 +50,7 @@ type ClusterRegistrationRequestSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Type=string
-	ClusterType EdgeClusterType `json:"clusterType,omitempty"`
+	ClusterType ClusterType `json:"clusterType,omitempty"`
 
 	// ClusterName is the cluster name.
 	// a lower case alphanumeric characters or '-', and must start and end with an alphanumeric character
@@ -153,7 +153,7 @@ type ManagedClusterSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Type=string
-	ClusterType EdgeClusterType `json:"clusterType,omitempty"`
+	ClusterType ClusterType `json:"clusterType,omitempty"`
 }
 
 // ManagedClusterStatus defines the observed state of ManagedCluster

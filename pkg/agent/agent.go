@@ -369,7 +369,7 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 		},
 		Spec: clusterapi.ClusterRegistrationRequestSpec{
 			ClusterID:   clusterID,
-			ClusterType: clusterapi.EdgeClusterType(clusterType),
+			ClusterType: clusterapi.ClusterType(clusterType),
 			ClusterName: clusterName,
 		},
 	}

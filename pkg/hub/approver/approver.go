@@ -277,7 +277,7 @@ func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID
 	return newNs, nil
 }
 
-func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID, clusterType clusterapi.EdgeClusterType) (*clusterapi.ManagedCluster, error) {
+func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID, clusterType clusterapi.ClusterType) (*clusterapi.ManagedCluster, error) {
 	// checks for a existed ManagedCluster object
 	// the clusterName here may vary, we use clusterID as the identifier
 	mcs, err := crrApprover.clusternetclient.ClustersV1beta1().ManagedClusters(namespace).List(crrApprover.ctx, metav1.ListOptions{
