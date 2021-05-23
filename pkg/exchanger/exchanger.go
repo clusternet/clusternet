@@ -33,6 +33,7 @@ import (
 	"k8s.io/klog/v2"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/features"
 )
 
 type Exchanger struct {
@@ -43,13 +44,15 @@ type Exchanger struct {
 
 	// dialerServer is used for serving websocket connection
 	dialerServer *remotedialer.Server
+
+	socketConnection bool
 }
 
 var (
 	urlPrefix = fmt.Sprintf("/apis/%s/sockets/", proxies.SchemeGroupVersion.String())
 )
 
-func NewExchanger(tunnelLogging bool) *Exchanger {
+func NewExchanger(tunnelLogging bool, socketConnection bool) *Exchanger {
 	if tunnelLogging {
 		logrus.SetLevel(logrus.DebugLevel)
 		remotedialer.PrintTunnelData = true
@@ -57,8 +60,12 @@ func NewExchanger(tunnelLogging bool) *Exchanger {
 
 	e := &Exchanger{
 		cachedTransports: map[string]*http.Transport{},
+		socketConnection: socketConnection,
 	}
-	e.dialerServer = remotedialer.New(e.authorizer, remotedialer.DefaultErrorWriter)
+
+	if e.socketConnection {
+		e.dialerServer = remotedialer.New(e.authorizer, remotedialer.DefaultErrorWriter)
+	}
 	return e
 }
 
@@ -93,6 +100,10 @@ func (e *Exchanger) getClonedTransport(server *remotedialer.Server, clusterID st
 }
 
 func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder) (http.Handler, error) {
+	if !e.socketConnection {
+		return nil, apierrors.NewServiceUnavailable(fmt.Sprintf("featuregate %s has not been enabled on the server side", features.SocketConnection))
+	}
+
 	router := mux.NewRouter().PathPrefix(fmt.Sprintf("%s{cluster}", urlPrefix)).Subrouter()
 	// serve websocket connection
 	router.Handle("", e.dialerServer)

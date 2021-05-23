@@ -21,9 +21,11 @@ import (
 	"time"
 
 	genericapiserver "k8s.io/apiserver/pkg/server"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	"github.com/clusternet/clusternet/pkg/hub/approver"
@@ -46,10 +48,13 @@ type Hub struct {
 	clusternetInformerFactory informers.SharedInformerFactory
 	kubeclient                *kubernetes.Clientset
 	clusternetclient          *clusternetClientSet.Clientset
+	socketConnection          bool
 }
 
 // NewHub returns a new Hub.
 func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
+	socketConnection := utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection)
+
 	config, err := utils.LoadsKubeConfig(opts.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath, 10)
 	if err != nil {
 		return nil, err
@@ -73,6 +78,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		kubeclient:                kubeclient,
 		clusternetclient:          clusternetclient,
 		clusternetInformerFactory: clusternetInformerFactory,
+		socketConnection:          socketConnection,
 	}
 
 	// Start the informer factories to begin populating the informer caches
@@ -103,7 +109,7 @@ func (hub *Hub) RunAPIServer() error {
 		return err
 	}
 
-	server, err := config.Complete().New(hub.options.TunnelLogging)
+	server, err := config.Complete().New(hub.options.TunnelLogging, hub.socketConnection)
 	if err != nil {
 		return err
 	}

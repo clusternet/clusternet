@@ -77,9 +77,9 @@ func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, resp
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
-func NewREST(tunnelLogging bool) *REST {
+func NewREST(tunnelLogging, socketConnection bool) *REST {
 	return &REST{
-		exchanger: exchanger.NewExchanger(tunnelLogging),
+		exchanger: exchanger.NewExchanger(tunnelLogging, socketConnection),
 	}
 }
 

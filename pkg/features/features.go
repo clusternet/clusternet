@@ -23,13 +23,12 @@ import (
 )
 
 const (
-// Every feature gate should add method here following this template:
-//
-// // owner: @username
-// // alpha: v1.4
-// MyFeature() bool
+	// alpha: v0.1.0
+	//
+	// Setup/Serve a WebSocket connection.
+	SocketConnection featuregate.Feature = "SocketConnection"
 
-// TODO
+	// TODO
 )
 
 func init() {
@@ -40,5 +39,5 @@ func init() {
 // To add a new feature, define a key for it above and add it here. The features will be
 // available throughout Clusternet binaries.
 var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	// TODO
+	SocketConnection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }

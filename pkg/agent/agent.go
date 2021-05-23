@@ -28,6 +28,7 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -36,6 +37,7 @@ import (
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/proxies/sockets"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
@@ -108,13 +110,17 @@ func (agent *Agent) Run() {
 				agent.registerSelfCluster(ctx)
 
 				// setup websocket connection
-				socketConn, err := sockets.NewController(agent.parentDedicatedKubeConfig)
-				if err != nil {
-					klog.Exitf("failed to setup websocket connection: %v", err)
+				if utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection) {
+					klog.Infof("featuregate %s is enabled, preparing setting up socket connection...", features.SocketConnection)
+					socketConn, err := sockets.NewController(agent.parentDedicatedKubeConfig)
+					if err != nil {
+						klog.Exitf("failed to setup websocket connection: %v", err)
+
+					}
+					go socketConn.Run(ctx, agent.ClusterID)
 				}
 
 				go agent.statusManager.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster)
-				go socketConn.Run(ctx, agent.ClusterID)
 			},
 			OnStoppedLeading: func() {
 				klog.Error("leader election got lost")
