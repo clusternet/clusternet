@@ -37,6 +37,7 @@ import (
 
 	"github.com/clusternet/clusternet/pkg/apis/clusters"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterregistrationrequest"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
@@ -49,14 +50,16 @@ type CRRApprover struct {
 	crrController    *clusterregistrationrequest.Controller
 	kubeclient       *kubernetes.Clientset
 	clusternetclient *clusternetClientSet.Clientset
+	socketConnection bool
 }
 
 // NewCRRApprover returns a new CRRApprover for ClusterRegistrationRequest.
-func NewCRRApprover(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetClientSet.Clientset, crrsInformer clusterInformers.ClusterRegistrationRequestInformer) (*CRRApprover, error) {
+func NewCRRApprover(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetClientSet.Clientset, crrsInformer clusterInformers.ClusterRegistrationRequestInformer, socketConnection bool) (*CRRApprover, error) {
 	crrApprover := &CRRApprover{
 		ctx:              ctx,
 		kubeclient:       kubeclient,
 		clusternetclient: clusternetclient,
+		socketConnection: socketConnection,
 	}
 
 	newCRRController, err := clusterregistrationrequest.NewController(ctx, kubeclient, clusternetclient, crrsInformer, crrApprover.handleClusterRegistrationRequests)
@@ -85,46 +88,31 @@ func (crrApprover *CRRApprover) applyDefaultRBACRules() {
 
 	wg := sync.WaitGroup{}
 
-	clusterroles := crrApprover.defaultClusterRoles()
+	clusterroles := crrApprover.bootstrappingClusterRoles()
 	wg.Add(len(clusterroles))
 	for _, clusterrole := range clusterroles {
 		go func(cr rbacv1.ClusterRole) {
 			defer wg.Done()
-			ensureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient)
+
+			klog.V(5).Infof("ensure ClusterRole %q...", cr.Name)
+			// make sure this clusterrole gets initialized before we go next
+			for {
+				err := ensureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultBackoff)
+				if err == nil {
+					break
+				}
+			}
+
 		}(clusterrole)
 	}
 
 	wg.Wait()
 }
 
-func (crrApprover *CRRApprover) defaultClusterRoles() []rbacv1.ClusterRole {
+func (crrApprover *CRRApprover) bootstrappingClusterRoles() []rbacv1.ClusterRole {
 	// default cluster roles for initializing
 
-	// minimum role for child cluster registration
-	clusterRoleForCRR := rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        ClusterRegistrationRole,
-			Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
-			Labels: map[string]string{
-				known.ClusterBootstrappingLabel: known.RBACDefaults,
-				known.ObjectCreatedByLabel:      known.ClusternetHubName,
-			},
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{clusters.GroupName},
-				Resources: []string{"clusterregistrationrequests"},
-				Verbs: []string{
-					"create", // create cluster registration requests
-					"get",    // and get the created object, we don't allow to "list" operation due to security concerns
-				},
-			},
-		},
-	}
-
-	return []rbacv1.ClusterRole{
-		clusterRoleForCRR,
-	}
+	return []rbacv1.ClusterRole{}
 }
 
 func (crrApprover *CRRApprover) defaultRoles(namespace string) []rbacv1.Role {
@@ -151,6 +139,43 @@ func (crrApprover *CRRApprover) defaultRoles(namespace string) []rbacv1.Role {
 
 	return []rbacv1.Role{
 		roleForManagedCluster,
+	}
+}
+
+func (crrApprover *CRRApprover) defaultClusterRoles(clusterID types.UID) []rbacv1.ClusterRole {
+	clusterRoles := rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        SocketsClusterRoleNamePrefix + string(clusterID),
+			Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
+			Labels: map[string]string{
+				known.ClusterBootstrappingLabel: known.RBACDefaults,
+				known.ObjectCreatedByLabel:      known.ClusternetHubName,
+				known.ClusterIDLabel:            string(clusterID),
+			},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{clusters.GroupName},
+				Resources: []string{"clusterregistrationrequests"},
+				Verbs: []string{
+					"create", // create cluster registration requests
+					"get",    // and get the created object, we don't allow to "list" operation due to security concerns
+				},
+			},
+		},
+	}
+
+	if crrApprover.socketConnection {
+		clusterRoles.Rules = append(clusterRoles.Rules, rbacv1.PolicyRule{
+			APIGroups:     []string{proxies.GroupName},
+			Resources:     []string{"sockets"},
+			ResourceNames: []string{string(clusterID)},
+			Verbs:         []string{"*"},
+		})
+	}
+
+	return []rbacv1.ClusterRole{
+		clusterRoles,
 	}
 }
 
@@ -203,8 +228,8 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 	}
 
 	// 4. binding default rbac rules
-	klog.V(5).Infof("bind related clusterrols/roles for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	err = crrApprover.bindingDefaultClusterRolesIfNeeded(sa.Name, sa.Namespace)
+	klog.V(5).Infof("bind related clusterroles/roles for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
+	err = crrApprover.bindingClusterRolesIfNeeded(sa.Name, sa.Namespace, crr.Spec.ClusterID)
 	if err != nil {
 		return err
 	}
@@ -363,13 +388,30 @@ func (crrApprover *CRRApprover) createServiceAccountIfNeeded(namespace, clusterN
 	return newSA, nil
 }
 
-func (crrApprover *CRRApprover) bindingDefaultClusterRolesIfNeeded(serviceAccountName, serivceAccountNamespace string) error {
+func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, serivceAccountNamespace string, clusterID types.UID) error {
 	allErrs := []error{}
 	wg := sync.WaitGroup{}
 
-	defaultClusterRoles := crrApprover.defaultClusterRoles()
-	wg.Add(len(defaultClusterRoles))
-	for _, clusterrole := range defaultClusterRoles {
+	// create sockets clusterrole first
+	clusterRoles := crrApprover.defaultClusterRoles(clusterID)
+	wg.Add(len(clusterRoles))
+	for _, clusterrole := range clusterRoles {
+		go func(cr rbacv1.ClusterRole) {
+			defer wg.Done()
+			err := ensureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultRetry)
+			if err != nil {
+				allErrs = append(allErrs, fmt.Errorf("failed to ensure ClusterRole %q: %v", cr.Name, err))
+			}
+		}(clusterrole)
+	}
+	wg.Wait()
+	if len(allErrs) != 0 {
+		return utilerrors.NewAggregate(allErrs)
+	}
+
+	// then we bind all the clusterroles
+	wg.Add(len(clusterRoles))
+	for _, clusterrole := range clusterRoles {
 		go func(cr rbacv1.ClusterRole) {
 			defer wg.Done()
 			err := ensureClusterRoleBinding(crrApprover.ctx, rbacv1.ClusterRoleBinding{
@@ -379,6 +421,7 @@ func (crrApprover *CRRApprover) bindingDefaultClusterRolesIfNeeded(serviceAccoun
 					Labels: map[string]string{
 						known.ClusterBootstrappingLabel: known.RBACDefaults,
 						known.ObjectCreatedByLabel:      known.ClusternetHubName,
+						known.ClusterIDLabel:            string(clusterID),
 					},
 				},
 				Subjects: []rbacv1.Subject{
@@ -449,48 +492,42 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 }
 
 // ensureClusterRole will make sure desired clusterrole exists and update the rules if available
-func ensureClusterRole(ctx context.Context, clusterrole rbacv1.ClusterRole, client *kubernetes.Clientset) {
-	klog.Infof("ensure ClusterRole %q...", clusterrole.Name)
-	localCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// use JitterUntil to make sure this clusterrole gets initialized before we go next
-	wait.JitterUntil(func() {
+func ensureClusterRole(ctx context.Context, clusterrole rbacv1.ClusterRole, client *kubernetes.Clientset, backoff wait.Backoff) error {
+	klog.V(5).Infof("ensure ClusterRole %s...", clusterrole.Name)
+	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
 		_, err := client.RbacV1().ClusterRoles().Create(ctx, &clusterrole, metav1.CreateOptions{})
 		if err == nil {
-			// success on the creation
-			cancel()
-			return
+			// success on the creating
+			return true, nil
 		}
 		if !errors.IsAlreadyExists(err) {
-			utilruntime.HandleError(err)
-			return
+			klog.Errorf("failed to create ClusterRole %s: %v, will retry", clusterrole.Name, err)
+			return false, nil
 		}
 
 		// try to auto update existing object
 		cr, err := client.RbacV1().ClusterRoles().Get(ctx, clusterrole.Name, metav1.GetOptions{})
 		if err != nil {
-			utilruntime.HandleError(err)
-			return
+			klog.Errorf("failed to get ClusterRole %s: %v, will retry", clusterrole.Name, err)
+			return false, nil
 		}
 		if autoUpdate, ok := cr.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().ClusterRoles().Update(ctx, &clusterrole, metav1.UpdateOptions{})
 			if err == nil {
-				// success on the creation
-				cancel()
-				return
+				// success on the updating
+				return true, nil
 			}
-			utilruntime.HandleError(err)
-			return
+			klog.Errorf("failed to update ClusterRole %s: %v, will retry", clusterrole.Name, err)
+			return false, nil
 		}
-	}, DefaultAPICallRetryInterval, 0.4, true, localCtx.Done())
-
-	klog.V(4).Infof("successfully ensure ClusterRole %q", clusterrole.Name)
+		return true, nil
+	})
 }
 
 func ensureClusterRoleBinding(ctx context.Context, clusterrolebinding rbacv1.ClusterRoleBinding, client *kubernetes.Clientset, backoff wait.Backoff) error {
-	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
-		_, err = client.RbacV1().ClusterRoleBindings().Create(ctx, &clusterrolebinding, metav1.CreateOptions{})
+	klog.V(5).Infof("ensure ClusterRoleBinding %s...", clusterrolebinding.Name)
+	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
+		_, err := client.RbacV1().ClusterRoleBindings().Create(ctx, &clusterrolebinding, metav1.CreateOptions{})
 		if err == nil {
 			// success on the creating
 			return true, nil
@@ -520,8 +557,9 @@ func ensureClusterRoleBinding(ctx context.Context, clusterrolebinding rbacv1.Clu
 }
 
 func ensureRole(ctx context.Context, role rbacv1.Role, client *kubernetes.Clientset, backoff wait.Backoff) error {
-	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
-		_, err = client.RbacV1().Roles(role.Namespace).Create(ctx, &role, metav1.CreateOptions{})
+	klog.V(5).Infof("ensure Role %s/%s...", role.Namespace, role.Name)
+	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
+		_, err := client.RbacV1().Roles(role.Namespace).Create(ctx, &role, metav1.CreateOptions{})
 		if err == nil {
 			// success on the creating
 			return true, nil
@@ -551,6 +589,7 @@ func ensureRole(ctx context.Context, role rbacv1.Role, client *kubernetes.Client
 }
 
 func ensureRoleBinding(ctx context.Context, rolebinding rbacv1.RoleBinding, client *kubernetes.Clientset, backoff wait.Backoff) error {
+	klog.V(5).Infof("ensure RoleBinding %s/%s...", rolebinding.Namespace, rolebinding.Name)
 	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
 		_, err = client.RbacV1().RoleBindings(rolebinding.Namespace).Create(ctx, &rolebinding, metav1.CreateOptions{})
 		if err == nil {

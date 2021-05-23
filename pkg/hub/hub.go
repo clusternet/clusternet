@@ -66,7 +66,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 
 	// creates the informer factory
 	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetclient, DefaultResync)
-	approver, err := approver.NewCRRApprover(ctx, kubeclient, clusternetclient, clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests())
+	approver, err := approver.NewCRRApprover(ctx, kubeclient, clusternetclient, clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests(), socketConnection)
 	if err != nil {
 		return nil, err
 	}
