@@ -62,7 +62,7 @@ lint: golangci-lint
 # Run mod tidy against code
 .PHONY: tidy
 tidy:
-	go mod tidy
+	@go mod tidy
 
 # Produce auto-generated files needed for the build.
 #
