@@ -48,6 +48,9 @@ type ClusterRegistrationOptions struct {
 	ParentURL      string
 	BootstrapToken string
 
+	// No tunnel logging by default
+	TunnelLogging bool
+
 	// TODO: check ca hash
 }
 
@@ -81,6 +84,7 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 		"Specifies how often the agent posts current child cluster status to parent cluster")
 	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
 		"Specifies how often the agent collects current child cluster status")
+	fs.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
 }
 
 // Complete completes all the required options.

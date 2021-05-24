@@ -112,7 +112,7 @@ func (agent *Agent) Run() {
 				// setup websocket connection
 				if utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection) {
 					klog.Infof("featuregate %s is enabled, preparing setting up socket connection...", features.SocketConnection)
-					socketConn, err := sockets.NewController(agent.parentDedicatedKubeConfig)
+					socketConn, err := sockets.NewController(agent.parentDedicatedKubeConfig, agent.Options.TunnelLogging)
 					if err != nil {
 						klog.Exitf("failed to setup websocket connection: %v", err)
 

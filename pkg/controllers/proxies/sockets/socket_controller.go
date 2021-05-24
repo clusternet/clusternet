@@ -44,7 +44,11 @@ type Controller struct {
 	kubeConfig *rest.Config
 }
 
-func NewController(kubeConfig *rest.Config) (*Controller, error) {
+func NewController(kubeConfig *rest.Config, tunnelLogging bool) (*Controller, error) {
+	if tunnelLogging {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
+
 	tlsConfig, err := rest.TLSConfigFor(kubeConfig)
 	if err != nil {
 		return nil, err
@@ -90,7 +94,6 @@ func NewController(kubeConfig *rest.Config) (*Controller, error) {
 }
 
 func (c *Controller) Run(ctx context.Context, clusterID *types.UID) {
-	logrus.SetLevel(logrus.DebugLevel)
 	wsURL := fmt.Sprintf("%s/%s", c.baseURL, string(*clusterID))
 	klog.V(4).Infof("setting up websocket connection to %s", wsURL)
 
