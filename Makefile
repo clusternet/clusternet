@@ -15,6 +15,12 @@
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
+# Constants used throughout.
+.EXPORT_ALL_VARIABLES:
+BASEIMAGE ?= alpine:3.13.5
+GOVERSION ?= 1.14.15
+ARCH ?= amd64
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -81,6 +87,13 @@ CMD_TARGET = $(filter-out %$(EXCLUDE_TARGET),$(notdir $(abspath $(wildcard cmd/*
 .PHONY: $(CMD_TARGET)
 $(CMD_TARGET): generated_files
 	@hack/make-rules/build.sh $@
+
+# Build Images
+# Example:
+#   make images
+.PHONY: images
+images:
+	hack/make-rules/images.sh
 
 # find or download controller-gen
 # download controller-gen if necessary

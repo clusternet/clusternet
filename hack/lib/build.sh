@@ -62,3 +62,18 @@ clusternet::golang::build_binary() {
 		go build -ldflags "$goldflags" -o ./_output/${GOOS}/${GOARCH}/bin/${target} ./cmd/${target}/
 	)
 }
+
+clusternet::docker::image() {
+	# Create a sub-shell so that we don't pollute the outer environment
+	(
+		local target=$1
+		tag=$(git describe --tags --always)
+		echo "Building docker image clusternet/${target}:${tag} of architecture ${GOARCH} with Go:${GOVERSION} ..."
+		docker buildx build --platform ${GOOS}/${GOARCH} \
+		  -t clusternet/${target}:${tag} \
+		  --build-arg BASEIMAGE=${BASEIMAGE} \
+		  --build-arg GOVERSION=${GOVERSION} \
+		  --build-arg BUILDARCH=${GOARCH} \
+		  --build-arg PKGNAME=${target} .
+	)
+}
