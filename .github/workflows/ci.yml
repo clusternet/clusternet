@@ -97,7 +97,6 @@ jobs:
             ${{ matrix.os }}-go-
       - name: verify format, crds and codegen
         run: |
-          go mod vendor
           make verify
   test:
     name: pull-clusternet-unit-test
