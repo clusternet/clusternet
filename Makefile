@@ -73,6 +73,15 @@ generated_files: controller-gen
 	@make crds
 	@./hack/update-codegen.sh
 
+# Build Binary
+# Example:
+#   make clusternet-agent clusternet-hub
+EXCLUDE_TARGET=BUILD OWNERS
+CMD_TARGET = $(filter-out %$(EXCLUDE_TARGET),$(notdir $(abspath $(wildcard cmd/*/))))
+.PHONY: $(CMD_TARGET)
+$(CMD_TARGET): generated_files
+	@hack/make-rules/build.sh $@
+
 # find or download controller-gen
 # download controller-gen if necessary
 controller-gen:
