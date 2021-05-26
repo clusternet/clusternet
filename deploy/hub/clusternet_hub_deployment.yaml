@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge-system
+
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: clusternet-hub
+  namespace: edge-system
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clusternet-hub
+  namespace: edge-system
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 443
+  selector:
+    app: clusternet-hub
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clusternet-hub
+  namespace: edge-system
+  labels:
+    app: clusternet-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clusternet-hub
+  template:
+    metadata:
+      labels:
+        app: clusternet-hub
+    spec:
+      serviceAccountName: clusternet-hub
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+      containers:
+        - name: clusternet-agent
+          image: clusternet/clusternet-hub-amd64:v0.1.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/clusternet-hub
+            - --secure-port=443
+            - --feature-gates=SocketConnection=true
+            - -v=4
