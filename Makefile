@@ -21,13 +21,6 @@ BASEIMAGE ?= alpine:3.13.5
 GOVERSION ?= 1.14.15
 ARCH ?= amd64
 
-# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
-ifeq (,$(shell go env GOBIN))
-GOBIN=$(shell go env GOPATH)/bin
-else
-GOBIN=$(shell go env GOBIN)
-endif
-
 # Run tests
 .PHONY: test
 test: generated_files vet
@@ -107,7 +100,7 @@ ifeq (, $(shell which controller-gen))
 	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.5.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
-CONTROLLER_GEN=$(GOBIN)/controller-gen
+CONTROLLER_GEN=$(shell go env GOPATH)/bin/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
@@ -125,7 +118,7 @@ ifeq (, $(shell which golangci-lint))
 	go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.39.0 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
-GOLANG_LINT=$(GOBIN)/golangci-lint
+GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
 else
 GOLANG_LINT=$(shell which golangci-lint)
 endif
