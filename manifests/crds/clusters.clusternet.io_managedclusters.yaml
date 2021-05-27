@@ -29,6 +29,12 @@ spec:
       jsonPath: .spec.clusterType
       name: Cluster-Type
       type: string
+    - jsonPath: .status.k8sVersion
+      name: Kubernetes
+      type: string
+    - jsonPath: .status.readyz
+      name: Readyz
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date

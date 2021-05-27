@@ -192,6 +192,8 @@ type ManagedClusterStatus struct {
 // +kubebuilder:resource:scope="Namespaced",shortName=mcls,categories=clusternet
 // +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
 // +kubebuilder:printcolumn:name="Cluster-Type",type=string,JSONPath=`.spec.clusterType`,description="The type of the cluster"
+// +kubebuilder:printcolumn:name="Kubernetes",type=string,JSONPath=".status.k8sVersion"
+// +kubebuilder:printcolumn:name="Readyz",type=string,JSONPath=".status.readyz"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ManagedCluster is the Schema for the managedclusters API
