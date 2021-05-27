@@ -1,67 +1,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: clusternet:hub:auth-delegator
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:auth-delegator
-subjects:
-  - kind: ServiceAccount
-    name: clusternet-hub
-    namespace: edge-system
----
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: clusternet:hub:auth-reader
-  namespace: kube-system
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: extension-apiserver-authentication-reader
-subjects:
-  - kind: ServiceAccount
-    name: clusternet-hub
-    namespace: edge-system
-
----
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: clusternet:hub:apiserver
-rules:
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["get", "watch", "list"]
-  - apiGroups: ["admissionregistration.k8s.io"]
-    resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
-    verbs: ["get", "watch", "list"]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: clusternet:hub:apiserver
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: clusternet:hub:apiserver
-subjects:
-  - kind: ServiceAccount
-    name: clusternet-hub
-    namespace: edge-system
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: clusternet:hub:approver
+  name: clusternet:hub
 rules:
   - apiGroups: ['*']
     resources: ['*']
-    verbs: ["get", "watch", "list", "create", "update", "delete"]
+    verbs: ["*"]
   - nonResourceURLs: ['*']
     verbs: ["get"]
 
@@ -69,11 +13,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: clusternet:hub:approver
+  name: clusternet:hub
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: clusternet:hub:approver
+  name: clusternet:hub
 subjects:
   - kind: ServiceAccount
     name: clusternet-hub
