@@ -70,7 +70,7 @@ clusternet::docker::image() {
 		tag=$(git describe --tags --always)
 		echo "Building docker image clusternet/${target}:${tag} of architecture ${GOARCH} with Go:${GOVERSION} ..."
 		docker buildx build --platform ${GOOS}/${GOARCH} \
-		  -t clusternet/${target}:${tag} \
+		  -t clusternet/${target}-${GOARCH}:${tag} \
 		  --build-arg BASEIMAGE=${BASEIMAGE} \
 		  --build-arg GOVERSION=${GOVERSION} \
 		  --build-arg BUILDARCH=${GOARCH} \
