@@ -23,5 +23,5 @@ source "${CLUSTERNET_ROOT}/hack/lib/build.sh"
 
 IFS="," read -ra platforms <<<"${PLATFORMS}"
 for platform in "${platforms[@]}"; do
-	clusternet::golang::build_binary "${platform}" "$@"
+  clusternet::golang::build_binary "${platform}" "$@"
 done

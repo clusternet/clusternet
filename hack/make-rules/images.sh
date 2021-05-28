@@ -23,7 +23,7 @@ source "${CLUSTERNET_ROOT}/hack/lib/build.sh"
 
 IFS="," read -ra platforms <<<"${PLATFORMS}"
 for img in $(ls -l "${CLUSTERNET_ROOT}/cmd" | grep ^d | awk '{print $9}'); do
-	for platform in "${platforms[@]}"; do
-		clusternet::docker::image "${platform}" "${img}"
-	done
+  for platform in "${platforms[@]}"; do
+    clusternet::docker::image "${platform}" "${img}"
+  done
 done

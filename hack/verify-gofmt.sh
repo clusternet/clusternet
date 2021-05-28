@@ -20,7 +20,7 @@ set -o pipefail
 
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd "${SCRIPT_ROOT}"
-diff=$(find . -type f -name '*.go'| grep -v "/vendor/" | xargs gofmt -l -s 2>&1) || true
+diff=$(find . -type f -name '*.go' | grep -v "/vendor/" | xargs gofmt -l -s 2>&1) || true
 if [[ -n "${diff}" ]]; then
   echo "${diff}" >&2
   echo >&2
