@@ -21,4 +21,7 @@ set -o pipefail
 CLUSTERNET_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
 source "${CLUSTERNET_ROOT}/hack/lib/build.sh"
 
-clusternet::golang::build_binary "$@"
+IFS="," read -ra platforms <<<"${PLATFORMS}"
+for platform in "${platforms[@]}"; do
+	clusternet::golang::build_binary "${platform}" "$@"
+done
