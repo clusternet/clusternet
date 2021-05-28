@@ -143,14 +143,14 @@ clusternet::docker::image() {
 
 		local CGO_ENABLED=0
 		local CC=""
-		local LDFLAGS=""
+		local LDFLAGS="$(clusternet::version::ldflags)"
 		local CCPKG=""
 
 		# Do not set CC when building natively on a platform, only if cross-compiling
 		if [[ $(clusternet::docker::host_platform) != "$platform" ]]; then
 			# Dynamic CGO linking for other server architectures than host architecture goes here
 			# If you want to include support for more server platforms than these, add arch-specific gcc names here
-			LDFLAGS="-linkmode=external -w -extldflags=-static"
+			LDFLAGS+="-linkmode=external -w -extldflags=-static"
       case "${platform}" in
         "linux/amd64")
           CGO_ENABLED=1
