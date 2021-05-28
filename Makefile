@@ -19,6 +19,7 @@ CRD_OPTIONS ?= "crd:trivialVersions=true"
 .EXPORT_ALL_VARIABLES:
 BASEIMAGE ?= alpine:3.13.5
 GOVERSION ?= 1.14.15
+REGISTRY ?= ghcr.io
 
 # Run tests
 .PHONY: test

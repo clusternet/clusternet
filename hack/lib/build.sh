@@ -191,11 +191,11 @@ clusternet::docker::image() {
 
 		local target=$2
 		tag=$(git describe --tags --always)
-		echo "Building docker image clusternet/${target}-${GOARCH}:${tag} ..."
+		echo "Building docker image ${REGISTRY}/clusternet/${target}-${GOARCH}:${tag} ..."
 
 		docker buildx build \
 			--load \
-			-t clusternet/"${target}"-${GOARCH}:"${tag}" \
+			-t ${REGISTRY}/clusternet/"${target}"-${GOARCH}:"${tag}" \
 			--build-arg BASEIMAGE="${BASEIMAGE}" \
 			--build-arg GOVERSION="${GOVERSION}" \
 			--build-arg GOARCH="${GOARCH}" \
