@@ -27,3 +27,9 @@ Temporary Items
 
 # Jetbrains
 .idea
+
+# Builds
+_output
+
+# go vendor
+vendor
