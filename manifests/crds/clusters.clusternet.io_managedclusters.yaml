@@ -67,6 +67,9 @@ spec:
           status:
             description: ManagedClusterStatus defines the observed state of ManagedCluster
             properties:
+              apiserverURL:
+                description: APIServerURL indicates the advertising url/address of managed Kubernetes cluster
+                type: string
               healthz:
                 description: Healthz indicates the healthz status of the cluster which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead. Leave it here only for compatibility.
                 type: boolean
