@@ -18,6 +18,7 @@ package agent
 
 import (
 	"context"
+	"os"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -62,6 +63,8 @@ func (mgr *Manager) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Con
 	wait.Until(func() {
 		if secret == nil {
 			klog.Error("unexpected nil secret")
+			// in case a race condition here
+			os.Exit(1)
 			return
 		}
 
