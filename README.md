@@ -93,6 +93,19 @@ default * docker
 If you're running Linux, please refer to [docker buildx docs](https://docs.docker.com/buildx/working-with-buildx/)
 on the installation.
 
+> Note:
+>
+> For better `docker buildx` support, it is recommended to use Ubuntu Focal 20.04 (LTS), Debian Bullseye 11 and CentOS 8.
+>
+> And install deb/rpm package `qemu-user-static` as well, such as
+> ```bash
+> apt-get install qemu-user-static
+> ```
+> or
+> ```bash
+> yum install qemu-user-static
+> ```
+
 ```bash
 # build for linux/amd64 by default
 # container images for clusternet-agent and clusternet-hub
