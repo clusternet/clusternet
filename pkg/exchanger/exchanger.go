@@ -29,11 +29,12 @@ import (
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/proxy"
+	genericfeatures "k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/rest"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
-	"github.com/clusternet/clusternet/pkg/features"
 )
 
 type Exchanger struct {
@@ -44,15 +45,19 @@ type Exchanger struct {
 
 	// dialerServer is used for serving websocket connection
 	dialerServer *remotedialer.Server
-
-	socketConnection bool
 }
 
 var (
 	urlPrefix = fmt.Sprintf("/apis/%s/sockets/", proxies.SchemeGroupVersion.String())
 )
 
-func NewExchanger(tunnelLogging bool, socketConnection bool) *Exchanger {
+func authorizer(req *http.Request) (string, bool, error) {
+	vars := mux.Vars(req)
+	clusterID := vars["cluster"]
+	return clusterID, clusterID != "", nil
+}
+
+func NewExchanger(tunnelLogging bool) *Exchanger {
 	if tunnelLogging {
 		logrus.SetLevel(logrus.DebugLevel)
 		remotedialer.PrintTunnelData = true
@@ -60,22 +65,12 @@ func NewExchanger(tunnelLogging bool, socketConnection bool) *Exchanger {
 
 	e := &Exchanger{
 		cachedTransports: map[string]*http.Transport{},
-		socketConnection: socketConnection,
-	}
-
-	if e.socketConnection {
-		e.dialerServer = remotedialer.New(e.authorizer, remotedialer.DefaultErrorWriter)
+		dialerServer:     remotedialer.New(authorizer, remotedialer.DefaultErrorWriter),
 	}
 	return e
 }
 
-func (e *Exchanger) authorizer(req *http.Request) (string, bool, error) {
-	vars := mux.Vars(req)
-	clusterID := vars["cluster"]
-	return clusterID, clusterID != "", nil
-}
-
-func (e *Exchanger) getClonedTransport(server *remotedialer.Server, clusterID string) *http.Transport {
+func (e *Exchanger) getClonedTransport(clusterID string) *http.Transport {
 	// return cloned transport to avoid being changed outside
 	e.lock.Lock()
 	defer e.lock.Unlock()
@@ -85,7 +80,7 @@ func (e *Exchanger) getClonedTransport(server *remotedialer.Server, clusterID st
 		return transport.Clone()
 	}
 
-	dialer := server.Dialer(clusterID)
+	dialer := e.dialerServer.Dialer(clusterID)
 	transport = &http.Transport{
 		DialContext: dialer,
 		// apply default settings from http.DefaultTransport
@@ -100,50 +95,78 @@ func (e *Exchanger) getClonedTransport(server *remotedialer.Server, clusterID st
 }
 
 func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder) (http.Handler, error) {
-	if !e.socketConnection {
-		return nil, apierrors.NewServiceUnavailable(fmt.Sprintf("featuregate %s has not been enabled on the server side", features.SocketConnection))
-	}
-
-	router := mux.NewRouter().PathPrefix(fmt.Sprintf("%s{cluster}", urlPrefix)).Subrouter()
 	// serve websocket connection
+	router := mux.NewRouter().PathPrefix(fmt.Sprintf("%s{cluster}", urlPrefix)).Subrouter()
 	router.Handle("", e.dialerServer)
 	router.Handle("/", e.dialerServer)
 
+	// TODO: add metrics
+
 	// proxy and re-dial through websocket connection
+	router.HandleFunc("/direct{path:.*}",
+		func(writer http.ResponseWriter, request *http.Request) {
+			location, transport, err := e.ClusterLocation(true, true, request, id)
+			if err != nil {
+				responder.Error(err)
+				return
+			}
+
+			klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), id)
+			handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, false, true, true, responder)
+			handler.ServeHTTP(writer, request)
+		})
 	router.HandleFunc("/{scheme}/{host}{path:.*}",
 		func(writer http.ResponseWriter, request *http.Request) {
-			if !e.dialerServer.HasSession(id) {
-				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id)))
+			location, transport, err := e.ClusterLocation(false, true, request, id)
+			if err != nil {
+				responder.Error(err)
 				return
 			}
 
-			vars := mux.Vars(request)
-			location := &url.URL{
-				Scheme:   vars["scheme"],
-				Host:     vars["host"],
-				Path:     vars["path"],
-				RawQuery: request.URL.RawQuery,
-			}
-			// TODO: support https as well
-			if location.Scheme != "http" {
-				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("scheme %s is not supported now, please use http", location.Scheme)))
-				return
-			}
-			clusterID := vars["cluster"]
-
-			klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), clusterID)
-
-			// TODO: add metrics
-
-			// if location.Path is empty, a status code 301 will be returned by below handler with a new location
-			// ends with a '/'. This is essentially a hack for http://issue.k8s.io/4958.
-			handler := proxy.NewUpgradeAwareHandler(location,
-				e.getClonedTransport(e.dialerServer, clusterID),
-				false,
-				false,
-				proxy.NewErrorResponder(responder))
-			handler.UseLocationHost = true
+			klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), id)
+			handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, false, true, true, responder)
 			handler.ServeHTTP(writer, request)
 		})
 	return router, nil
+}
+
+func (e *Exchanger) ClusterLocation(isShortPath, useSocket bool, request *http.Request, id string) (*url.URL, http.RoundTripper, error) {
+	location := new(url.URL)
+	var transport *http.Transport
+
+	vars := mux.Vars(request)
+	location.Path = vars["path"]
+	location.RawQuery = request.URL.RawQuery
+
+	if isShortPath {
+		// TODO
+
+	} else {
+		location.Scheme = vars["scheme"]
+		location.Host = vars["host"]
+	}
+
+	// TODO: support https as well
+	if location.Scheme != "http" {
+		return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("scheme %s is not supported now, please use http", location.Scheme))
+	}
+
+	if useSocket {
+		if !e.dialerServer.HasSession(id) {
+			return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id))
+		}
+		transport = e.getClonedTransport(id)
+	}
+
+	return location, transport, nil
+}
+
+func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired, interceptRedirects, useLocationHost bool, responder rest.Responder) *proxy.UpgradeAwareHandler {
+	// if location.Path is empty, a status code 301 will be returned by below handler with a new location
+	// ends with a '/'. This is essentially a hack for http://issue.k8s.io/4958.
+	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, proxy.NewErrorResponder(responder))
+	handler.InterceptRedirects = interceptRedirects && utilfeature.DefaultFeatureGate.Enabled(genericfeatures.StreamingProxyRedirects)
+	handler.RequireSameHostRedirects = utilfeature.DefaultFeatureGate.Enabled(genericfeatures.ValidateProxyRedirects)
+	handler.UseLocationHost = useLocationHost
+	return handler
 }

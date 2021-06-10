@@ -21,11 +21,13 @@ import (
 	"fmt"
 	"net/http"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/exchanger"
+	"github.com/clusternet/clusternet/pkg/features"
 )
 
 const (
@@ -34,7 +36,8 @@ const (
 
 // REST implements a RESTStorage for Proxies API
 type REST struct {
-	exchanger *exchanger.Exchanger
+	exchanger        *exchanger.Exchanger
+	socketConnection bool
 }
 
 func (r *REST) ShortNames() []string {
@@ -68,6 +71,9 @@ func (r *REST) NewConnectOptions() (runtime.Object, bool, string) {
 
 // Connect returns a handler for the websocket connection
 func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, responder rest.Responder) (http.Handler, error) {
+	if !r.socketConnection {
+		return nil, apierrors.NewServiceUnavailable(fmt.Sprintf("featuregate %s has not been enabled on the server side", features.SocketConnection))
+	}
 	socket, ok := opts.(*proxies.Socket)
 	if !ok {
 		return nil, fmt.Errorf("invalid options object: %#v", opts)
@@ -78,8 +84,13 @@ func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, resp
 
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(tunnelLogging, socketConnection bool) *REST {
+	var ec *exchanger.Exchanger
+	if socketConnection {
+		ec = exchanger.NewExchanger(tunnelLogging)
+	}
 	return &REST{
-		exchanger: exchanger.NewExchanger(tunnelLogging, socketConnection),
+		exchanger:        ec,
+		socketConnection: socketConnection,
 	}
 }
 
