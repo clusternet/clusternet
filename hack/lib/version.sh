@@ -40,7 +40,13 @@ clusternet::version::get_version_vars() {
   fi
 
   GIT_VERSION=$(git describe --tags --always)
-  if [[ "${GIT_VERSION}" =~ ^v([0-9]+)\\.([0-9]+)(\\.[0-9]+)?([-].*)?([+].*)?$ ]]; then
+  if [[ "${GIT_TREE_STATE}" == "dirty" ]]; then
+    # git describe --dirty only considers changes to existing files, but
+    # that is problematic since new untracked .go files affect the build,
+    # so use our idea of "dirty" from git status instead.
+    GIT_VERSION+="-dirty"
+  fi
+  if [[ "${GIT_VERSION}" =~ ^v([0-9]+)\.([0-9]+)(\.[0-9]+)?([-].*)?([+].*)?$ ]]; then
     GIT_MAJOR=${BASH_REMATCH[1]}
     GIT_MINOR=${BASH_REMATCH[2]}
     if [[ -n "${BASH_REMATCH[4]}" ]]; then
