@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"sync"
 	"time"
 
@@ -28,13 +29,18 @@ import (
 	"github.com/rancher/remotedialer"
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/proxy"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
+	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
 type Exchanger struct {
@@ -45,6 +51,9 @@ type Exchanger struct {
 
 	// dialerServer is used for serving websocket connection
 	dialerServer *remotedialer.Server
+
+	mcLister clusterListers.ManagedClusterLister
+	mcSynced cache.InformerSynced
 }
 
 var (
@@ -57,7 +66,7 @@ func authorizer(req *http.Request) (string, bool, error) {
 	return clusterID, clusterID != "", nil
 }
 
-func NewExchanger(tunnelLogging bool) *Exchanger {
+func NewExchanger(tunnelLogging bool, mclsInformer clusterInformers.ManagedClusterInformer) *Exchanger {
 	if tunnelLogging {
 		logrus.SetLevel(logrus.DebugLevel)
 		remotedialer.PrintTunnelData = true
@@ -66,6 +75,8 @@ func NewExchanger(tunnelLogging bool) *Exchanger {
 	e := &Exchanger{
 		cachedTransports: map[string]*http.Transport{},
 		dialerServer:     remotedialer.New(authorizer, remotedialer.DefaultErrorWriter),
+		mcLister:         mclsInformer.Lister(),
+		mcSynced:         mclsInformer.Informer().HasSynced,
 	}
 	return e
 }
@@ -105,6 +116,12 @@ func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket
 	// proxy and re-dial through websocket connection
 	router.HandleFunc("/direct{path:.*}",
 		func(writer http.ResponseWriter, request *http.Request) {
+			// Wait for the caches to be synced before starting workers
+			if !cache.WaitForCacheSync(ctx.Done(), e.mcSynced) {
+				responder.Error(apierrors.NewServiceUnavailable("cache for ManagedCluster is not ready yet, please retry later"))
+				return
+			}
+
 			location, transport, err := e.ClusterLocation(true, true, request, id)
 			if err != nil {
 				responder.Error(err)
@@ -139,8 +156,29 @@ func (e *Exchanger) ClusterLocation(isShortPath, useSocket bool, request *http.R
 	location.RawQuery = request.URL.RawQuery
 
 	if isShortPath {
-		// TODO
+		mcls, err := e.mcLister.List(labels.SelectorFromSet(labels.Set{
+			known.ClusterIDLabel: id,
+		}))
+		if err != nil {
+			return nil, nil, apierrors.NewServiceUnavailable(err.Error())
+		}
+		if len(mcls) > 1 {
+			klog.Warningf("found multiple ManagedCluster dedicated for cluster %s !!!", id)
+		}
 
+		apiserverURL := mcls[0].Status.APIServerURL
+		if len(apiserverURL) == 0 {
+			return nil, nil, apierrors.NewServiceUnavailable(fmt.Sprintf("cannot retrieve valid apiserver url for cluster %s", id))
+		}
+
+		loc, err := url.Parse(apiserverURL)
+		if err != nil {
+			return nil, nil, apierrors.NewInternalError(err)
+		}
+
+		location.Scheme = loc.Scheme
+		location.Host = loc.Host
+		location.Path = path.Join(loc.Path, location.Path)
 	} else {
 		location.Scheme = vars["scheme"]
 		location.Host = vars["host"]

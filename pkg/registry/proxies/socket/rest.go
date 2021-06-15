@@ -28,6 +28,7 @@ import (
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/exchanger"
 	"github.com/clusternet/clusternet/pkg/features"
+	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
 )
 
 const (
@@ -83,10 +84,10 @@ func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, resp
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
-func NewREST(tunnelLogging, socketConnection bool) *REST {
+func NewREST(tunnelLogging, socketConnection bool, mclsInformer clusterInformers.ManagedClusterInformer) *REST {
 	var ec *exchanger.Exchanger
 	if socketConnection {
-		ec = exchanger.NewExchanger(tunnelLogging)
+		ec = exchanger.NewExchanger(tunnelLogging, mclsInformer)
 	}
 	return &REST{
 		exchanger:        ec,
