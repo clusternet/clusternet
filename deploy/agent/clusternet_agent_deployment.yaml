@@ -1,21 +1,21 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: edge-system
+  name: clusternet-system
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: clusternet-agent
-  namespace: edge-system
+  namespace: clusternet-system
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: clusternet-agent
-  namespace: edge-system
+  namespace: clusternet-system
   labels:
     app: clusternet-agent
 spec:

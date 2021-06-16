@@ -160,7 +160,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 
 		// get parent cluster kubeconfig
 		if tryToUseSecret {
-			secret, err := agent.childKubeClientSet.CoreV1().Secrets(EdgeSystemNamespace).Get(registerCtx,
+			secret, err := agent.childKubeClientSet.CoreV1().Secrets(ClusternetSystemNamespace).Get(registerCtx,
 				ParentClusterSecretName, metav1.GetOptions{})
 			if err != nil && !apierrors.IsNotFound(err) {
 				klog.Errorf("failed to get secretFromParentCluster: %v", err)
@@ -169,7 +169,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 			if err == nil {
 				agent.secretFromParentCluster = secret
 				klog.Infof("found existing secretFromParentCluster '%s/%s' that can be used to access parent cluster",
-					EdgeSystemNamespace, ParentClusterSecretName)
+					ClusternetSystemNamespace, ParentClusterSecretName)
 
 				if string(secret.Data[ParentURLKey]) != agent.Options.ParentURL {
 					klog.Warningf("the parent url got changed from %q to %q", secret.Data[ParentURLKey], agent.Options.ParentURL)
@@ -199,9 +199,9 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 }
 
 func (agent *Agent) getClusterID(ctx context.Context, childClientSet kubernetes.Interface) (types.UID, error) {
-	lease, err := childClientSet.CoordinationV1().Leases(EdgeSystemNamespace).Get(ctx, SelfClusterLeaseName, metav1.GetOptions{})
+	lease, err := childClientSet.CoordinationV1().Leases(ClusternetSystemNamespace).Get(ctx, SelfClusterLeaseName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("unable to retrieve %s/%s Lease object: %v", EdgeSystemNamespace, SelfClusterLeaseName, err)
+		klog.Errorf("unable to retrieve %s/%s Lease object: %v", ClusternetSystemNamespace, SelfClusterLeaseName, err)
 		return "", err
 	}
 	return lease.UID, nil
@@ -298,7 +298,7 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 	agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
 
 	// once the request gets approved
-	// run in goroutine to store auto-populated credentials to Secret "parent-cluster" in "edge-system" namespace
+	// run in goroutine to store auto-populated credentials to Secret "parent-cluster" in "clusternet-system" namespace
 	go func() {
 		agent.storeParentClusterCredentials(agent.AgentContext, crr)
 	}()
@@ -328,7 +328,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 	}
 	agent.secretFromParentCluster = secret
 	wait.JitterUntil(func() {
-		_, err := agent.childKubeClientSet.CoreV1().Secrets(EdgeSystemNamespace).Create(secretCtx, secret, metav1.CreateOptions{})
+		_, err := agent.childKubeClientSet.CoreV1().Secrets(ClusternetSystemNamespace).Create(secretCtx, secret, metav1.CreateOptions{})
 		if err == nil {
 			klog.V(5).Infof("successfully store parent cluster credentials")
 			cancel()
@@ -336,7 +336,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 		} else {
 			if apierrors.IsAlreadyExists(err) {
 				klog.V(5).Infof("found existed parent cluster credentials, will try to update if needed")
-				_, err = agent.childKubeClientSet.CoreV1().Secrets(EdgeSystemNamespace).Update(secretCtx, secret, metav1.UpdateOptions{})
+				_, err = agent.childKubeClientSet.CoreV1().Secrets(ClusternetSystemNamespace).Update(secretCtx, secret, metav1.UpdateOptions{})
 				if err == nil {
 					cancel()
 					return
@@ -351,7 +351,7 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 		Lock: &resourcelock.LeaseLock{
 			LeaseMeta: metav1.ObjectMeta{
 				Name:      SelfClusterLeaseName,
-				Namespace: EdgeSystemNamespace,
+				Namespace: ClusternetSystemNamespace,
 			},
 			Client: clientset.CoordinationV1(),
 			LockConfig: resourcelock.ResourceLockConfig{
