@@ -9,5 +9,5 @@ spec:
   versionPriority: 15
   service:
     name: clusternet-hub
-    namespace: edge-system
+    namespace: clusternet-system
   version: v1alpha1

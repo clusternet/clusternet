@@ -145,8 +145,8 @@ $ kubectl apply -f manifests/samples
 First we need to create a secret, which contains token for cluster registration,
 
 ```bash
-# create namespace edge-system if not created
-$ kubectl create ns edge-system
+# create namespace clusternet-system if not created
+$ kubectl create ns clusternet-system
 # here we use the token created above
 $ PARENTURL=https://192.168.10.10 REGTOKEN=07401b.f395accd246ae52d envsubst < ./deploy/templates/clusternet_agent_secret.yaml | kubectl apply -f -
 ```

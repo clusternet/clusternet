@@ -47,10 +47,10 @@ const (
 
 // default values
 const (
-	SelfClusterLeaseName    = "self-cluster"
-	EdgeSystemNamespace     = "edge-system"
-	ParentClusterSecretName = "parent-cluster"
-	ParentURLKey            = "parent-url"
+	SelfClusterLeaseName      = "self-cluster"
+	ClusternetSystemNamespace = "clusternet-system"
+	ParentClusterSecretName   = "parent-cluster"
+	ParentURLKey              = "parent-url"
 
 	// RegistrationNamePrefix is a prefix name for cluster registration
 	RegistrationNamePrefix = "clusternet-cluster"

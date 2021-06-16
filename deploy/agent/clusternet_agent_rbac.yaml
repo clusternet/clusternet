@@ -2,7 +2,7 @@ kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: clusternet:agent:admin
-  namespace: edge-system
+  namespace: clusternet-system
 rules:
   - apiGroups: ["*"]
     resources: ["*"]
@@ -13,7 +13,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: clusternet:agent:admin
-  namespace: edge-system
+  namespace: clusternet-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -21,4 +21,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: clusternet-agent
-    namespace: edge-system
+    namespace: clusternet-system
