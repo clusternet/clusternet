@@ -171,6 +171,10 @@ type ManagedClusterStatus struct {
 	// +optional
 	Platform string `json:"platform,omitempty"`
 
+	// APIServerURL indicates the advertising url/address of managed Kubernetes cluster
+	// +optional
+	APIServerURL string `json:"apiserverURL,omitempty"`
+
 	// Healthz indicates the healthz status of the cluster
 	// which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead.
 	// Leave it here only for compatibility.

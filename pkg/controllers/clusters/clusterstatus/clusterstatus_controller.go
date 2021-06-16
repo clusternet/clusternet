@@ -36,13 +36,15 @@ type Controller struct {
 	lock             *sync.Mutex
 	clusterStatus    *clusterapi.ManagedClusterStatus
 	collectingPeriod metav1.Duration
+	apiserverURL     string
 }
 
-func NewController(kubeClient kubernetes.Interface, collectingPeriod metav1.Duration) *Controller {
+func NewController(apiserverURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration) *Controller {
 	return &Controller{
 		kubeClient:       kubeClient,
 		lock:             &sync.Mutex{},
 		collectingPeriod: collectingPeriod,
+		apiserverURL:     apiserverURL,
 	}
 }
 
@@ -61,6 +63,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	var status clusterapi.ManagedClusterStatus
 	status.KubernetesVersion = clusterVersion.GitVersion
 	status.Platform = clusterVersion.Platform
+	status.APIServerURL = c.apiserverURL
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")

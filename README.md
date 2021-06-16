@@ -315,13 +315,16 @@ users:
   user:
     client-certificate-data: REDACTED
     client-key-data: REDACTED
-# suppose child cluster running at http://demo1.cluster.net
+# suppose your child cluster running at http://demo1.cluster.net
 $ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
   --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/http/demo1.cluster.net
+# or just use the direct path
+$ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
+  --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/direct
 ```
 
-What you need is to append `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/http/<SERVER-URL>` at the end
-of original parent cluster server address.
+What you need is to append `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/http/<SERVER-URL>`
+or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/direct` at the end of original parent cluster server address.
 - `CLUSTER-ID` is a UUID for your child cluster, which is auto-populated by `clusternet-agent`, such as
   dc91021d-2361-4f6d-a404-7c33b9e01118. You could get this UUID from objects `ClusterRegistrationRequest`,
   `ManagedCluster`, etc. Also this UUID is labeled with key `clusters.clusternet.io/cluster-id`.

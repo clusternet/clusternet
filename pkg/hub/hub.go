@@ -71,6 +71,9 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		return nil, err
 	}
 
+	// add informer for ManagedCluster
+	clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer()
+
 	hub := &Hub{
 		ctx:                       ctx,
 		crrApprover:               approver,
@@ -109,7 +112,7 @@ func (hub *Hub) RunAPIServer() error {
 		return err
 	}
 
-	server, err := config.Complete().New(hub.options.TunnelLogging, hub.socketConnection)
+	server, err := config.Complete().New(hub.options.TunnelLogging, hub.socketConnection, hub.clusternetInformerFactory.Clusters().V1beta1().ManagedClusters())
 	if err != nil {
 		return err
 	}

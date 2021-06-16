@@ -27,6 +27,7 @@ import (
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	"github.com/clusternet/clusternet/pkg/apis/proxies/install"
+	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
 	socketstorage "github.com/clusternet/clusternet/pkg/registry/proxies/socket"
 )
 
@@ -100,7 +101,7 @@ func (cfg *Config) Complete() CompletedConfig {
 }
 
 // New returns a new instance of HubAPIServer from the given config.
-func (c completedConfig) New(tunnelLogging, socketConnection bool) (*HubAPIServer, error) {
+func (c completedConfig) New(tunnelLogging, socketConnection bool, mclsInformer clusterInformers.ManagedClusterInformer) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
@@ -113,7 +114,7 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool) (*HubAPIServe
 	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(proxies.GroupName, Scheme, ParameterCodec, Codecs)
 
 	v1alpha1storage := map[string]rest.Storage{}
-	v1alpha1storage["sockets"] = socketstorage.NewREST(tunnelLogging, socketConnection)
+	v1alpha1storage["sockets"] = socketstorage.NewREST(tunnelLogging, socketConnection, mclsInformer)
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 
 	if err := s.GenericAPIServer.InstallAPIGroup(&apiGroupInfo); err != nil {
