@@ -23,7 +23,6 @@ import (
 	"github.com/spf13/pflag"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
-	"k8s.io/kubectl/pkg/util/templates"
 
 	"github.com/clusternet/clusternet/pkg/agent"
 	_ "github.com/clusternet/clusternet/pkg/features"
@@ -31,9 +30,6 @@ import (
 )
 
 var (
-	// TODO: add cli examples
-	longExample = templates.Examples(`todo`)
-
 	// the command name
 	cmdName = "clusternet-agent"
 )
@@ -43,9 +39,8 @@ func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 	opts := NewOptions()
 
 	cmd := &cobra.Command{
-		Use:     cmdName,
-		Example: longExample,
-		Long:    `Running in child cluster, responsible for cluster registration, tunnel setup, cluster heartbeat, etc`,
+		Use:  cmdName,
+		Long: `Running in child cluster, responsible for cluster registration, tunnel setup, cluster heartbeat, etc`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := version.PrintAndExitIfRequested(cmdName); err != nil {
 				klog.Exit(err)
