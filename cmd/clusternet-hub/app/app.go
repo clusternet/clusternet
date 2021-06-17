@@ -23,7 +23,6 @@ import (
 	"github.com/spf13/pflag"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
-	"k8s.io/kubectl/pkg/util/templates"
 
 	_ "github.com/clusternet/clusternet/pkg/features"
 	"github.com/clusternet/clusternet/pkg/hub"
@@ -32,9 +31,6 @@ import (
 )
 
 var (
-	// TODO: add cli examples
-	longExample = templates.Examples(`todo`)
-
 	// the command name
 	cmdName = "clusternet-hub"
 )
@@ -44,9 +40,8 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 	opts := options.NewHubServerOptions()
 
 	cmd := &cobra.Command{
-		Use:     cmdName,
-		Example: longExample,
-		Long:    `Running in parent cluster, responsible for multiple cluster managements`,
+		Use:  cmdName,
+		Long: `Running in parent cluster, responsible for multiple cluster managements`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := version.PrintAndExitIfRequested(cmdName); err != nil {
 				klog.Exit(err)
