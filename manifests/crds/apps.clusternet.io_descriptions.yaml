@@ -1,0 +1,99 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.5.0
+  creationTimestamp: null
+  name: descriptions.apps.clusternet.io
+spec:
+  group: apps.clusternet.io
+  names:
+    categories:
+    - clusternet
+    kind: Description
+    listKind: DescriptionList
+    plural: descriptions
+    shortNames:
+    - desc
+    singular: description
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.deployer
+      name: DEPLOYER
+      type: string
+    - jsonPath: .status.phase
+      name: STATUS
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Description is the Schema for the resources to be installed
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DescriptionSpec defines the spec of Description
+            properties:
+              charts:
+                description: Charts describe all the helm charts to be installed
+                items:
+                  properties:
+                    name:
+                      description: Name of the HelmChart.
+                      type: string
+                    namespace:
+                      description: Namespace of the HelmChart.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  type: object
+                type: array
+              deployer:
+                description: Deployer indicates the deployer for this Description
+                enum:
+                - Helm
+                - Default
+                type: string
+            required:
+            - deployer
+            type: object
+          status:
+            description: DescriptionStatus defines the observed state of Description
+            properties:
+              phase:
+                description: Phase denotes the phase of Description
+                enum:
+                - Pending
+                - Success
+                - Failure
+                type: string
+              reason:
+                description: Reason indicates the reason of DescriptionPhase
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

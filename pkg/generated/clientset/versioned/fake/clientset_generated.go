@@ -19,6 +19,8 @@ package fake
 
 import (
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/apps/v1alpha1"
+	fakeappsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/apps/v1alpha1/fake"
 	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/clusters/v1beta1"
 	fakeclustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/clusters/v1beta1/fake"
 	proxiesv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/proxies/v1alpha1"
@@ -76,6 +78,11 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 }
 
 var _ clientset.Interface = &Clientset{}
+
+// AppsV1alpha1 retrieves the AppsV1alpha1Client
+func (c *Clientset) AppsV1alpha1() appsv1alpha1.AppsV1alpha1Interface {
+	return &fakeappsv1alpha1.FakeAppsV1alpha1{Fake: &c.Fake}
+}
 
 // ClustersV1beta1 retrieves the ClustersV1beta1Client
 func (c *Clientset) ClustersV1beta1() clustersv1beta1.ClustersV1beta1Interface {

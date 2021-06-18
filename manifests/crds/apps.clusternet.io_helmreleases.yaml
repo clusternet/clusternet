@@ -1,0 +1,111 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.5.0
+  creationTimestamp: null
+  name: helmreleases.apps.clusternet.io
+spec:
+  group: apps.clusternet.io
+  names:
+    categories:
+    - clusternet
+    kind: HelmRelease
+    listKind: HelmReleaseList
+    plural: helmreleases
+    shortNames:
+    - hr
+    singular: helmrelease
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The helm chart name
+      jsonPath: .spec.chart
+      name: CHART
+      type: string
+    - description: The helm chart version
+      jsonPath: .spec.version
+      name: VERSION
+      type: string
+    - description: The helm repo url
+      jsonPath: .spec.repo
+      name: REPO
+      type: string
+    - description: The helm release status
+      jsonPath: .status.phase
+      name: STATUS
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HelmRelease is the Schema for the helm release
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: HelmReleaseSpec defines the spec of HelmRelease
+            properties:
+              chart:
+                description: Chart is the name of a Helm Chart in the Repository.
+                type: string
+              repo:
+                description: a Helm Repository to be used. such as, https://charts.bitnami.com/bitnami
+                pattern: ^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&\(\)\*\+,;=.]+$
+                type: string
+              targetNamespace:
+                description: TargetNamespace specifies the namespace to install the chart
+                type: string
+              version:
+                description: ChartVersion is the version of the chart to be deployed. It will be defaulted with current latest version if empty.
+                type: string
+            required:
+            - chart
+            - repo
+            - targetNamespace
+            type: object
+          status:
+            description: HelmReleaseStatus defines the observed state of HelmRelease
+            properties:
+              description:
+                description: Description is human-friendly "log entry" about this release.
+                type: string
+              firstDeployed:
+                description: FirstDeployed is when the release was first deployed.
+                type: string
+              lastDeployed:
+                description: LastDeployed is when the release was last deployed.
+                type: string
+              notes:
+                description: Contains the rendered templates/NOTES.txt if available
+                type: string
+              phase:
+                description: Phase is the current state of the release
+                type: string
+              version:
+                description: Version is an int which represents the revision of the release.
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
