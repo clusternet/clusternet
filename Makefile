@@ -30,6 +30,7 @@ test: generated vet
 .PHONY: crds
 crds: controller-gen
 	@echo "Generating CRDs at manifests/crds"
+	@$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./pkg/apis/apps/..." output:crd:dir=manifests/crds
 	@$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./pkg/apis/clusters/..." output:crd:dir=manifests/crds
 
 # Verify all changes
