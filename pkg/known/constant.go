@@ -20,4 +20,11 @@ const (
 	// NamePrefixForClusternetObjects is a prefix name for generating Clusternet related objects for child cluster,
 	// such as namespace, sa, etc
 	NamePrefixForClusternetObjects = "clusternet-"
+
+	// ChildClusterSecretName is the secret that stores credentials of child cluster, which will be used by deployer
+	// in clusternet-hub
+	ChildClusterSecretName = "child-cluster-deployer"
+
+	// ClusterAPIServerURLKey denotes the apiserver address
+	ClusterAPIServerURLKey = "apiserver-advertise-url"
 )
