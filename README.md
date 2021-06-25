@@ -162,7 +162,7 @@ $ kubectl apply -f deploy/agent
 ```bash
 # clsrr is an alias for ClusterRegistrationRequest
 $ kubectl get clsrr
-NAME                                              CLUSTER-ID                             STATUS     AGE
+NAME                                              CLUSTER ID                             STATUS     AGE
 clusternet-dc91021d-2361-4f6d-a404-7c33b9e01118   dc91021d-2361-4f6d-a404-7c33b9e01118   Approved   3d6h
 $ kubectl get clsrr clusternet-dc91021d-2361-4f6d-a404-7c33b9e01118 -o yaml
 apiVersion: clusters.clusternet.io/v1beta1
@@ -254,9 +254,11 @@ rules:
 
 ```bash
 # mcls is an alias for ManagedCluster
-$ kubectl get mcls -A
-NAMESPACE          NAME                       CLUSTER-ID                             CLUSTER-TYPE                 KUBERNETES   READYZ   AGE
-clusternet-dhxfs   clusternet-cluster-dzqkw   dc91021d-2361-4f6d-a404-7c33b9e01118   EdgeClusterSelfProvisioned   v1.19.10     true     2d20h
+# kubectl get mcls -A
+# or append "-o wide" to display extra columns
+$ kubectl get mcls -A -o wide
+NAMESPACE          NAME                       CLUSTER ID                             CLUSTER TYPE                 SYNC MODE   KUBERNETES   READYZ   AGE
+clusternet-dhxfs   clusternet-cluster-dzqkw   dc91021d-2361-4f6d-a404-7c33b9e01118   EdgeClusterSelfProvisioned   Pull        v1.19.10     true     7d23h
 $ kubectl get mcls -n clusternet-dhxfs   clusternet-cluster-dzqkw -o yaml
 apiVersion: clusters.clusternet.io/v1beta1
 kind: ManagedCluster
@@ -274,6 +276,7 @@ metadata:
 spec:
   clusterId: dc91021d-2361-4f6d-a404-7c33b9e01118
   clusterType: EdgeClusterSelfProvisioned
+  syncMode: Pull
 status:
   healthz: true
   k8sVersion: v1.19.10

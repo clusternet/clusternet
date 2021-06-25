@@ -39,6 +39,8 @@ type ClusterRegistrationOptions struct {
 	ClusterNamePrefix string
 	// ClusterType denotes the cluster type
 	ClusterType string
+	// ClusterSyncMode specifies the sync mode between parent cluster and child cluster
+	ClusterSyncMode string
 
 	// ClusterStatusReportFrequency is the frequency at which the agent updates current cluster's status
 	ClusterStatusReportFrequency metav1.Duration
@@ -59,6 +61,7 @@ func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	return &ClusterRegistrationOptions{
 		ClusterNamePrefix:             RegistrationNamePrefix,
 		ClusterType:                   string(clusterapi.EdgeClusterSelfProvisioned),
+		ClusterSyncMode:               string(clusterapi.Pull),
 		ClusterStatusReportFrequency:  metav1.Duration{Duration: DefaultClusterStatusReportFrequency},
 		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
 	}
@@ -80,6 +83,8 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 			ClusterRegistrationName))
 	fs.StringVar(&opts.ClusterType, ClusterRegistrationType, opts.ClusterType,
 		"Specify the cluster type")
+	fs.StringVar(&opts.ClusterSyncMode, ClusterSyncMode, opts.ClusterSyncMode,
+		"Specify the sync mode 'Pull', 'Push' and 'Dual' between parent cluster and child cluster")
 	fs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
 		"Specifies how often the agent posts current child cluster status to parent cluster")
 	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
@@ -127,6 +132,12 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 	if len(opts.ClusterNamePrefix) > ClusterNameMaxLength-DefaultRandomUIDLength-1 {
 		allErrs = append(allErrs, fmt.Errorf("cluster name prefix %s is longer than %d",
 			opts.ClusterName, ClusterNameMaxLength-DefaultRandomUIDLength))
+	}
+
+	switch opts.ClusterSyncMode {
+	case string(clusterapi.Pull), string(clusterapi.Push), string(clusterapi.Dual):
+	default:
+		allErrs = append(allErrs, fmt.Errorf("invalid sync mode %q, only 'Pull', 'Push' and 'Dual' are supported", opts.ClusterSyncMode))
 	}
 
 	// TODO: check bootstrap token

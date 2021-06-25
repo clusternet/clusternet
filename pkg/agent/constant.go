@@ -38,6 +38,9 @@ const (
 	// ClusterRegistrationType flag specifies the cluster type
 	ClusterRegistrationType = "cluster-reg-type"
 
+	// ClusterSyncMode flag specifies the sync mode between parent cluster and child cluster
+	ClusterSyncMode = "cluster-sync-mode"
+
 	// ClusterStatusReportFrequency flag specifies the child cluster status updating frequency
 	ClusterStatusReportFrequency = "cluster-status-update-frequency"
 

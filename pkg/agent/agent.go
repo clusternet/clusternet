@@ -217,7 +217,9 @@ func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) er
 	// create ClusterRegistrationRequest
 	client := clusternetClientSet.NewForConfigOrDie(clientConfig)
 	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
-		newClusterRegistrationRequest(*agent.ClusterID, agent.Options.ClusterType, generateClusterName(agent.Options.ClusterName, agent.Options.ClusterNamePrefix)),
+		newClusterRegistrationRequest(*agent.ClusterID, agent.Options.ClusterType,
+			generateClusterName(agent.Options.ClusterName, agent.Options.ClusterNamePrefix),
+			agent.Options.ClusterSyncMode),
 		metav1.CreateOptions{})
 
 	if err != nil {
@@ -372,7 +374,7 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 	}
 }
 
-func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName string) *clusterapi.ClusterRegistrationRequest {
+func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterSyncMode string) *clusterapi.ClusterRegistrationRequest {
 	return &clusterapi.ClusterRegistrationRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: generateClusterRegistrationRequestName(clusterID),
@@ -386,6 +388,7 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 			ClusterID:   clusterID,
 			ClusterType: clusterapi.ClusterType(clusterType),
 			ClusterName: clusterName,
+			SyncMode:    clusterapi.ClusterSyncMode(clusterSyncMode),
 		},
 	}
 }
