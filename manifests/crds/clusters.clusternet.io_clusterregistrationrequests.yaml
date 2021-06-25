@@ -23,14 +23,14 @@ spec:
   - additionalPrinterColumns:
     - description: The unique id for the cluster
       jsonPath: .spec.clusterId
-      name: Cluster-ID
+      name: CLUSTER ID
       type: string
     - description: The status of current cluster registration request
       jsonPath: .status.result
-      name: Status
+      name: STATUS
       type: string
     - jsonPath: .metadata.creationTimestamp
-      name: Age
+      name: AGE
       type: date
     name: v1beta1
     schema:
@@ -60,6 +60,14 @@ spec:
               clusterType:
                 description: ClusterType denotes the type of the child cluster.
                 type: string
+              syncMode:
+                default: Pull
+                description: SyncMode decides how to sync resources from parent cluster to child cluster.
+                enum:
+                - Push
+                - Pull
+                - Dual
+                type: string
             required:
             - clusterId
             type: object
@@ -71,7 +79,7 @@ spec:
                 format: byte
                 type: string
               dedicatedNamespace:
-                description: DedicatedNamespace is a dedicated namespace for the edge cluster, which is created in the parent cluster.
+                description: DedicatedNamespace is a dedicated namespace for the child cluster, which is created in the parent cluster.
                 type: string
               errorMessage:
                 description: ErrorMessage tells the reason why the request is not approved successfully.
