@@ -198,7 +198,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   annotations:
-    clusters.clusternet.io/rbac-autoupdate: "true"
+    clusternet.io/autoupdate: "true"
   creationTimestamp: "2021-05-24T08:25:07Z"
   labels:
     clusters.clusternet.io/bootstrapping: rbac-defaults
@@ -232,7 +232,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   annotations:
-    clusters.clusternet.io/rbac-autoupdate: "true"
+    clusternet.io/autoupdate: "true"
   creationTimestamp: "2021-05-24T08:25:07Z"
   labels:
     clusters.clusternet.io/bootstrapping: rbac-defaults
