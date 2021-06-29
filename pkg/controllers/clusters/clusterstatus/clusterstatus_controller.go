@@ -24,10 +24,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/version"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/features"
 )
 
 // Controller is a controller that collects cluster status
@@ -37,6 +39,7 @@ type Controller struct {
 	clusterStatus    *clusterapi.ManagedClusterStatus
 	collectingPeriod metav1.Duration
 	apiserverURL     string
+	appPusherEnabled bool
 }
 
 func NewController(apiserverURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration) *Controller {
@@ -45,6 +48,7 @@ func NewController(apiserverURL string, kubeClient kubernetes.Interface, collect
 		lock:             &sync.Mutex{},
 		collectingPeriod: collectingPeriod,
 		apiserverURL:     apiserverURL,
+		appPusherEnabled: utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 	}
 }
 
@@ -67,6 +71,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
+	status.AppPusher = c.appPusherEnabled
 
 	c.setClusterStatus(status)
 }

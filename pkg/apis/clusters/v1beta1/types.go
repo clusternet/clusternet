@@ -188,6 +188,11 @@ type ManagedClusterStatus struct {
 	// Readyz indicates the readyz status of the cluster
 	// +optional
 	Readyz bool `json:"readyz,omitempty"`
+
+	// AppPusher indicates whether to allow parent cluster deploying applications in Push.
+	// Mainly for security concerns.
+	// +optional
+	AppPusher bool `json:"appPusher,omitempty"`
 }
 
 // +genclient
