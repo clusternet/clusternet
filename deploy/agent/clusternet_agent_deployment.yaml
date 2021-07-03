@@ -11,6 +11,13 @@ metadata:
   namespace: clusternet-system
 
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: clusternet-app-deployer
+  namespace: clusternet-system
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -51,5 +58,6 @@ spec:
             - /usr/local/bin/clusternet-agent
             - --cluster-reg-token=$(REG_TOKEN)
             - --cluster-reg-parent-url=$(PARENT_URL)
-            - --feature-gates=SocketConnection=true
+            - --cluster-sync-mode=Dual
+            - --feature-gates=SocketConnection=true,AppPusher=true
             - -v=4

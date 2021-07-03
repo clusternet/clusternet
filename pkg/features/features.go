@@ -32,7 +32,7 @@ const (
 	//
 	// Allow to deploy applications from parent cluster.
 	// Mainly for security concerns of every child cluster.
-	// If a child cluster has disabled AppPusher, the parent cluster won't deploy applications with Push mode.
+	// If a child cluster has disabled AppPusher, the parent cluster won't deploy applications with Push or Dual mode.
 	AppPusher featuregate.Feature = "AppPusher"
 
 	// TODO

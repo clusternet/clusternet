@@ -19,5 +19,5 @@ package known
 // annotations
 const (
 	// AutoUpdateAnnotationKey is the name of an annotation which prevents reconciliation if set to "false"
-	AutoUpdateAnnotationKey = "clusters.clusternet.io/rbac-autoupdate"
+	AutoUpdateAnnotationKey = "clusternet.io/autoupdate"
 )

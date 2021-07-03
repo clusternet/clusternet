@@ -68,6 +68,8 @@ type Agent struct {
 
 	// report cluster status
 	statusManager *Manager
+
+	deployer *Deployer
 }
 
 // NewAgent returns a new Agent.
@@ -94,6 +96,7 @@ func NewAgent(ctx context.Context, childKubeConfigFile string, regOpts *ClusterR
 		childKubeClientSet: childKubeClientSet,
 		Options:            regOpts,
 		statusManager:      NewStatusManager(childKubeConfig.Host, childKubeClientSet, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
+		deployer:           NewDeployer(regOpts.ClusterSyncMode, childKubeConfig.Host, childKubeClientSet),
 	}
 	return agent, nil
 }
@@ -121,6 +124,7 @@ func (agent *Agent) Run() {
 				}
 
 				go agent.statusManager.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster)
+				go agent.deployer.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster, agent.ClusterID)
 			},
 			OnStoppedLeading: func() {
 				klog.Error("leader election got lost")
@@ -171,8 +175,8 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 				klog.Infof("found existing secretFromParentCluster '%s/%s' that can be used to access parent cluster",
 					ClusternetSystemNamespace, ParentClusterSecretName)
 
-				if string(secret.Data[ParentURLKey]) != agent.Options.ParentURL {
-					klog.Warningf("the parent url got changed from %q to %q", secret.Data[ParentURLKey], agent.Options.ParentURL)
+				if string(secret.Data[ClusterAPIServerURLKey]) != agent.Options.ParentURL {
+					klog.Warningf("the parent url got changed from %q to %q", secret.Data[ClusterAPIServerURLKey], agent.Options.ParentURL)
 					klog.Warningf("will try to re-register current cluster")
 				} else {
 					parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.Options.ParentURL,
@@ -217,7 +221,9 @@ func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) er
 	// create ClusterRegistrationRequest
 	client := clusternetClientSet.NewForConfigOrDie(clientConfig)
 	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
-		newClusterRegistrationRequest(*agent.ClusterID, agent.Options.ClusterType, generateClusterName(agent.Options.ClusterName, agent.Options.ClusterNamePrefix)),
+		newClusterRegistrationRequest(*agent.ClusterID, agent.Options.ClusterType,
+			generateClusterName(agent.Options.ClusterName, agent.Options.ClusterNamePrefix),
+			agent.Options.ClusterSyncMode),
 		metav1.CreateOptions{})
 
 	if err != nil {
@@ -323,7 +329,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 			corev1.ServiceAccountRootCAKey:    crr.Status.CACertificate,
 			corev1.ServiceAccountTokenKey:     crr.Status.DedicatedToken,
 			corev1.ServiceAccountNamespaceKey: []byte(crr.Status.DedicatedNamespace),
-			ParentURLKey:                      []byte(agent.Options.ParentURL),
+			ClusterAPIServerURLKey:            []byte(agent.Options.ParentURL),
 		},
 	}
 	agent.secretFromParentCluster = secret
@@ -372,7 +378,7 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 	}
 }
 
-func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName string) *clusterapi.ClusterRegistrationRequest {
+func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterSyncMode string) *clusterapi.ClusterRegistrationRequest {
 	return &clusterapi.ClusterRegistrationRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: generateClusterRegistrationRequestName(clusterID),
@@ -386,6 +392,7 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 			ClusterID:   clusterID,
 			ClusterType: clusterapi.ClusterType(clusterType),
 			ClusterName: clusterName,
+			SyncMode:    clusterapi.ClusterSyncMode(clusterSyncMode),
 		},
 	}
 }

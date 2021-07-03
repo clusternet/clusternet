@@ -24,7 +24,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,6 +41,7 @@ import (
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // CRRApprover defines configuration for ClusterRegistrationRequests approver
@@ -97,7 +97,7 @@ func (crrApprover *CRRApprover) applyDefaultRBACRules() {
 			klog.V(5).Infof("ensure ClusterRole %q...", cr.Name)
 			// make sure this clusterrole gets initialized before we go next
 			for {
-				err := ensureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultBackoff)
+				err := utils.EnsureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultBackoff)
 				if err == nil {
 					break
 				}
@@ -215,7 +215,7 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 
 	// 2. create ManagedCluster object
 	klog.V(5).Infof("create corresponding MangedCluster for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	mc, err := crrApprover.createManagedClusterIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID, crr.Spec.ClusterType)
+	mc, err := crrApprover.createManagedClusterIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID, crr.Spec.ClusterType, crr.Spec.SyncMode)
 	if err != nil {
 		return err
 	}
@@ -302,7 +302,8 @@ func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID
 	return newNs, nil
 }
 
-func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID, clusterType clusterapi.ClusterType) (*clusterapi.ManagedCluster, error) {
+func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID,
+	clusterType clusterapi.ClusterType, clusterSyncMode clusterapi.ClusterSyncMode) (*clusterapi.ManagedCluster, error) {
 	// checks for a existed ManagedCluster object
 	// the clusterName here may vary, we use clusterID as the identifier
 	mcs, err := crrApprover.clusternetclient.ClustersV1beta1().ManagedClusters(namespace).List(crrApprover.ctx, metav1.ListOptions{
@@ -334,6 +335,7 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 		Spec: clusterapi.ManagedClusterSpec{
 			ClusterID:   clusterID,
 			ClusterType: clusterType,
+			SyncMode:    clusterSyncMode,
 		},
 	}
 
@@ -398,7 +400,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 	for _, clusterrole := range clusterRoles {
 		go func(cr rbacv1.ClusterRole) {
 			defer wg.Done()
-			err := ensureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultRetry)
+			err := utils.EnsureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure ClusterRole %q: %v", cr.Name, err))
 			}
@@ -414,7 +416,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 	for _, clusterrole := range clusterRoles {
 		go func(cr rbacv1.ClusterRole) {
 			defer wg.Done()
-			err := ensureClusterRoleBinding(crrApprover.ctx, rbacv1.ClusterRoleBinding{
+			err := utils.EnsureClusterRoleBinding(crrApprover.ctx, rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        cr.Name,
 					Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
@@ -449,7 +451,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 	for _, role := range roles {
 		go func(r rbacv1.Role) {
 			defer wg.Done()
-			err := ensureRole(crrApprover.ctx, r, crrApprover.kubeclient, retry.DefaultRetry)
+			err := utils.EnsureRole(crrApprover.ctx, r, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to ensure Role %q: %v", r.Name, err))
 			}
@@ -466,7 +468,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 	for _, role := range roles {
 		go func(r rbacv1.Role) {
 			defer wg.Done()
-			err := ensureRoleBinding(crrApprover.ctx, rbacv1.RoleBinding{
+			err := utils.EnsureRoleBinding(crrApprover.ctx, rbacv1.RoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        r.Name,
 					Namespace:   r.Namespace,
@@ -489,135 +491,6 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 
 	wg.Wait()
 	return utilerrors.NewAggregate(allErrs)
-}
-
-// ensureClusterRole will make sure desired clusterrole exists and update the rules if available
-func ensureClusterRole(ctx context.Context, clusterrole rbacv1.ClusterRole, client *kubernetes.Clientset, backoff wait.Backoff) error {
-	klog.V(5).Infof("ensure ClusterRole %s...", clusterrole.Name)
-	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
-		_, err := client.RbacV1().ClusterRoles().Create(ctx, &clusterrole, metav1.CreateOptions{})
-		if err == nil {
-			// success on the creating
-			return true, nil
-		}
-		if !errors.IsAlreadyExists(err) {
-			klog.Errorf("failed to create ClusterRole %s: %v, will retry", clusterrole.Name, err)
-			return false, nil
-		}
-
-		// try to auto update existing object
-		cr, err := client.RbacV1().ClusterRoles().Get(ctx, clusterrole.Name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("failed to get ClusterRole %s: %v, will retry", clusterrole.Name, err)
-			return false, nil
-		}
-		if autoUpdate, ok := cr.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
-			_, err = client.RbacV1().ClusterRoles().Update(ctx, &clusterrole, metav1.UpdateOptions{})
-			if err == nil {
-				// success on the updating
-				return true, nil
-			}
-			klog.Errorf("failed to update ClusterRole %s: %v, will retry", clusterrole.Name, err)
-			return false, nil
-		}
-		return true, nil
-	})
-}
-
-func ensureClusterRoleBinding(ctx context.Context, clusterrolebinding rbacv1.ClusterRoleBinding, client *kubernetes.Clientset, backoff wait.Backoff) error {
-	klog.V(5).Infof("ensure ClusterRoleBinding %s...", clusterrolebinding.Name)
-	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
-		_, err := client.RbacV1().ClusterRoleBindings().Create(ctx, &clusterrolebinding, metav1.CreateOptions{})
-		if err == nil {
-			// success on the creating
-			return true, nil
-		}
-		if !errors.IsAlreadyExists(err) {
-			klog.Errorf("failed to create ClusterRoleBinding %s: %v, will retry", clusterrolebinding.Name, err)
-			return false, nil
-		}
-
-		// try to auto update existing object
-		crb, err := client.RbacV1().ClusterRoleBindings().Get(ctx, clusterrolebinding.Name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("failed to get ClusterRoleBinding %s: %v, will retry", clusterrolebinding.Name, err)
-			return false, nil
-		}
-		if autoUpdate, ok := crb.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
-			_, err = client.RbacV1().ClusterRoleBindings().Update(ctx, &clusterrolebinding, metav1.UpdateOptions{})
-			if err == nil {
-				// success on the updating
-				return true, nil
-			}
-			klog.Errorf("failed to update ClusterRoleBinding %s: %v, will retry", clusterrolebinding.Name, err)
-			return false, nil
-		}
-		return true, nil
-	})
-}
-
-func ensureRole(ctx context.Context, role rbacv1.Role, client *kubernetes.Clientset, backoff wait.Backoff) error {
-	klog.V(5).Infof("ensure Role %s/%s...", role.Namespace, role.Name)
-	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
-		_, err := client.RbacV1().Roles(role.Namespace).Create(ctx, &role, metav1.CreateOptions{})
-		if err == nil {
-			// success on the creating
-			return true, nil
-		}
-		if !errors.IsAlreadyExists(err) {
-			klog.ErrorDepth(4, fmt.Errorf("failed to create Role %s/%s: %v, will retry", role.Namespace, role.Name, err))
-			return false, nil
-		}
-
-		// try to auto update existing object
-		r, err := client.RbacV1().Roles(role.Namespace).Get(ctx, role.Name, metav1.GetOptions{})
-		if err != nil {
-			klog.ErrorDepth(4, fmt.Errorf("failed to get Role %s/%s: %v, will retry", role.Namespace, role.Name, err))
-			return false, nil
-		}
-		if autoUpdate, ok := r.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
-			_, err = client.RbacV1().Roles(role.Namespace).Update(ctx, &role, metav1.UpdateOptions{})
-			if err == nil {
-				// success on the updating
-				return true, nil
-			}
-			klog.ErrorDepth(4, fmt.Sprintf("failed to update Role %s/%s: %v, will retry", role.Namespace, role.Name, err))
-			return false, nil
-		}
-		return true, nil
-	})
-}
-
-func ensureRoleBinding(ctx context.Context, rolebinding rbacv1.RoleBinding, client *kubernetes.Clientset, backoff wait.Backoff) error {
-	klog.V(5).Infof("ensure RoleBinding %s/%s...", rolebinding.Namespace, rolebinding.Name)
-	return wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
-		_, err = client.RbacV1().RoleBindings(rolebinding.Namespace).Create(ctx, &rolebinding, metav1.CreateOptions{})
-		if err == nil {
-			// success on the creating
-			return true, nil
-		}
-		if !errors.IsAlreadyExists(err) {
-			klog.Errorf("failed to create RoleBinding %s/%s: %v, will retry", rolebinding.Namespace, rolebinding.Name, err)
-			return false, nil
-		}
-
-		// try to auto update existing object
-		rb, err := client.RbacV1().RoleBindings(rolebinding.Namespace).Get(ctx, rolebinding.Name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("failed to get RoleBinding %s/%s: %v, will retry", rolebinding.Namespace, rolebinding.Name, err)
-			return false, nil
-		}
-		if autoUpdate, ok := rb.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
-			_, err = client.RbacV1().RoleBindings(rolebinding.Namespace).Update(ctx, &rolebinding, metav1.UpdateOptions{})
-			if err == nil {
-				// success on the updating
-				return true, nil
-			}
-			klog.Errorf("failed to update RoleBinding %s/%s: %v, will retry", rolebinding.Namespace, rolebinding.Name, err)
-			return false, nil
-		}
-		return true, nil
-	})
 }
 
 func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clientset, backoff wait.Backoff, saName, saNamespace string) (*corev1.Secret, error) {

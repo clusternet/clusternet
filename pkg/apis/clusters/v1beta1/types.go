@@ -33,6 +33,21 @@ const (
 	// todo: add more types
 )
 
+type ClusterSyncMode string
+
+// These are the valid values for ClusterSyncMode
+const (
+	// Push means that all the resource changes in the parent cluster will be synchronized, pushed and applied to child clusters.
+	Push ClusterSyncMode = "Push"
+
+	// Pull means that the agent, known as 'clusternet-agent', running in the child cluster will watch, synchronize
+	// and apply all the resource changes from the parent cluster to child cluster.
+	Pull ClusterSyncMode = "Pull"
+
+	// Dual combines both Push and Pull mode.
+	Dual ClusterSyncMode = "Dual"
+)
+
 // ClusterRegistrationRequestSpec defines the desired state of ClusterRegistrationRequest
 type ClusterRegistrationRequestSpec struct {
 	// ClusterID, a Random (Version 4) UUID, is a unique value in time and space value representing for child cluster.
@@ -60,11 +75,18 @@ type ClusterRegistrationRequestSpec struct {
 	// +kubebuilder:validation:MaxLength=30
 	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	ClusterName string `json:"clusterName,omitempty"`
+
+	// SyncMode decides how to sync resources from parent cluster to child cluster.
+	//
+	// +optional
+	// +kubebuilder:default=Pull
+	// +kubebuilder:validation:Enum=Push;Pull;Dual
+	SyncMode ClusterSyncMode `json:"syncMode,omitempty"`
 }
 
 // ClusterRegistrationRequestStatus defines the observed state of ClusterRegistrationRequest
 type ClusterRegistrationRequestStatus struct {
-	// DedicatedNamespace is a dedicated namespace for the edge cluster, which is created in the parent cluster.
+	// DedicatedNamespace is a dedicated namespace for the child cluster, which is created in the parent cluster.
 	//
 	// +optional
 	DedicatedNamespace string `json:"dedicatedNamespace,omitempty"`
@@ -113,9 +135,9 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Cluster",shortName=clsrr,categories=clusternet
-// +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
-// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.result`,description="The status of current cluster registration request"
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="CLUSTER ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
+// +kubebuilder:printcolumn:name="STATUS",type=string,JSONPath=`.status.result`,description="The status of current cluster registration request"
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ClusterRegistrationRequest is the Schema for the clusterregistrationrequests API
 type ClusterRegistrationRequest struct {
@@ -154,6 +176,14 @@ type ManagedClusterSpec struct {
 	// +optional
 	// +kubebuilder:validation:Type=string
 	ClusterType ClusterType `json:"clusterType,omitempty"`
+
+	// SyncMode decides how to sync resources from parent cluster to child cluster.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Enum=Push;Pull;Dual
+	SyncMode ClusterSyncMode `json:"syncMode"`
 }
 
 // ManagedClusterStatus defines the observed state of ManagedCluster
@@ -189,7 +219,7 @@ type ManagedClusterStatus struct {
 	// +optional
 	Readyz bool `json:"readyz,omitempty"`
 
-	// AppPusher indicates whether to allow parent cluster deploying applications in Push.
+	// AppPusher indicates whether to allow parent cluster deploying applications in Push or Dual Mode.
 	// Mainly for security concerns.
 	// +optional
 	AppPusher bool `json:"appPusher,omitempty"`
@@ -199,11 +229,12 @@ type ManagedClusterStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope="Namespaced",shortName=mcls,categories=clusternet
-// +kubebuilder:printcolumn:name="Cluster-ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
-// +kubebuilder:printcolumn:name="Cluster-Type",type=string,JSONPath=`.spec.clusterType`,description="The type of the cluster"
-// +kubebuilder:printcolumn:name="Kubernetes",type=string,JSONPath=".status.k8sVersion"
-// +kubebuilder:printcolumn:name="Readyz",type=string,JSONPath=".status.readyz"
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="CLUSTER ID",type=string,JSONPath=`.spec.clusterId`,description="The unique id for the cluster"
+// +kubebuilder:printcolumn:name="CLUSTER TYPE",type=string,JSONPath=`.spec.clusterType`,description="The type of the cluster",priority=100
+// +kubebuilder:printcolumn:name="SYNC MODE",type=string,JSONPath=`.spec.syncMode`,description="The cluster sync mode"
+// +kubebuilder:printcolumn:name="KUBERNETES",type=string,JSONPath=".status.k8sVersion"
+// +kubebuilder:printcolumn:name="READYZ",type=string,JSONPath=".status.readyz"
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ManagedCluster is the Schema for the managedclusters API
 type ManagedCluster struct {
