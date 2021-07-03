@@ -70,6 +70,9 @@ spec:
               apiserverURL:
                 description: APIServerURL indicates the advertising url/address of managed Kubernetes cluster
                 type: string
+              appPusher:
+                description: AppPusher indicates whether to allow parent cluster deploying applications in Push. Mainly for security concerns.
+                type: boolean
               healthz:
                 description: Healthz indicates the healthz status of the cluster which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead. Leave it here only for compatibility.
                 type: boolean

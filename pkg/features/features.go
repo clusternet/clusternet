@@ -28,6 +28,13 @@ const (
 	// Setup/Serve a WebSocket connection.
 	SocketConnection featuregate.Feature = "SocketConnection"
 
+	// alpha: v0.2.0
+	//
+	// Allow to deploy applications from parent cluster.
+	// Mainly for security concerns of every child cluster.
+	// If a child cluster has disabled AppPusher, the parent cluster won't deploy applications with Push mode.
+	AppPusher featuregate.Feature = "AppPusher"
+
 	// TODO
 )
 
@@ -40,4 +47,5 @@ func init() {
 // available throughout Clusternet binaries.
 var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	SocketConnection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	AppPusher:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }
