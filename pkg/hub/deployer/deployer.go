@@ -19,6 +19,7 @@ package deployer
 import (
 	"context"
 	"fmt"
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
@@ -222,6 +223,13 @@ func (deployer *Deployer) populateDescriptionsForHelm(annc *appsapi.Announcement
 	for _, cluster := range clusters {
 		if !cluster.Status.AppPusher {
 			msg := fmt.Sprintf("skip deploying Announcement %s to cluster %s for disabling AppPusher",
+				klog.KObj(annc), cluster.Spec.ClusterID)
+			klog.V(4).Info(msg)
+			deployer.recorder.Event(annc, corev1.EventTypeNormal, "SkipDeploying", msg)
+			continue
+		}
+		if cluster.Spec.SyncMode == clusterapi.Pull {
+			msg := fmt.Sprintf("skip deploying Announcement %s to cluster %s with sync mode setting to Pull",
 				klog.KObj(annc), cluster.Spec.ClusterID)
 			klog.V(4).Info(msg)
 			deployer.recorder.Event(annc, corev1.EventTypeNormal, "SkipDeploying", msg)
