@@ -220,6 +220,14 @@ func (deployer *Deployer) populateDescriptionsForHelm(annc *appsapi.Announcement
 
 	var allErrs []error
 	for _, cluster := range clusters {
+		if !cluster.Status.AppPusher {
+			msg := fmt.Sprintf("skip deploying Announcement %s to cluster %s for disabling AppPusher",
+				klog.KObj(annc), cluster.Spec.ClusterID)
+			klog.V(4).Info(msg)
+			deployer.recorder.Event(annc, corev1.EventTypeNormal, "SkipDeploying", msg)
+			continue
+		}
+
 		description := &appsapi.Description{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      annc.Name,
