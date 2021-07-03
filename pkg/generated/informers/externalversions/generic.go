@@ -20,6 +20,7 @@ package externalversions
 import (
 	"fmt"
 
+	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
@@ -51,7 +52,17 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=clusters.clusternet.io, Version=v1beta1
+	// Group=apps.clusternet.io, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("announcements"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Announcements().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("descriptions"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Descriptions().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("helmcharts"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().HelmCharts().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("helmreleases"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().HelmReleases().Informer()}, nil
+
+		// Group=clusters.clusternet.io, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("clusterregistrationrequests"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Clusters().V1beta1().ClusterRegistrationRequests().Informer()}, nil
 	case v1beta1.SchemeGroupVersion.WithResource("managedclusters"):

@@ -18,6 +18,7 @@ limitations under the License.
 package fake
 
 import (
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	proxiesv1alpha1 "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +32,7 @@ var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 
 var localSchemeBuilder = runtime.SchemeBuilder{
+	appsv1alpha1.AddToScheme,
 	clustersv1beta1.AddToScheme,
 	proxiesv1alpha1.AddToScheme,
 }

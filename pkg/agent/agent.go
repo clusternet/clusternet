@@ -175,8 +175,8 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 				klog.Infof("found existing secretFromParentCluster '%s/%s' that can be used to access parent cluster",
 					ClusternetSystemNamespace, ParentClusterSecretName)
 
-				if string(secret.Data[ClusterAPIServerURLKey]) != agent.Options.ParentURL {
-					klog.Warningf("the parent url got changed from %q to %q", secret.Data[ClusterAPIServerURLKey], agent.Options.ParentURL)
+				if string(secret.Data[known.ClusterAPIServerURLKey]) != agent.Options.ParentURL {
+					klog.Warningf("the parent url got changed from %q to %q", secret.Data[known.ClusterAPIServerURLKey], agent.Options.ParentURL)
 					klog.Warningf("will try to re-register current cluster")
 				} else {
 					parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.Options.ParentURL,
@@ -329,7 +329,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 			corev1.ServiceAccountRootCAKey:    crr.Status.CACertificate,
 			corev1.ServiceAccountTokenKey:     crr.Status.DedicatedToken,
 			corev1.ServiceAccountNamespaceKey: []byte(crr.Status.DedicatedNamespace),
-			ClusterAPIServerURLKey:            []byte(agent.Options.ParentURL),
+			known.ClusterAPIServerURLKey:      []byte(agent.Options.ParentURL),
 		},
 	}
 	agent.secretFromParentCluster = secret

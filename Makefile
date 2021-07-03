@@ -23,13 +23,14 @@ REGISTRY ?= ghcr.io
 
 # Run tests
 .PHONY: test
-test: generated_files vet
+test: generated vet
 	go test ./... -coverprofile cover.out
 
 # Generate CRDs
 .PHONY: crds
 crds: controller-gen
 	@echo "Generating CRDs at manifests/crds"
+	@$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./pkg/apis/apps/..." output:crd:dir=manifests/crds
 	@$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./pkg/apis/clusters/..." output:crd:dir=manifests/crds
 
 # Verify all changes
@@ -66,9 +67,9 @@ tidy:
 # Produce auto-generated files needed for the build.
 #
 # Example:
-#   make generated_files
-.PHONY: generated_files
-generated_files: controller-gen
+#   make generated
+.PHONY: generated
+generated: controller-gen
 	@make crds
 	@./hack/update-codegen.sh
 
@@ -78,7 +79,7 @@ generated_files: controller-gen
 EXCLUDE_TARGET=BUILD OWNERS
 CMD_TARGET = $(filter-out %$(EXCLUDE_TARGET),$(notdir $(abspath $(wildcard cmd/*/))))
 .PHONY: $(CMD_TARGET)
-$(CMD_TARGET): generated_files
+$(CMD_TARGET): generated
 	@hack/make-rules/build.sh $@
 
 # Build Images

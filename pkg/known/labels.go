@@ -22,7 +22,13 @@ const (
 	ClusterIDLabel            = "clusters.clusternet.io/cluster-id"
 	ClusterNameLabel          = "clusters.clusternet.io/cluster-name"
 	ClusterBootstrappingLabel = "clusters.clusternet.io/bootstrapping"
-	ObjectCreatedByLabel      = "clusternet.io/created-by"
+
+	ObjectCreatedByLabel = "clusternet.io/created-by"
+
+	ConfigSourceKindLabel = "apps.clusternet.io/config.kind"
+	ConfigNameLabel       = "apps.clusternet.io/config.name"
+	ConfigNamespaceLabel  = "apps.clusternet.io/config.namespace"
+	ConfigUIDLabel        = "apps.clusternet.io/config.uid"
 )
 
 // label value

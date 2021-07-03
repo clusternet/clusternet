@@ -23,6 +23,7 @@ import (
 	time "time"
 
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	apps "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps"
 	clusters "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -171,7 +172,12 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
+	Apps() apps.Interface
 	Clusters() clusters.Interface
+}
+
+func (f *sharedInformerFactory) Apps() apps.Interface {
+	return apps.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Clusters() clusters.Interface {

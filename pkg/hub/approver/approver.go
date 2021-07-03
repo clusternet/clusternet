@@ -30,7 +30,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	kubeInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corev1Lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
@@ -39,30 +41,49 @@ import (
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterregistrationrequest"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
+	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // CRRApprover defines configuration for ClusterRegistrationRequests approver
 type CRRApprover struct {
-	ctx              context.Context
-	crrController    *clusterregistrationrequest.Controller
+	ctx context.Context
+
+	crrController *clusterregistrationrequest.Controller
+
+	crrLister  clusterListers.ClusterRegistrationRequestLister
+	mclsLister clusterListers.ManagedClusterLister
+
+	nsLister corev1Lister.NamespaceLister
+	saLister corev1Lister.ServiceAccountLister
+
 	kubeclient       *kubernetes.Clientset
 	clusternetclient *clusternetClientSet.Clientset
+
 	socketConnection bool
 }
 
 // NewCRRApprover returns a new CRRApprover for ClusterRegistrationRequest.
-func NewCRRApprover(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetClientSet.Clientset, crrsInformer clusterInformers.ClusterRegistrationRequestInformer, socketConnection bool) (*CRRApprover, error) {
+func NewCRRApprover(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetClientSet.Clientset,
+	clusternetInformerFactory clusternetInformers.SharedInformerFactory, kubeInformerFactory kubeInformers.SharedInformerFactory,
+	socketConnection bool) (*CRRApprover, error) {
 	crrApprover := &CRRApprover{
 		ctx:              ctx,
 		kubeclient:       kubeclient,
 		clusternetclient: clusternetclient,
+		crrLister:        clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests().Lister(),
+		mclsLister:       clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		nsLister:         kubeInformerFactory.Core().V1().Namespaces().Lister(),
+		saLister:         kubeInformerFactory.Core().V1().ServiceAccounts().Lister(),
 		socketConnection: socketConnection,
 	}
 
-	newCRRController, err := clusterregistrationrequest.NewController(ctx, kubeclient, clusternetclient, crrsInformer, crrApprover.handleClusterRegistrationRequests)
+	newCRRController, err := clusterregistrationrequest.NewController(ctx,
+		kubeclient, clusternetclient,
+		clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests(),
+		crrApprover.handleClusterRegistrationRequests)
 	if err != nil {
 		return nil, err
 	}
@@ -265,21 +286,18 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clusterName string) (*corev1.Namespace, error) {
 	// checks for a existed dedicated namespace for child cluster
 	// the clusterName here may vary, we use clusterID as the identifier
-	namespaces, err := crrApprover.kubeclient.CoreV1().Namespaces().List(crrApprover.ctx, metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{
-			known.ObjectCreatedByLabel: known.ClusternetAgentName,
-			known.ClusterIDLabel:       string(clusterID),
-		}).String(),
-	})
+	namespaces, err := crrApprover.nsLister.List(labels.SelectorFromSet(labels.Set{
+		known.ObjectCreatedByLabel: known.ClusternetAgentName,
+		known.ClusterIDLabel:       string(clusterID),
+	}))
 	if err != nil {
 		return nil, err
 	}
-
-	if len(namespaces.Items) > 0 {
-		if len(namespaces.Items) > 1 {
+	if namespaces != nil {
+		if len(namespaces) > 1 {
 			klog.Warningf("found multiple namespaces dedicated for cluster %s !!!", clusterID)
 		}
-		return &namespaces.Items[0], nil
+		return namespaces[0], nil
 	}
 
 	klog.V(4).Infof("no dedicated namespace for cluster %s found, will create a new one", clusterID)
@@ -306,21 +324,18 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 	clusterType clusterapi.ClusterType, clusterSyncMode clusterapi.ClusterSyncMode) (*clusterapi.ManagedCluster, error) {
 	// checks for a existed ManagedCluster object
 	// the clusterName here may vary, we use clusterID as the identifier
-	mcs, err := crrApprover.clusternetclient.ClustersV1beta1().ManagedClusters(namespace).List(crrApprover.ctx, metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{
-			known.ObjectCreatedByLabel: known.ClusternetAgentName,
-			known.ClusterIDLabel:       string(clusterID),
-		}).String(),
-	})
+	mcs, err := crrApprover.mclsLister.List(labels.SelectorFromSet(labels.Set{
+		known.ObjectCreatedByLabel: known.ClusternetAgentName,
+		known.ClusterIDLabel:       string(clusterID),
+	}))
 	if err != nil {
 		return nil, err
 	}
-
-	if len(mcs.Items) > 0 {
-		if len(mcs.Items) > 1 {
+	if mcs != nil {
+		if len(mcs) > 1 {
 			klog.Warningf("found multiple ManagedCluster objects dedicated for cluster %s !!!", clusterID)
 		}
-		return &mcs.Items[0], nil
+		return mcs[0], nil
 	}
 
 	managedCluster := &clusterapi.ManagedCluster{
@@ -352,21 +367,18 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 func (crrApprover *CRRApprover) createServiceAccountIfNeeded(namespace, clusterName string, clusterID types.UID) (*corev1.ServiceAccount, error) {
 	// checks for a existed dedicated service account created for child cluster to access parent cluster
 	// the clusterName here may vary, we use clusterID as the identifier
-	sas, err := crrApprover.kubeclient.CoreV1().ServiceAccounts(namespace).List(crrApprover.ctx, metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{
-			known.ObjectCreatedByLabel: known.ClusternetAgentName,
-			known.ClusterIDLabel:       string(clusterID),
-		}).String(),
-	})
+	sas, err := crrApprover.saLister.List(labels.SelectorFromSet(labels.Set{
+		known.ObjectCreatedByLabel: known.ClusternetAgentName,
+		known.ClusterIDLabel:       string(clusterID),
+	}))
 	if err != nil {
 		return nil, err
 	}
-
-	if len(sas.Items) > 0 {
-		if len(sas.Items) > 1 {
+	if sas != nil {
+		if len(sas) > 1 {
 			klog.Warningf("found multiple service accounts dedicated for cluster %s !!!", clusterID)
 		}
-		return &sas.Items[0], nil
+		return sas[0], nil
 	}
 
 	// no need to use backoff since we use generateName to create new ServiceAccount

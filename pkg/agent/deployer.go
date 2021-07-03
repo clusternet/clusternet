@@ -112,7 +112,7 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 	// create child cluster credentials to parent cluster for app deployer
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      ChildClusterSecretName,
+			Name:      known.ChildClusterSecretName,
 			Namespace: dedicatedNamespace,
 			Labels: map[string]string{
 				known.ClusterRegisteredByLabel: known.ClusternetAgentName,
@@ -127,7 +127,7 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 			corev1.ServiceAccountTokenKey:  secretInChildCluster.Data[corev1.ServiceAccountTokenKey],
 			ServiceAccountNameKey:          []byte(secretInChildCluster.Annotations[corev1.ServiceAccountNameKey]),
 			ServiceAccountUIDKey:           []byte(secretInChildCluster.Annotations[corev1.ServiceAccountUIDKey]),
-			ClusterAPIServerURLKey:         []byte(childAPIServerURL),
+			known.ClusterAPIServerURLKey:   []byte(childAPIServerURL),
 		},
 	}
 

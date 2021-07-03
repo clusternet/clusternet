@@ -53,8 +53,6 @@ const (
 	SelfClusterLeaseName      = "self-cluster"
 	ClusternetSystemNamespace = "clusternet-system"
 	ParentClusterSecretName   = "parent-cluster"
-	ClusterAPIServerURLKey    = "apiserver-advertise-url"
-	ChildClusterSecretName    = "child-cluster-deployer"
 
 	// ServiceAccountNameKey is the key of the required annotation for SecretTypeServiceAccountToken secrets
 	ServiceAccountNameKey = "service-account.name"

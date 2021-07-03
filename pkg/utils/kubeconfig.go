@@ -53,8 +53,8 @@ func createBasicKubeConfig(serverURL, clusterName, userName string, caCert []byt
 	}
 }
 
-// createKubeConfigWithToken creates a KubeConfig object with access to the API server with a token
-func createKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcmdapi.Config {
+// CreateKubeConfigWithToken creates a KubeConfig object with access to the API server with a token
+func CreateKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcmdapi.Config {
 	userName := "clusternet"
 	clusterName := "clusternet-cluster"
 	config := createBasicKubeConfig(serverURL, clusterName, userName, caCert)
@@ -84,7 +84,7 @@ func LoadsKubeConfig(kubeConfigPath string, flowRate int) (*rest.Config, error) 
 
 // GenerateKubeConfigFromToken composes a kubeconfig from token
 func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRate int) (*rest.Config, error) {
-	clientConfig := createKubeConfigWithToken(serverURL, token, caCert)
+	clientConfig := CreateKubeConfigWithToken(serverURL, token, caCert)
 	config, err := clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
