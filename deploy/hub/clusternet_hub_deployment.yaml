@@ -53,5 +53,5 @@ spec:
           command:
             - /usr/local/bin/clusternet-hub
             - --secure-port=443
-            - --feature-gates=SocketConnection=true
+            - --feature-gates=SocketConnection=true,Deployer=true
             - -v=4
