@@ -35,6 +35,11 @@ const (
 	// If a child cluster has disabled AppPusher, the parent cluster won't deploy applications with Push or Dual mode.
 	AppPusher featuregate.Feature = "AppPusher"
 
+	// alpha: v0.2.0
+	//
+	// Works as a deployer that help distribute kinds of resources to a group of clusters
+	Deployer featuregate.Feature = "Deployer"
+
 	// TODO
 )
 
@@ -48,4 +53,5 @@ func init() {
 var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	SocketConnection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	AppPusher:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Deployer:         {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }

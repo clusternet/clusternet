@@ -53,11 +53,13 @@ type Hub struct {
 	clusternetclient          *clusternetClientSet.Clientset
 	deployer                  *deployer.Deployer
 	socketConnection          bool
+	deployerEnabled           bool
 }
 
 // NewHub returns a new Hub.
 func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	socketConnection := utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection)
+	deployerEnabled := utilfeature.DefaultFeatureGate.Enabled(features.Deployer)
 
 	config, err := utils.LoadsKubeConfig(opts.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath, 10)
 	if err != nil {
@@ -88,10 +90,12 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	kubeInformerFactory.Core().V1().Secrets().Informer()
 	clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests().Informer()
 	clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer()
-	clusternetInformerFactory.Apps().V1alpha1().Announcements().Informer()
-	clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
-	clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
-	clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
+	if deployerEnabled {
+		clusternetInformerFactory.Apps().V1alpha1().Announcements().Informer()
+		clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
+		clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
+	}
 
 	hub := &Hub{
 		ctx:                       ctx,
@@ -103,6 +107,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		kubeInformerFactory:       kubeInformerFactory,
 		socketConnection:          socketConnection,
 		deployer:                  deployer,
+		deployerEnabled:           deployerEnabled,
 	}
 
 	// Start the informer factories to begin populating the informer caches
@@ -118,9 +123,11 @@ func (hub *Hub) Run() error {
 		hub.crrApprover.Run(DefaultThreadiness)
 	}()
 
-	go func() {
-		hub.deployer.Run(DefaultThreadiness)
-	}()
+	if hub.deployerEnabled {
+		go func() {
+			hub.deployer.Run(DefaultThreadiness)
+		}()
+	}
 
 	err := hub.RunAPIServer()
 	if err != nil {
