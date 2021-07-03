@@ -28,3 +28,8 @@ const (
 	// ClusterAPIServerURLKey denotes the apiserver address
 	ClusterAPIServerURLKey = "apiserver-advertise-url"
 )
+
+// These are internal finalizer values to Clusternet, must be qualified name.
+const (
+	AppFinalizer string = "apps.clusternet.io/finalizer"
+)

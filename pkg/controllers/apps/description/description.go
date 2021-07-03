@@ -37,6 +37,9 @@ import (
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 )
 
+// controllerKind contains the schema.GroupVersionKind for this controller type.
+var controllerKind = appsapi.SchemeGroupVersion.WithKind("Description")
+
 type SyncHandlerFunc func(description *appsapi.Description) error
 
 // Controller is a controller that handle Description
@@ -59,7 +62,8 @@ type Controller struct {
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	descInformer appInformers.DescriptionInformer, syncHandler SyncHandlerFunc) (*Controller, error) {
+	descInformer appInformers.DescriptionInformer, hrInformer appInformers.HelmReleaseInformer,
+	syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -79,8 +83,10 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		UpdateFunc: c.updateDescription,
 		DeleteFunc: c.deleteDescription,
 	})
-	// TODO
-	// hrInformer
+
+	hrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: c.deleteHelmRelease,
+	})
 
 	return c, nil
 }
@@ -147,6 +153,55 @@ func (c *Controller) deleteDescription(obj interface{}) {
 	}
 	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
 	c.enqueue(desc)
+}
+
+func (c *Controller) deleteHelmRelease(obj interface{}) {
+	hr, ok := obj.(*appsapi.HelmRelease)
+	if !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
+			return
+		}
+		_, ok = tombstone.Obj.(*appsapi.HelmRelease)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a HelmRelease %#v", obj))
+			return
+		}
+	}
+
+	controllerRef := metav1.GetControllerOf(hr)
+	if controllerRef == nil {
+		// No controller should care about orphans being deleted.
+		return
+	}
+	desc := c.resolveControllerRef(hr.Namespace, controllerRef)
+	if desc == nil {
+		return
+	}
+	klog.V(4).Infof("deleting HelmRelease %q", klog.KObj(hr))
+	c.enqueue(desc)
+}
+
+// resolveControllerRef returns the controller referenced by a ControllerRef,
+// or nil if the ControllerRef could not be resolved to a matching controller
+// of the correct Kind.
+func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Description {
+	// We can't look up by UID, so look up by Name and then verify UID.
+	// Don't even try to look up by Name if it's the wrong Kind.
+	if controllerRef.Kind != controllerKind.Kind {
+		return nil
+	}
+	desc, err := c.descLister.Descriptions(namespace).Get(controllerRef.Name)
+	if err != nil {
+		return nil
+	}
+	if desc.UID != controllerRef.UID {
+		// The controller we found with this Name is not the same one that the
+		// ControllerRef points to.
+		return nil
+	}
+	return desc
 }
 
 // runWorker is a long-running function that will continually call the

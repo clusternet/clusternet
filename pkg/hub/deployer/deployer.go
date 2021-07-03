@@ -41,6 +41,7 @@ import (
 	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/hub/deployer/helm"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // Deployer defines configuration for the application deployer
@@ -94,6 +95,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	anncController, err := announcement.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Announcements(),
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		deployer.handleAnnouncement)
 	if err != nil {
 		return nil, err
@@ -103,6 +105,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	descController, err := description.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.handleDescription)
 	if err != nil {
 		return nil, err
@@ -123,6 +126,16 @@ func (deployer *Deployer) Run(workers int) {
 }
 
 func (deployer *Deployer) handleAnnouncement(annc *appsapi.Announcement) error {
+	if annc.DeletionTimestamp != nil {
+		annc.Finalizers = utils.RemoveString(annc.Finalizers, known.AppFinalizer)
+		_, err := deployer.clusternetclient.AppsV1alpha1().Announcements(annc.Namespace).Update(context.TODO(), annc, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Announcement %s: %v", known.AppFinalizer, klog.KObj(annc), err))
+		}
+		return err
+	}
+
 	var charts []*appsapi.HelmChart
 	for _, cs := range annc.Spec.ChartSelectors {
 		chartList, err := deployer.getChartsBySelector(annc, cs)
@@ -220,6 +233,9 @@ func (deployer *Deployer) populateDescriptionsForHelm(annc *appsapi.Announcement
 					known.ConfigNamespaceLabel:  annc.Namespace,
 					known.ConfigUIDLabel:        string(annc.UID),
 				},
+				Finalizers: []string{
+					known.AppFinalizer,
+				},
 			},
 			Spec: appsapi.DescriptionSpec{
 				Deployer: appsapi.DescriptionHelmDeployer,
@@ -252,6 +268,10 @@ func (deployer *Deployer) syncDescriptions(annc *appsapi.Announcement, descripti
 			}
 
 			desc.Spec = description.Spec
+			if !utils.ContainsString(desc.Finalizers, known.AppFinalizer) {
+				desc.Finalizers = append(desc.Finalizers, known.AppFinalizer)
+			}
+
 			_, err = deployer.clusternetclient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(),
 				desc, metav1.UpdateOptions{})
 			if err == nil {
@@ -275,6 +295,16 @@ func (deployer *Deployer) syncDescriptions(annc *appsapi.Announcement, descripti
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
+	if desc.DeletionTimestamp != nil {
+		desc.Finalizers = utils.RemoveString(desc.Finalizers, known.AppFinalizer)
+		_, err := deployer.clusternetclient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(), desc, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(desc), err))
+		}
+		return err
+	}
+
 	if desc.Spec.Deployer == appsapi.DescriptionHelmDeployer {
 		err := deployer.helmDeployer.PopulateHelmRelease(desc)
 		if err != nil {

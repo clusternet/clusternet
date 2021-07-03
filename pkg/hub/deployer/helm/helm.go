@@ -140,6 +140,9 @@ func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
 					known.ConfigNamespaceLabel:  desc.Namespace,
 					known.ConfigUIDLabel:        string(desc.UID),
 				},
+				Finalizers: []string{
+					known.AppFinalizer,
+				},
 				OwnerReferences: []metav1.OwnerReference{
 					{
 						APIVersion:         desc.APIVersion,
@@ -182,6 +185,10 @@ func (hd *HelmDeployer) syncHelmRelease(desc *appsapi.Description, helmRelease *
 			}
 
 			hr.Spec = helmRelease.Spec
+			if !utils.ContainsString(hr.Finalizers, known.AppFinalizer) {
+				hr.Finalizers = append(hr.Finalizers, known.AppFinalizer)
+			}
+
 			_, err = hd.clusternetclient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(),
 				hr, metav1.UpdateOptions{})
 			if err == nil {
@@ -233,7 +240,10 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		if err != nil {
 			return err
 		}
-		// todo: remove finalizer
+
+		hr.Finalizers = utils.RemoveString(hr.Finalizers, known.AppFinalizer)
+		_, err = hd.clusternetclient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(), hr, metav1.UpdateOptions{})
+		return err
 	}
 
 	// install or upgrade helm release

@@ -24,6 +24,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -35,7 +37,12 @@ import (
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
+
+// controllerKind contains the schema.GroupVersionKind for this controller type.
+var controllerKind = appsapi.SchemeGroupVersion.WithKind("Announcement")
 
 type SyncHandlerFunc func(announcement *appsapi.Announcement) error
 
@@ -55,11 +62,15 @@ type Controller struct {
 	anncLister appListers.AnnouncementLister
 	anncSynced cache.InformerSynced
 
+	descLister appListers.DescriptionLister
+	descSynced cache.InformerSynced
+
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	anncInformer appInformers.AnnouncementInformer, syncHandler SyncHandlerFunc) (*Controller, error) {
+	anncInformer appInformers.AnnouncementInformer, descInformer appInformers.DescriptionInformer,
+	syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -70,6 +81,8 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "announcement"),
 		anncLister:       anncInformer.Lister(),
 		anncSynced:       anncInformer.Informer().HasSynced,
+		descLister:       descInformer.Lister(),
+		descSynced:       descInformer.Informer().HasSynced,
 		SyncHandler:      syncHandler,
 	}
 
@@ -78,6 +91,10 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		AddFunc:    c.addAnnouncement,
 		UpdateFunc: c.updateAnnouncement,
 		DeleteFunc: c.deleteAnnouncement,
+	})
+
+	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: c.deleteDescription,
 	})
 
 	return c, nil
@@ -96,7 +113,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.anncSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.anncSynced, c.descSynced) {
 		return
 	}
 
@@ -112,7 +129,27 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addAnnouncement(obj interface{}) {
 	annc := obj.(*appsapi.Announcement)
 	klog.V(4).Infof("adding Announcement %q", klog.KObj(annc))
-	c.Enqueue(annc)
+
+	// add finalizer
+	if annc.DeletionTimestamp == nil {
+		if !utils.ContainsString(annc.Finalizers, known.AppFinalizer) {
+			annc.Finalizers = append(annc.Finalizers, known.AppFinalizer)
+		}
+		_, err := c.clusternetClient.AppsV1alpha1().Announcements(annc.Namespace).Update(context.TODO(),
+			annc, metav1.UpdateOptions{})
+		if err == nil {
+			msg := fmt.Sprintf("successfully inject finalizer %s to Announcement %s", known.AppFinalizer, klog.KObj(annc))
+			klog.V(4).Info(msg)
+			// todo: add recorder
+		} else {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to inject finalizer %s to Announcement %s: %v", known.AppFinalizer, klog.KObj(annc), err))
+			c.addAnnouncement(obj)
+			return
+		}
+	}
+
+	c.enqueue(annc)
 }
 
 func (c *Controller) updateAnnouncement(old, cur interface{}) {
@@ -126,7 +163,7 @@ func (c *Controller) updateAnnouncement(old, cur interface{}) {
 	}
 
 	klog.V(4).Infof("updating Announcement %q", klog.KObj(oldAnnc))
-	c.Enqueue(newAnnc)
+	c.enqueue(newAnnc)
 }
 
 func (c *Controller) deleteAnnouncement(obj interface{}) {
@@ -143,8 +180,88 @@ func (c *Controller) deleteAnnouncement(obj interface{}) {
 			return
 		}
 	}
+
+	descs, err := c.descLister.List(labels.SelectorFromSet(labels.Set{
+		known.ConfigSourceKindLabel: annc.Kind,
+		known.ConfigNameLabel:       annc.Name,
+		known.ConfigNamespaceLabel:  annc.Namespace,
+	}))
+	if err == nil {
+		// delete all matching Description
+		var allErrors []error
+		deletePropagationBackground := metav1.DeletePropagationBackground
+		for _, desc := range descs {
+			if desc.DeletionTimestamp != nil {
+				continue
+			}
+			err = c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Delete(context.TODO(), desc.Name, metav1.DeleteOptions{
+				PropagationPolicy: &deletePropagationBackground,
+			})
+			if err != nil {
+				allErrors = append(allErrors, err)
+			}
+		}
+
+		if len(allErrors) > 0 {
+			c.deleteAnnouncement(obj)
+			return
+		}
+	} else {
+		c.deleteAnnouncement(obj)
+		return
+	}
+
 	klog.V(4).Infof("deleting Announcement %q", klog.KObj(annc))
-	c.Enqueue(annc)
+	c.enqueue(annc)
+}
+
+func (c *Controller) deleteDescription(obj interface{}) {
+	desc, ok := obj.(*appsapi.Description)
+	if !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
+			return
+		}
+		_, ok = tombstone.Obj.(*appsapi.Description)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
+			return
+		}
+	}
+
+	controllerRef := &metav1.OwnerReference{
+		Kind: desc.Labels[known.ConfigUIDLabel],
+		Name: desc.Labels[known.ConfigNameLabel],
+		UID:  types.UID(desc.Labels[known.ConfigUIDLabel]),
+	}
+	annc := c.resolveControllerRef(desc.Labels[known.ConfigNamespaceLabel], controllerRef)
+	if annc == nil {
+		return
+	}
+	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
+	c.enqueue(annc)
+}
+
+// resolveControllerRef returns the controller referenced by a ControllerRef,
+// or nil if the ControllerRef could not be resolved to a matching controller
+// of the correct Kind.
+func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Announcement {
+	// We can't look up by UID, so look up by Name and then verify UID.
+	// Don't even try to look up by Name if it's the wrong Kind.
+	if controllerRef.Kind != controllerKind.Kind {
+		return nil
+	}
+	annc, err := c.anncLister.Announcements(namespace).Get(controllerRef.Name)
+	if err != nil {
+		return nil
+	}
+	if annc.UID != controllerRef.UID {
+		// The controller we found with this Name is not the same one that the
+		// ControllerRef points to.
+		return nil
+	}
+	return annc
 }
 
 // runWorker is a long-running function that will continually call the
@@ -265,10 +382,10 @@ func (c *Controller) UpdateAnnouncementStatus(annc *appsapi.Announcement, status
 	})
 }
 
-// Enqueue takes a Announcement resource and converts it into a namespace/name
+// enqueue takes a Announcement resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
 // passed resources of any type other than Announcement.
-func (c *Controller) Enqueue(annc *appsapi.Announcement) {
+func (c *Controller) enqueue(annc *appsapi.Announcement) {
 	key, err := cache.MetaNamespaceKeyFunc(annc)
 	if err != nil {
 		utilruntime.HandleError(err)
