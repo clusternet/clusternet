@@ -1,5 +1,12 @@
 # Clusternet
 
+[![GoPkg Widget](https://pkg.go.dev/badge/github.com/clusternet/clusternet.svg)](https://pkg.go.dev/github.com/clusternet/clusternet)
+[![License](https://img.shields.io/github/license/clusternet/clusternet)](https://www.apache.org/licenses/LICENSE-2.0.html)
+![GoVersion](https://img.shields.io/github/go-mod/go-version/clusternet/clusternet)
+[![Go Report Card](https://goreportcard.com/badge/github.com/clusternet/clusternet)](https://goreportcard.com/report/github.com/clusternet/clusternet)
+![build](https://github.com/clusternet/clusternet/actions/workflows/ci.yml/badge.svg)
+[![Version](https://img.shields.io/github/v/release/clusternet/clusternet)](https://github.com/clusternet/clusternet/releases)
+
 ----
 
 Managing Your Clusters (including public, private, hybrid, edge, etc) as easily as Visiting the Internet.
@@ -137,7 +144,7 @@ And then create a bootstrap token for `clusternet-agent`,
 
 ```bash
 # this will create a bootstrap token 07401b.f395accd246ae52d
-$ kubectl apply -f manifests/samples
+$ kubectl apply -f manifests/samples/cluster_bootstrap_token.yaml
 ```
 
 ### For `clusternet-agent`
@@ -334,13 +341,15 @@ or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/direct` at the end
 - `SERVER-URL` is the apiserver address of your child cluster, it could be `localhost`, `127.0.0.1` and etc, only if
   `clusternet-agent` could access.
 
-Currently Clusternet only support http scheme. If your child clusters are running with https scheme, you could run a
+> :pushpin: :pushpin: Note:
+>
+> Currently Clusternet only support http scheme. If your child clusters are running with https scheme, you could run a
 local proxy instead, for example,
-
-```bash
-kubectl proxy --address='10.212.0.7' --accept-hosts='^*$'
-```
-
-Please replace `10.212.0.7` with your real local IP address.
-
-Then you can visit child cluster as usual.
+>
+> ```bash
+> kubectl proxy --address='10.212.0.7' --accept-hosts='^*$'
+> ```
+>
+> Please replace `10.212.0.7` with your real local IP address.
+>
+> Then you can visit child cluster as usual.
