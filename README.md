@@ -18,6 +18,9 @@ Kubernetes clusters as easily as visiting the Internet. No matter the clusters a
 private cloud, hybrid cloud, or at the edge, Clusternet lets you manage/visit them all as if they were running locally.
 This also help eliminate the need to juggle different management tools for each cluster.
 
+**Clusternet can also help deploy and coordinate applications to multiple clusters from a single set of APIs in a hosting
+cluster.**
+
 Clusternet will help setup network tunnels in a configurable way, when your clusters are running in a VPC
 network, at the edge, or behind a firewall.
 
@@ -28,6 +31,22 @@ Clusternet is multiple platforms supported now, including
 
 - `darwin/amd64` and `darwin/arm64`;
 - `linux/amd64`, `linux/arm64`, `linux/ppc64le`, `linux/s390x`, `linux/386` and `linux/arm`;
+
+----
+
+- [Architecture](#architecture)
+- [Concepts](#concepts)
+- [Contributing & Developing](#contributing-developing)
+- [Getting Started](#getting-started)
+  - [Deploying Clusternet](#deploying-clusternet)
+    - [Deploying `clusternet-hub` in parent cluster](#deploying-clusternet-hub-in-parent-cluster)
+    - [Deploying `clusternet-agent` in child cluster](#deploying-clusternet-agent-in-child-cluster)
+  - [Check Cluster Registrations](#check-cluster-registrations)
+  - [Check ManagedCluster Status](#check-managedcluster-status)
+  - [Visit ManagedCluster](#visit-managedcluster)
+  - [Deploying Helm Charts to Multiple Clusters](#deploying-helm-charts-to-multiple-clusters)
+
+----
 
 # Architecture
 
@@ -59,82 +78,24 @@ child clusters are registerring to, we call it **parent cluster**.
 - `ClusterRegistrationRequest` is an object that `clusternet-agent` creates in parent cluster for child cluster registration.
 - `ManagedCluster` is an object that `clusternet-hub` creates in parent cluster after approving `ClusterRegistrationRequest`.
 
-# Building
+# Contributing & Developing
 
-## Building Binaries
+If you want to get participated and become a contributor to Clusternet, please don't hesitate to refer to our
+[CONTRIBUTING](CONTRIBUTING.md) document for details.
 
-Clone the repository, and run
+A [developer guide](./docs/developer-guide.md) is ready to help you
 
-```bash
-# build for linux/amd64 by default
-$ make clusternet-agent clusternet-hub
-```
-
-to build binaries `clusternet-agent` and `clusternet-hub` for `linux/amd64`.
-
-Also you could specify other platforms when building, such as,
-
-```bash
-# build only clusternet-agent for linux/arm64 and darwin/amd64
-# use comma to separate multiple platforms
-$ PLATFORMS=linux/arm64,darwin/amd64 make clusternet-agent
-# below are all the supported platforms
-# PLATFORMS=darwin/amd64,darwin/arm64,linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm
-```
-
-All the built binaries will be placed at `_output` folder.
-
-## Building Docker Images
-
-You can also build docker images. Here `docker buildx` is used to help build multi-arch container images.
-
-If you're running MacOS, please install [Docker Desktop](https://docs.docker.com/desktop/) and then check the builder,
-
-```bash
-$ docker buildx ls
-NAME/NODE DRIVER/ENDPOINT STATUS  PLATFORMS
-default * docker
-  default default         running linux/amd64, linux/arm64, linux/ppc64le, linux/s390x, linux/386, linux/arm/v7, linux/arm/v6
-```
-
-If you're running Linux, please refer to [docker buildx docs](https://docs.docker.com/buildx/working-with-buildx/)
-on the installation.
-
-> Note:
->
-> For better `docker buildx` support, it is recommended to use Ubuntu Focal 20.04 (LTS), Debian Bullseye 11 and CentOS 8.
->
-> And install deb/rpm package `qemu-user-static` as well, such as
-> ```bash
-> apt-get install qemu-user-static
-> ```
-> or
-> ```bash
-> yum install qemu-user-static
-> ```
-
-```bash
-# build for linux/amd64 by default
-# container images for clusternet-agent and clusternet-hub
-$ make images
-```
-
-Also you could build container images for other platforms, such as `arm64`,
-
-```bash
-$ PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le make images
-# below are all the supported platforms
-# PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm
-```
+- build binaries for all platforms, such as `darwin/amd64`, `linux/amd64`, `linux/arm64`, etc;
+- build docker images for multiple platforms, such as `linux/amd64`, `linux/arm64`, etc;
 
 # Getting Started
 
-## Deploy Clusternet
+## Deploying Clusternet
 
 You need to deploy `clusternet-agent` and `clusternet-hub` in child cluster and parent cluster
 respectively.
 
-### For `clusternet-hub`
+### Deploying `clusternet-hub` in parent cluster
 
 ```bash
 kubectl apply -f deploy/hub
@@ -147,7 +108,7 @@ And then create a bootstrap token for `clusternet-agent`,
 $ kubectl apply -f manifests/samples/cluster_bootstrap_token.yaml
 ```
 
-### For `clusternet-agent`
+### Deploying `clusternet-agent` in child cluster
 
 First we need to create a secret, which contains token for cluster registration,
 
@@ -175,15 +136,11 @@ $ kubectl get clsrr clusternet-dc91021d-2361-4f6d-a404-7c33b9e01118 -o yaml
 apiVersion: clusters.clusternet.io/v1beta1
 kind: ClusterRegistrationRequest
 metadata:
-  creationTimestamp: "2021-05-24T08:24:40Z"
-  generation: 1
   labels:
     clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118
     clusters.clusternet.io/cluster-name: clusternet-cluster-dzqkw
     clusters.clusternet.io/registered-by: clusternet-agent
   name: clusternet-dc91021d-2361-4f6d-a404-7c33b9e01118
-  resourceVersion: "553624"
-  uid: 8531ee8a-c66a-439e-bb5a-3adacfe58952
 spec:
   clusterId: dc91021d-2361-4f6d-a404-7c33b9e01118
   clusterName: clusternet-cluster-dzqkw
@@ -206,14 +163,11 @@ kind: ClusterRole
 metadata:
   annotations:
     clusternet.io/autoupdate: "true"
-  creationTimestamp: "2021-05-24T08:25:07Z"
   labels:
     clusters.clusternet.io/bootstrapping: rbac-defaults
     clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118
     clusternet.io/created-by: clusternet-hub
   name: clusternet-dc91021d-2361-4f6d-a404-7c33b9e01118
-  resourceVersion: "553619"
-  uid: 87db2e72-f4c1-4628-9373-1536ed7fd4af
 rules:
   - apiGroups:
       - clusters.clusternet.io
@@ -240,14 +194,11 @@ kind: Role
 metadata:
   annotations:
     clusternet.io/autoupdate: "true"
-  creationTimestamp: "2021-05-24T08:25:07Z"
   labels:
     clusters.clusternet.io/bootstrapping: rbac-defaults
     clusternet.io/created-by: clusternet-hub
   name: clusternet-managedcluster-role
   namespace: clusternet-dhxfs
-  resourceVersion: "553622"
-  uid: 7524b743-57f3-4a45-a6cd-ceb3321fe2ff
 rules:
   - apiGroups:
       - '*'
@@ -265,25 +216,21 @@ rules:
 # or append "-o wide" to display extra columns
 $ kubectl get mcls -A -o wide
 NAMESPACE          NAME                       CLUSTER ID                             CLUSTER TYPE                 SYNC MODE   KUBERNETES   READYZ   AGE
-clusternet-dhxfs   clusternet-cluster-dzqkw   dc91021d-2361-4f6d-a404-7c33b9e01118   EdgeClusterSelfProvisioned   Pull        v1.19.10     true     7d23h
+clusternet-dhxfs   clusternet-cluster-dzqkw   dc91021d-2361-4f6d-a404-7c33b9e01118   EdgeClusterSelfProvisioned   Dual        v1.19.10     true     7d23h
 $ kubectl get mcls -n clusternet-dhxfs   clusternet-cluster-dzqkw -o yaml
 apiVersion: clusters.clusternet.io/v1beta1
 kind: ManagedCluster
 metadata:
-  creationTimestamp: "2021-05-24T08:25:07Z"
-  generation: 1
   labels:
     clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118
     clusters.clusternet.io/cluster-name: clusternet-cluster-dzqkw
     clusternet.io/created-by: clusternet-agent
   name: clusternet-cluster-dzqkw
   namespace: clusternet-dhxfs
-  resourceVersion: "555091"
-  uid: e7e7fb5f-1a00-4e4e-aa02-2e943e37e4ff
 spec:
   clusterId: dc91021d-2361-4f6d-a404-7c33b9e01118
   clusterType: EdgeClusterSelfProvisioned
-  syncMode: Pull
+  syncMode: Dual
 status:
   healthz: true
   k8sVersion: v1.19.10
@@ -353,3 +300,107 @@ local proxy instead, for example,
 > Please replace `10.212.0.7` with your real local IP address.
 >
 > Then you can visit child cluster as usual.
+
+## Deploying Helm Charts to Multiple Clusters
+
+Currently you can deploy Helm Chart to multiple clusters.
+
+> :pushpin: :pushpin: Note:
+> Feature gate `Deployer` should be enabled by `clusternet-hub`. Also the child cluster should be registered with syncMode
+> `Push` or `Dual` by flag `--cluster-sync-mode` when starting `clusternet-agent`.
+
+```bash
+# first we need to define a helm chart
+$ cat manifests/samples/helm_chart.yaml
+apiVersion: apps.clusternet.io/v1alpha1
+kind: HelmChart
+metadata:
+  name: mysql
+  namespace: default
+spec:
+  repo: https://charts.bitnami.com/bitnami
+  chart: mysql
+  version: 8.6.2
+  targetNamespace: abc
+
+---
+apiVersion: apps.clusternet.io/v1alpha1
+kind: HelmChart
+metadata:
+  name: wordpress
+  namespace: default
+  labels:
+    app: wordpress
+spec:
+  repo: https://charts.bitnami.com/bitnami
+  chart: wordpress
+  version: 11.0.17
+  targetNamespace: abc
+$ kubectl apply -f manifests/samples/helm_chart.yaml
+helmchart.apps.clusternet.io/mysql created
+helmchart.apps.clusternet.io/wordpress created
+```
+
+Then you can verify the status of those defined `HelmChart`,
+
+```bash
+$ kubectl get chart -n default
+NAME        CHART       VERSION   REPO                                 STATUS   AGE
+mysql       mysql       8.6.2     https://charts.bitnami.com/bitnami   Found    62s
+wordpress   wordpress   11.0.17   https://charts.bitnami.com/bitnami   Found    62s
+```
+
+Next, we only need to define a `Subscription` objects to specify the clusters and charts we want to deploy to,
+
+```bash
+$ cat manifests/samples/subscription.yaml
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Subscription
+metadata:
+  name: helm-demo
+  namespace: default
+spec:
+  subscribers:
+    - clusterAffinity:
+        matchLabels:
+          clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118 # PLEASE UPDATE THIS CLUSTER-ID!!!
+  feeds:
+    - apiVersion: apps.clusternet.io/v1alpha1
+      kind: HelmChart
+      name: mysql
+      namespace: default
+    - apiVersion: apps.clusternet.io/v1alpha1
+      kind: HelmChart
+      namespace: default
+      feedSelector:
+        matchLabels:
+          app: wordpress
+$ kubectl apply -f manifests/samples/subscription.yaml
+subscription.apps.clusternet.io/helm-demo created
+```
+
+`Clusternet` will handle the rest installations of Helm charts. You can check the status by following commands,
+
+```bash
+# list Subscription
+$ kubectl get subs -n default
+NAME        AGE
+helm-demo   33m
+$ kubectl get mcls -A
+NAMESPACE          NAME                       CLUSTER ID                             SYNC MODE   KUBERNETES   READYZ   AGE
+clusternet-5l82l   clusternet-cluster-hx455   dc91021d-2361-4f6d-a404-7c33b9e01118   Dual        v1.21.0      true     5d22h
+# list Helm Release
+$ kubectl get hr -n clusternet-5l82l
+NAME                  CHART       VERSION   REPO                                 STATUS     AGE
+helm-demo-mysql       mysql       8.6.2     https://charts.bitnami.com/bitnami   deployed   3m38s
+helm-demo-wordpress   wordpress   11.0.17   https://charts.bitnami.com/bitnami   deployed   3m38s
+```
+
+You can also verify the installation with Helm command line in your child cluster,
+
+```bash
+$ helm ls -n abc
+NAME               	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART            	APP VERSION
+helm-demo-mysql    	abc      	1       	2021-07-06 14:34:44.188938 +0800 CST	deployed	mysql-8.6.2      	8.0.25
+helm-demo-wordpress	abc      	1       	2021-07-06 14:34:45.698345 +0800 CST	deployed	wordpress-11.0.17	5.7.2
+```
