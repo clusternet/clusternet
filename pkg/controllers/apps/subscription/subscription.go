@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package announcement
+package subscription
 
 import (
 	"context"
@@ -42,11 +42,11 @@ import (
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
-var controllerKind = appsapi.SchemeGroupVersion.WithKind("Announcement")
+var controllerKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
 
-type SyncHandlerFunc func(announcement *appsapi.Announcement) error
+type SyncHandlerFunc func(subscription *appsapi.Subscription) error
 
-// Controller is a controller that handle Announcement
+// Controller is a controller that handle Subscription
 type Controller struct {
 	ctx context.Context
 
@@ -59,8 +59,8 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	anncLister appListers.AnnouncementLister
-	anncSynced cache.InformerSynced
+	subsLister appListers.SubscriptionLister
+	subsSynced cache.InformerSynced
 
 	descLister appListers.DescriptionLister
 	descSynced cache.InformerSynced
@@ -69,7 +69,7 @@ type Controller struct {
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	anncInformer appInformers.AnnouncementInformer, descInformer appInformers.DescriptionInformer,
+	subsInformer appInformers.SubscriptionInformer, descInformer appInformers.DescriptionInformer,
 	syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
@@ -78,19 +78,19 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 	c := &Controller{
 		ctx:              ctx,
 		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "announcement"),
-		anncLister:       anncInformer.Lister(),
-		anncSynced:       anncInformer.Informer().HasSynced,
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "subscription"),
+		subsLister:       subsInformer.Lister(),
+		subsSynced:       subsInformer.Informer().HasSynced,
 		descLister:       descInformer.Lister(),
 		descSynced:       descInformer.Informer().HasSynced,
 		SyncHandler:      syncHandler,
 	}
 
-	// Manage the addition/update of Announcement
-	anncInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addAnnouncement,
-		UpdateFunc: c.updateAnnouncement,
-		DeleteFunc: c.deleteAnnouncement,
+	// Manage the addition/update of Subscription
+	subsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addSubscription,
+		UpdateFunc: c.updateSubscription,
+		DeleteFunc: c.deleteSubscription,
 	})
 
 	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -108,17 +108,17 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.workqueue.ShutDown()
 
-	klog.Info("starting announcement controller...")
-	defer klog.Info("shutting down announcement controller")
+	klog.Info("starting subscription controller...")
+	defer klog.Info("shutting down subscription controller")
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.anncSynced, c.descSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.subsSynced, c.descSynced) {
 		return
 	}
 
 	klog.V(5).Infof("starting %d worker threads", workers)
-	// Launch workers to process Announcement resources
+	// Launch workers to process Subscription resources
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
@@ -126,65 +126,65 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (c *Controller) addAnnouncement(obj interface{}) {
-	annc := obj.(*appsapi.Announcement)
-	klog.V(4).Infof("adding Announcement %q", klog.KObj(annc))
+func (c *Controller) addSubscription(obj interface{}) {
+	subs := obj.(*appsapi.Subscription)
+	klog.V(4).Infof("adding Subscription %q", klog.KObj(subs))
 
 	// add finalizer
-	if annc.DeletionTimestamp == nil {
-		if !utils.ContainsString(annc.Finalizers, known.AppFinalizer) {
-			annc.Finalizers = append(annc.Finalizers, known.AppFinalizer)
+	if subs.DeletionTimestamp == nil {
+		if !utils.ContainsString(subs.Finalizers, known.AppFinalizer) {
+			subs.Finalizers = append(subs.Finalizers, known.AppFinalizer)
 		}
-		_, err := c.clusternetClient.AppsV1alpha1().Announcements(annc.Namespace).Update(context.TODO(),
-			annc, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subs.Namespace).Update(context.TODO(),
+			subs, metav1.UpdateOptions{})
 		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Announcement %s", known.AppFinalizer, klog.KObj(annc))
+			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(subs))
 			klog.V(4).Info(msg)
 			// todo: add recorder
 		} else {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to inject finalizer %s to Announcement %s: %v", known.AppFinalizer, klog.KObj(annc), err))
-			c.addAnnouncement(obj)
+				fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err))
+			c.addSubscription(obj)
 			return
 		}
 	}
 
-	c.enqueue(annc)
+	c.enqueue(subs)
 }
 
-func (c *Controller) updateAnnouncement(old, cur interface{}) {
-	oldAnnc := old.(*appsapi.Announcement)
-	newAnnc := cur.(*appsapi.Announcement)
+func (c *Controller) updateSubscription(old, cur interface{}) {
+	oldSubs := old.(*appsapi.Subscription)
+	newSubs := cur.(*appsapi.Subscription)
 
 	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldAnnc.Spec, newAnnc.Spec) {
-		klog.V(4).Infof("no updates on the spec of Announcement %q, skipping syncing", oldAnnc.Name)
+	if reflect.DeepEqual(oldSubs.Spec, newSubs.Spec) {
+		klog.V(4).Infof("no updates on the spec of Subscription %q, skipping syncing", oldSubs.Name)
 		return
 	}
 
-	klog.V(4).Infof("updating Announcement %q", klog.KObj(oldAnnc))
-	c.enqueue(newAnnc)
+	klog.V(4).Infof("updating Subscription %q", klog.KObj(oldSubs))
+	c.enqueue(newSubs)
 }
 
-func (c *Controller) deleteAnnouncement(obj interface{}) {
-	annc, ok := obj.(*appsapi.Announcement)
+func (c *Controller) deleteSubscription(obj interface{}) {
+	subs, ok := obj.(*appsapi.Subscription)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Announcement)
+		_, ok = tombstone.Obj.(*appsapi.Subscription)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Announcement %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Subscription %#v", obj))
 			return
 		}
 	}
 
 	descs, err := c.descLister.List(labels.SelectorFromSet(labels.Set{
-		known.ConfigSourceKindLabel: annc.Kind,
-		known.ConfigNameLabel:       annc.Name,
-		known.ConfigNamespaceLabel:  annc.Namespace,
+		known.ConfigSourceKindLabel: subs.Kind,
+		known.ConfigNameLabel:       subs.Name,
+		known.ConfigNamespaceLabel:  subs.Namespace,
 	}))
 	if err == nil {
 		// delete all matching Description
@@ -203,16 +203,16 @@ func (c *Controller) deleteAnnouncement(obj interface{}) {
 		}
 
 		if len(allErrors) > 0 {
-			c.deleteAnnouncement(obj)
+			c.deleteSubscription(obj)
 			return
 		}
 	} else {
-		c.deleteAnnouncement(obj)
+		c.deleteSubscription(obj)
 		return
 	}
 
-	klog.V(4).Infof("deleting Announcement %q", klog.KObj(annc))
-	c.enqueue(annc)
+	klog.V(4).Infof("deleting Subscription %q", klog.KObj(subs))
+	c.enqueue(subs)
 }
 
 func (c *Controller) deleteDescription(obj interface{}) {
@@ -235,33 +235,33 @@ func (c *Controller) deleteDescription(obj interface{}) {
 		Name: desc.Labels[known.ConfigNameLabel],
 		UID:  types.UID(desc.Labels[known.ConfigUIDLabel]),
 	}
-	annc := c.resolveControllerRef(desc.Labels[known.ConfigNamespaceLabel], controllerRef)
-	if annc == nil {
+	subs := c.resolveControllerRef(desc.Labels[known.ConfigNamespaceLabel], controllerRef)
+	if subs == nil {
 		return
 	}
 	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
-	c.enqueue(annc)
+	c.enqueue(subs)
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
 // or nil if the ControllerRef could not be resolved to a matching controller
 // of the correct Kind.
-func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Announcement {
+func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Subscription {
 	// We can't look up by UID, so look up by Name and then verify UID.
 	// Don't even try to look up by Name if it's the wrong Kind.
 	if controllerRef.Kind != controllerKind.Kind {
 		return nil
 	}
-	annc, err := c.anncLister.Announcements(namespace).Get(controllerRef.Name)
+	subs, err := c.subsLister.Subscriptions(namespace).Get(controllerRef.Name)
 	if err != nil {
 		return nil
 	}
-	if annc.UID != controllerRef.UID {
+	if subs.UID != controllerRef.UID {
 		// The controller we found with this Name is not the same one that the
 		// ControllerRef points to.
 		return nil
 	}
-	return annc
+	return subs
 }
 
 // runWorker is a long-running function that will continually call the
@@ -306,7 +306,7 @@ func (c *Controller) processNextWorkItem() bool {
 			return nil
 		}
 		// Run the syncHandler, passing it the namespace/name string of the
-		// Announcement resource to be synced.
+		// Subscription resource to be synced.
 		if err := c.syncHandler(key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
@@ -315,7 +315,7 @@ func (c *Controller) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("successfully synced Announcement %q", key)
+		klog.Infof("successfully synced Subscription %q", key)
 		return nil
 	}(obj)
 
@@ -328,7 +328,7 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 // syncHandler compares the actual state with the desired, and attempts to
-// converge the two. It then updates the Status block of the Announcement resource
+// converge the two. It then updates the Status block of the Subscription resource
 // with the current status of the resource.
 func (c *Controller) syncHandler(key string) error {
 	// If an error occurs during handling, we'll requeue the item so we can
@@ -342,51 +342,51 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	klog.V(4).Infof("start processing Announcement %q", key)
-	// Get the Announcement resource with this name
-	annc, err := c.anncLister.Announcements(ns).Get(name)
-	// The Announcement resource may no longer exist, in which case we stop processing.
+	klog.V(4).Infof("start processing Subscription %q", key)
+	// Get the Subscription resource with this name
+	subs, err := c.subsLister.Subscriptions(ns).Get(name)
+	// The Subscription resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
-		klog.V(2).Infof("Announcement %q has been deleted", key)
+		klog.V(2).Infof("Subscription %q has been deleted", key)
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	return c.SyncHandler(annc)
+	return c.SyncHandler(subs)
 }
 
-func (c *Controller) UpdateAnnouncementStatus(annc *appsapi.Announcement, status *appsapi.AnnouncementStatus) error {
+func (c *Controller) UpdateSubscriptionStatus(subs *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
 
-	klog.V(5).Infof("try to update Announcement %q status", annc.Name)
+	klog.V(5).Infof("try to update Subscription %q status", subs.Name)
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		annc.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Announcements(annc.Namespace).UpdateStatus(c.ctx, annc, metav1.UpdateOptions{})
+		subs.Status = *status
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subs.Namespace).UpdateStatus(c.ctx, subs, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
 		}
 
-		if updated, err := c.anncLister.Announcements(annc.Namespace).Get(annc.Name); err == nil {
+		if updated, err := c.subsLister.Subscriptions(subs.Namespace).Get(subs.Name); err == nil {
 			// make a copy so we don't mutate the shared cache
-			annc = updated.DeepCopy()
+			subs = updated.DeepCopy()
 		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Announcement %q from lister: %v", annc.Name, err))
+			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", subs.Name, err))
 		}
 		return err
 	})
 }
 
-// enqueue takes a Announcement resource and converts it into a namespace/name
+// enqueue takes a Subscription resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Announcement.
-func (c *Controller) enqueue(annc *appsapi.Announcement) {
-	key, err := cache.MetaNamespaceKeyFunc(annc)
+// passed resources of any type other than Subscription.
+func (c *Controller) enqueue(subs *appsapi.Subscription) {
+	key, err := cache.MetaNamespaceKeyFunc(subs)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return

@@ -91,7 +91,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests().Informer()
 	clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer()
 	if deployerEnabled {
-		clusternetInformerFactory.Apps().V1alpha1().Announcements().Informer()
+		clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()

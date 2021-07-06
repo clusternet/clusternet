@@ -25,20 +25,20 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope="Namespaced",shortName=annc,categories=clusternet
+// +kubebuilder:resource:scope="Namespaced",shortName=sub;subs,categories=clusternet
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
-// Announcement represents the policy that install a group of resources to one or more clusters.
-type Announcement struct {
+// Subscription represents the policy that install a group of resources to one or more clusters.
+type Subscription struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   AnnouncementSpec   `json:"spec"`
-	Status AnnouncementStatus `json:"status,omitempty"`
+	Spec   SubscriptionSpec   `json:"spec"`
+	Status SubscriptionStatus `json:"status,omitempty"`
 }
 
-// AnnouncementSpec defines the desired state of Announcement
-type AnnouncementSpec struct {
+// SubscriptionSpec defines the desired state of Subscription
+type SubscriptionSpec struct {
 	// ClusterAffinity is a label query over managed clusters by labels.
 	//
 	// +required
@@ -52,9 +52,9 @@ type AnnouncementSpec struct {
 	ChartSelectors []ChartSelector `json:"chartSelectors"`
 }
 
-// AnnouncementStatus defines the observed state of Announcement
-type AnnouncementStatus struct {
-	// Total number of Helm releases desired by this Announcement.
+// SubscriptionStatus defines the observed state of Subscription
+type SubscriptionStatus struct {
+	// Total number of Helm releases desired by this Subscription.
 	//
 	// +optional
 	DesiredReleases int32 `json:"desiredReleases,omitempty"`
@@ -82,9 +82,9 @@ type ChartSelector struct {
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// AnnouncementList contains a list of Announcement
-type AnnouncementList struct {
+// SubscriptionList contains a list of Subscription
+type SubscriptionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Announcement `json:"items"`
+	Items           []Subscription `json:"items"`
 }

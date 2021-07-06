@@ -19,7 +19,6 @@ package deployer
 import (
 	"context"
 	"fmt"
-	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
@@ -34,8 +33,9 @@ import (
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	"github.com/clusternet/clusternet/pkg/controllers/apps/announcement"
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/description"
+	"github.com/clusternet/clusternet/pkg/controllers/apps/subscription"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
@@ -56,7 +56,7 @@ type Deployer struct {
 	kubeclient       *kubernetes.Clientset
 	clusternetclient *clusternetClientSet.Clientset
 
-	anncController *announcement.Controller
+	subsController *subscription.Controller
 	descController *description.Controller
 
 	helmDeployer *helm.HelmDeployer
@@ -93,15 +93,15 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	}
 	deployer.helmDeployer = helmDeployer
 
-	anncController, err := announcement.NewController(ctx,
+	subsController, err := subscription.NewController(ctx,
 		clusternetclient,
-		clusternetInformerFactory.Apps().V1alpha1().Announcements(),
+		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
-		deployer.handleAnnouncement)
+		deployer.handleSubscription)
 	if err != nil {
 		return nil, err
 	}
-	deployer.anncController = anncController
+	deployer.subsController = subsController
 
 	descController, err := description.NewController(ctx,
 		clusternetclient,
@@ -120,43 +120,43 @@ func (deployer *Deployer) Run(workers int) {
 	klog.Infof("starting Clusternet deployer ...")
 
 	go deployer.helmDeployer.Run(workers)
-	go deployer.anncController.Run(workers, deployer.ctx.Done())
+	go deployer.subsController.Run(workers, deployer.ctx.Done())
 	go deployer.descController.Run(workers, deployer.ctx.Done())
 
 	<-deployer.ctx.Done()
 }
 
-func (deployer *Deployer) handleAnnouncement(annc *appsapi.Announcement) error {
-	if annc.DeletionTimestamp != nil {
-		annc.Finalizers = utils.RemoveString(annc.Finalizers, known.AppFinalizer)
-		_, err := deployer.clusternetclient.AppsV1alpha1().Announcements(annc.Namespace).Update(context.TODO(), annc, metav1.UpdateOptions{})
+func (deployer *Deployer) handleSubscription(subs *appsapi.Subscription) error {
+	if subs.DeletionTimestamp != nil {
+		subs.Finalizers = utils.RemoveString(subs.Finalizers, known.AppFinalizer)
+		_, err := deployer.clusternetclient.AppsV1alpha1().Subscriptions(subs.Namespace).Update(context.TODO(), subs, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Announcement %s: %v", known.AppFinalizer, klog.KObj(annc), err))
+				fmt.Sprintf("failed to remove finalizer %s from Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err))
 		}
 		return err
 	}
 
 	var charts []*appsapi.HelmChart
-	for _, cs := range annc.Spec.ChartSelectors {
-		chartList, err := deployer.getChartsBySelector(annc, cs)
+	for _, cs := range subs.Spec.ChartSelectors {
+		chartList, err := deployer.getChartsBySelector(subs, cs)
 		if errors.IsNotFound(err) {
-			msg := fmt.Sprintf("Announcement %s is using a nonexistent HelmChart %s/%s", klog.KObj(annc), annc.Namespace, cs.Name)
+			msg := fmt.Sprintf("Subscription %s is using a nonexistent HelmChart %s/%s", klog.KObj(subs), subs.Namespace, cs.Name)
 			klog.Error(msg)
-			deployer.recorder.Event(annc, corev1.EventTypeWarning, "NonexistentHelmChart", msg)
+			deployer.recorder.Event(subs, corev1.EventTypeWarning, "NonexistentHelmChart", msg)
 			return nil
 		}
 		if err != nil {
-			msg := fmt.Sprintf("failed to get charts matching %q for Announcement %s: %v", cs, klog.KObj(annc), err)
+			msg := fmt.Sprintf("failed to get charts matching %q for Subscription %s: %v", cs, klog.KObj(subs), err)
 			klog.Error(msg)
-			deployer.recorder.Event(annc, corev1.EventTypeWarning, "FailedRetrievingHelmCharts", msg)
+			deployer.recorder.Event(subs, corev1.EventTypeWarning, "FailedRetrievingHelmCharts", msg)
 			return err
 		}
 		charts = append(charts, chartList...)
 	}
 
 	if len(charts) == 0 {
-		deployer.recorder.Event(annc, corev1.EventTypeWarning, "NoHelmCharts", "No helm charts get matched")
+		deployer.recorder.Event(subs, corev1.EventTypeWarning, "NoHelmCharts", "No helm charts get matched")
 		return nil
 	}
 
@@ -164,7 +164,7 @@ func (deployer *Deployer) handleAnnouncement(annc *appsapi.Announcement) error {
 	var chartRefs []appsapi.ChartReference
 	for _, chart := range charts {
 		if chart.Status.Phase != appsapi.HelmChartFound {
-			deployer.recorder.Event(annc, corev1.EventTypeWarning, "ChartNotFound",
+			deployer.recorder.Event(subs, corev1.EventTypeWarning, "ChartNotFound",
 				fmt.Sprintf("helm chart %s is not found", klog.KObj(chart)))
 			return nil
 		}
@@ -175,14 +175,14 @@ func (deployer *Deployer) handleAnnouncement(annc *appsapi.Announcement) error {
 		})
 	}
 
-	deployer.recorder.Event(annc, corev1.EventTypeNormal, "HelmChartsMatched", "helm charts get matched")
+	deployer.recorder.Event(subs, corev1.EventTypeNormal, "HelmChartsMatched", "helm charts get matched")
 
-	return deployer.populateDescriptionsForHelm(annc, chartRefs)
+	return deployer.populateDescriptionsForHelm(subs, chartRefs)
 }
 
-func (deployer *Deployer) getChartsBySelector(annc *appsapi.Announcement, chartSelector appsapi.ChartSelector) ([]*appsapi.HelmChart, error) {
+func (deployer *Deployer) getChartsBySelector(subs *appsapi.Subscription, chartSelector appsapi.ChartSelector) ([]*appsapi.HelmChart, error) {
 	if len(chartSelector.Name) > 0 {
-		chart, err := deployer.chartLister.HelmCharts(annc.Namespace).Get(chartSelector.Name)
+		chart, err := deployer.chartLister.HelmCharts(subs.Namespace).Get(chartSelector.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +194,7 @@ func (deployer *Deployer) getChartsBySelector(annc *appsapi.Announcement, chartS
 		if err != nil {
 			return nil, err
 		}
-		chartList, err := deployer.chartLister.HelmCharts(annc.Namespace).List(selector)
+		chartList, err := deployer.chartLister.HelmCharts(subs.Namespace).List(selector)
 		if err != nil {
 			return nil, err
 		}
@@ -204,8 +204,8 @@ func (deployer *Deployer) getChartsBySelector(annc *appsapi.Announcement, chartS
 	return []*appsapi.HelmChart{}, nil
 }
 
-func (deployer *Deployer) populateDescriptionsForHelm(annc *appsapi.Announcement, chartRefs []appsapi.ChartReference) error {
-	selector, err := metav1.LabelSelectorAsSelector(annc.Spec.ClusterAffinity)
+func (deployer *Deployer) populateDescriptionsForHelm(subs *appsapi.Subscription, chartRefs []appsapi.ChartReference) error {
+	selector, err := metav1.LabelSelectorAsSelector(subs.Spec.ClusterAffinity)
 	if err != nil {
 		return err
 	}
@@ -215,39 +215,39 @@ func (deployer *Deployer) populateDescriptionsForHelm(annc *appsapi.Announcement
 	}
 
 	if clusters == nil {
-		deployer.recorder.Event(annc, corev1.EventTypeWarning, "NoClusters", "No clusters get matched")
+		deployer.recorder.Event(subs, corev1.EventTypeWarning, "NoClusters", "No clusters get matched")
 		return nil
 	}
 
 	var allErrs []error
 	for _, cluster := range clusters {
 		if !cluster.Status.AppPusher {
-			msg := fmt.Sprintf("skip deploying Announcement %s to cluster %s for disabling AppPusher",
-				klog.KObj(annc), cluster.Spec.ClusterID)
+			msg := fmt.Sprintf("skip deploying Subscription %s to cluster %s for disabling AppPusher",
+				klog.KObj(subs), cluster.Spec.ClusterID)
 			klog.V(4).Info(msg)
-			deployer.recorder.Event(annc, corev1.EventTypeNormal, "SkipDeploying", msg)
+			deployer.recorder.Event(subs, corev1.EventTypeNormal, "SkipDeploying", msg)
 			continue
 		}
 		if cluster.Spec.SyncMode == clusterapi.Pull {
-			msg := fmt.Sprintf("skip deploying Announcement %s to cluster %s with sync mode setting to Pull",
-				klog.KObj(annc), cluster.Spec.ClusterID)
+			msg := fmt.Sprintf("skip deploying Subscription %s to cluster %s with sync mode setting to Pull",
+				klog.KObj(subs), cluster.Spec.ClusterID)
 			klog.V(4).Info(msg)
-			deployer.recorder.Event(annc, corev1.EventTypeNormal, "SkipDeploying", msg)
+			deployer.recorder.Event(subs, corev1.EventTypeNormal, "SkipDeploying", msg)
 			continue
 		}
 
 		description := &appsapi.Description{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      annc.Name,
+				Name:      subs.Name,
 				Namespace: cluster.Namespace,
 				Labels: map[string]string{
 					known.ObjectCreatedByLabel:  known.ClusternetHubName,
 					known.ClusterIDLabel:        cluster.Labels[known.ClusterIDLabel],
 					known.ClusterNameLabel:      cluster.Labels[known.ClusterNameLabel],
-					known.ConfigSourceKindLabel: annc.Kind,
-					known.ConfigNameLabel:       annc.Name,
-					known.ConfigNamespaceLabel:  annc.Namespace,
-					known.ConfigUIDLabel:        string(annc.UID),
+					known.ConfigSourceKindLabel: subs.Kind,
+					known.ConfigNameLabel:       subs.Name,
+					known.ConfigNamespaceLabel:  subs.Namespace,
+					known.ConfigUIDLabel:        string(subs.UID),
 				},
 				Finalizers: []string{
 					known.AppFinalizer,
@@ -259,19 +259,19 @@ func (deployer *Deployer) populateDescriptionsForHelm(annc *appsapi.Announcement
 			},
 		}
 
-		err = deployer.syncDescriptions(annc, description)
+		err = deployer.syncDescriptions(subs, description)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(description), err)
 			klog.ErrorDepth(5, msg)
-			deployer.recorder.Event(annc, corev1.EventTypeWarning, "DescriptionFailure", msg)
+			deployer.recorder.Event(subs, corev1.EventTypeWarning, "DescriptionFailure", msg)
 		}
 	}
 
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) syncDescriptions(annc *appsapi.Announcement, description *appsapi.Description) error {
+func (deployer *Deployer) syncDescriptions(subs *appsapi.Subscription, description *appsapi.Description) error {
 	desc, err := deployer.descLister.Descriptions(description.Namespace).Get(description.Name)
 	if err == nil {
 		// update it
@@ -293,7 +293,7 @@ func (deployer *Deployer) syncDescriptions(annc *appsapi.Announcement, descripti
 			if err == nil {
 				msg := fmt.Sprintf("Description %s is updated successfully", klog.KObj(description))
 				klog.V(4).Info(msg)
-				deployer.recorder.Event(annc, corev1.EventTypeNormal, "DescriptionUpdated", msg)
+				deployer.recorder.Event(subs, corev1.EventTypeNormal, "DescriptionUpdated", msg)
 			}
 			return err
 		}
@@ -305,7 +305,7 @@ func (deployer *Deployer) syncDescriptions(annc *appsapi.Announcement, descripti
 	if err == nil {
 		msg := fmt.Sprintf("Description %s is created successfully", klog.KObj(description))
 		klog.V(4).Info(msg)
-		deployer.recorder.Event(annc, corev1.EventTypeNormal, "DescriptionCreated", msg)
+		deployer.recorder.Event(subs, corev1.EventTypeNormal, "DescriptionCreated", msg)
 	}
 	return err
 }
