@@ -39,17 +39,24 @@ type Subscription struct {
 
 // SubscriptionSpec defines the desired state of Subscription
 type SubscriptionSpec struct {
-	// ClusterAffinity is a label query over managed clusters by labels.
+	// If specified, the Subscription will be handled by specified scheduler.
+	// If not specified, the Subscription will be handled by default scheduler.
 	//
-	// +required
-	// +kubebuilder:validation:Required
-	ClusterAffinity *metav1.LabelSelector `json:"clusterAffinity"`
+	// +optional
+	// +kubebuilder:default=default
+	SchedulerName string `json:"schedulerName,omitempty"`
 
-	// ChartSelectors select all matching HelmChart(s) in current namespace
+	// Subscribers subscribes
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	ChartSelectors []ChartSelector `json:"chartSelectors"`
+	Subscribers []Subscriber `json:"subscribers"`
+
+	// Feeds
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	Feeds []Feed `json:"feeds"`
 }
 
 // SubscriptionStatus defines the observed state of Subscription
@@ -65,18 +72,47 @@ type SubscriptionStatus struct {
 	CompletedReleases int32 `json:"completedReleases,omitempty"`
 }
 
-// ChartSelector selects the HelmChart to be deployed
-type ChartSelector struct {
-	// Name of the HelmChart.
+// Subscriber defines
+type Subscriber struct {
+	// ClusterAffinity is a label query over managed clusters by labels.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	ClusterAffinity *metav1.LabelSelector `json:"clusterAffinity"`
+}
+
+// Feed defines the resource to be selected.
+type Feed struct {
+	// Kind is a string value representing the REST resource this object represents.
+	// In CamelCase.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	Kind string `json:"kind"`
+
+	// APIVersion defines the versioned schema of this representation of an object.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	APIVersion string `json:"apiVersion"`
+
+	// Namespace of the target resource.
+	// Default to use the same Namespace of Subscription.
+	//
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// Name of the target resource.
+	// Either Name or FeedSelector should be set.
 	//
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// A label query over a set of HelmChart.
-	// LabelSelector will be ignored if Name is not empty.
+	// FeedSelector selects all matching resources.
+	// FeedSelector will be ignored if Name is specified.
 	//
 	// +optional
-	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
+	FeedSelector *metav1.LabelSelector `json:"feedSelector,omitempty"`
 }
 
 // +kubebuilder:object:root=true
