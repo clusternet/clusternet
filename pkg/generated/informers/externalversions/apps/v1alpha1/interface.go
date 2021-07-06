@@ -23,14 +23,14 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Announcements returns a AnnouncementInformer.
-	Announcements() AnnouncementInformer
 	// Descriptions returns a DescriptionInformer.
 	Descriptions() DescriptionInformer
 	// HelmCharts returns a HelmChartInformer.
 	HelmCharts() HelmChartInformer
 	// HelmReleases returns a HelmReleaseInformer.
 	HelmReleases() HelmReleaseInformer
+	// Subscriptions returns a SubscriptionInformer.
+	Subscriptions() SubscriptionInformer
 }
 
 type version struct {
@@ -42,11 +42,6 @@ type version struct {
 // New returns a new Interface.
 func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
-}
-
-// Announcements returns a AnnouncementInformer.
-func (v *version) Announcements() AnnouncementInformer {
-	return &announcementInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Descriptions returns a DescriptionInformer.
@@ -62,4 +57,9 @@ func (v *version) HelmCharts() HelmChartInformer {
 // HelmReleases returns a HelmReleaseInformer.
 func (v *version) HelmReleases() HelmReleaseInformer {
 	return &helmReleaseInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Subscriptions returns a SubscriptionInformer.
+func (v *version) Subscriptions() SubscriptionInformer {
+	return &subscriptionInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

@@ -27,10 +27,6 @@ type FakeAppsV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeAppsV1alpha1) Announcements(namespace string) v1alpha1.AnnouncementInterface {
-	return &FakeAnnouncements{c, namespace}
-}
-
 func (c *FakeAppsV1alpha1) Descriptions(namespace string) v1alpha1.DescriptionInterface {
 	return &FakeDescriptions{c, namespace}
 }
@@ -41,6 +37,10 @@ func (c *FakeAppsV1alpha1) HelmCharts(namespace string) v1alpha1.HelmChartInterf
 
 func (c *FakeAppsV1alpha1) HelmReleases(namespace string) v1alpha1.HelmReleaseInterface {
 	return &FakeHelmReleases{c, namespace}
+}
+
+func (c *FakeAppsV1alpha1) Subscriptions(namespace string) v1alpha1.SubscriptionInterface {
+	return &FakeSubscriptions{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

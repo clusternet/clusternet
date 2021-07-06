@@ -17,10 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
-type AnnouncementExpansion interface{}
-
 type DescriptionExpansion interface{}
 
 type HelmChartExpansion interface{}
 
 type HelmReleaseExpansion interface{}
+
+type SubscriptionExpansion interface{}
