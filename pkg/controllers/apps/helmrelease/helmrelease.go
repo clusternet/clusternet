@@ -37,6 +37,9 @@ import (
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 )
 
+// controllerKind contains the schema.GroupVersionKind for this controller type.
+var controllerKind = appsapi.SchemeGroupVersion.WithKind("HelmRelease")
+
 type SyncHandlerFunc func(helmrelease *appsapi.HelmRelease) error
 
 // Controller is a controller that handle HelmRelease
@@ -112,12 +115,17 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addHelmRelease(obj interface{}) {
 	hr := obj.(*appsapi.HelmRelease)
 	klog.V(4).Infof("adding HelmRelease %q", klog.KObj(hr))
-	c.Enqueue(hr)
+	c.enqueue(hr)
 }
 
 func (c *Controller) updateHelmRelease(old, cur interface{}) {
 	oldHr := old.(*appsapi.HelmRelease)
 	newHr := cur.(*appsapi.HelmRelease)
+
+	if newHr.DeletionTimestamp != nil {
+		c.enqueue(newHr)
+		return
+	}
 
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldHr.Spec, newHr.Spec) {
@@ -126,7 +134,7 @@ func (c *Controller) updateHelmRelease(old, cur interface{}) {
 	}
 
 	klog.V(4).Infof("updating HelmRelease %q", klog.KObj(oldHr))
-	c.Enqueue(newHr)
+	c.enqueue(newHr)
 }
 
 func (c *Controller) deleteHelmRelease(obj interface{}) {
@@ -144,7 +152,7 @@ func (c *Controller) deleteHelmRelease(obj interface{}) {
 		}
 	}
 	klog.V(4).Infof("deleting HelmRelease %q", klog.KObj(hr))
-	c.Enqueue(hr)
+	c.enqueue(hr)
 }
 
 // runWorker is a long-running function that will continually call the
@@ -237,6 +245,9 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	hr.Kind = controllerKind.Kind
+	hr.APIVersion = controllerKind.Version
+
 	return c.SyncHandler(hr)
 }
 
@@ -265,10 +276,10 @@ func (c *Controller) UpdateHelmReleaseStatus(hr *appsapi.HelmRelease, status *ap
 	})
 }
 
-// Enqueue takes a HelmReleases resource and converts it into a namespace/name
+// enqueue takes a HelmReleases resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
 // passed resources of any type other than HelmRelease.
-func (c *Controller) Enqueue(hr *appsapi.HelmRelease) {
+func (c *Controller) enqueue(hr *appsapi.HelmRelease) {
 	key, err := cache.MetaNamespaceKeyFunc(hr)
 	if err != nil {
 		utilruntime.HandleError(err)

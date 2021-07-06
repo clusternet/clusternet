@@ -18,6 +18,8 @@ package helm
 
 import (
 	"fmt"
+	"reflect"
+	"strings"
 
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -81,12 +83,42 @@ func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 
 func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
+	klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
 	client := action.NewUpgrade(cfg)
 	client.Namespace = hr.Spec.TargetNamespace
 	return client.Run(hr.Name, chart, vals)
 }
 
-func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) (*release.UninstallReleaseResponse, error) {
+func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {
 	client := action.NewUninstall(cfg)
-	return client.Run(hr.Name)
+	_, err := client.Run(hr.Name)
+	if err != nil {
+		if strings.Contains(err.Error(), "Release not loaded") {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func ReleaseNeedsUpgrade(rel *release.Release, hr *appsapi.HelmRelease, chart *chart.Chart, vals map[string]interface{}) bool {
+	if rel.Name != hr.Name {
+		return true
+	}
+	if rel.Namespace != hr.Spec.TargetNamespace {
+		return true
+	}
+
+	if rel.Chart.Metadata.Name != hr.Spec.Chart {
+		return true
+	}
+	if rel.Chart.Metadata.Version != hr.Spec.ChartVersion {
+		return true
+	}
+
+	if !reflect.DeepEqual(rel.Config, vals) {
+		return true
+	}
+
+	return false
 }

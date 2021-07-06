@@ -46,6 +46,10 @@ import (
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
+var (
+	descriptionKind = appsapi.SchemeGroupVersion.WithKind("Description")
+)
+
 type HelmDeployer struct {
 	ctx context.Context
 
@@ -135,7 +139,7 @@ func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
 				Namespace: desc.Namespace,
 				Labels: map[string]string{
 					known.ObjectCreatedByLabel:  known.ClusternetHubName,
-					known.ConfigSourceKindLabel: desc.Kind,
+					known.ConfigSourceKindLabel: descriptionKind.Kind,
 					known.ConfigNameLabel:       desc.Name,
 					known.ConfigNamespaceLabel:  desc.Namespace,
 					known.ConfigUIDLabel:        string(desc.UID),
@@ -145,8 +149,8 @@ func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
 				},
 				OwnerReferences: []metav1.OwnerReference{
 					{
-						APIVersion:         desc.APIVersion,
-						Kind:               desc.Kind,
+						APIVersion:         descriptionKind.Version,
+						Kind:               descriptionKind.Kind,
 						Name:               desc.Name,
 						UID:                desc.UID,
 						Controller:         utilpointer.BoolPtr(true),
@@ -175,6 +179,10 @@ func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
 func (hd *HelmDeployer) syncHelmRelease(desc *appsapi.Description, helmRelease *appsapi.HelmRelease) error {
 	hr, err := hd.hrLister.HelmReleases(helmRelease.Namespace).Get(helmRelease.Name)
 	if err == nil {
+		if hr.DeletionTimestamp != nil {
+			return fmt.Errorf("HelmRelease %s is deleting, will resync later", klog.KObj(hr))
+		}
+
 		// update it
 		if !reflect.DeepEqual(hr.Spec, helmRelease.Spec) {
 			if hr.Labels == nil {
@@ -236,7 +244,7 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 
 	// delete helm release
 	if hr.DeletionTimestamp != nil {
-		_, err := UninstallRelease(cfg, hr)
+		err := UninstallRelease(cfg, hr)
 		if err != nil {
 			return err
 		}
@@ -257,13 +265,18 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 	var vals map[string]interface{}
 
 	// check whether the release is deployed
-	_, err = cfg.Releases.Deployed(hr.Name)
+	rel, err = cfg.Releases.Deployed(hr.Name)
 	if err != nil {
 		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
 			rel, err = InstallRelease(cfg, hr, chart, vals)
 		}
 	} else {
-		rel, err = UpgradeRelease(cfg, hr, chart, vals)
+		// verify the release is changed or not
+		if ReleaseNeedsUpgrade(rel, hr, chart, vals) {
+			rel, err = UpgradeRelease(cfg, hr, chart, vals)
+		} else {
+			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
+		}
 	}
 
 	if err != nil {

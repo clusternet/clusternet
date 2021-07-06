@@ -24,7 +24,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -61,8 +60,6 @@ type Controller struct {
 
 	subsLister appListers.SubscriptionLister
 	subsSynced cache.InformerSynced
-
-	descLister appListers.DescriptionLister
 	descSynced cache.InformerSynced
 
 	SyncHandler SyncHandlerFunc
@@ -81,7 +78,6 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "subscription"),
 		subsLister:       subsInformer.Lister(),
 		subsSynced:       subsInformer.Informer().HasSynced,
-		descLister:       descInformer.Lister(),
 		descSynced:       descInformer.Informer().HasSynced,
 		SyncHandler:      syncHandler,
 	}
@@ -156,6 +152,11 @@ func (c *Controller) updateSubscription(old, cur interface{}) {
 	oldSubs := old.(*appsapi.Subscription)
 	newSubs := cur.(*appsapi.Subscription)
 
+	if newSubs.DeletionTimestamp != nil {
+		c.enqueue(newSubs)
+		return
+	}
+
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldSubs.Spec, newSubs.Spec) {
 		klog.V(4).Infof("no updates on the spec of Subscription %q, skipping syncing", oldSubs.Name)
@@ -181,36 +182,6 @@ func (c *Controller) deleteSubscription(obj interface{}) {
 		}
 	}
 
-	descs, err := c.descLister.List(labels.SelectorFromSet(labels.Set{
-		known.ConfigSourceKindLabel: subs.Kind,
-		known.ConfigNameLabel:       subs.Name,
-		known.ConfigNamespaceLabel:  subs.Namespace,
-	}))
-	if err == nil {
-		// delete all matching Description
-		var allErrors []error
-		deletePropagationBackground := metav1.DeletePropagationBackground
-		for _, desc := range descs {
-			if desc.DeletionTimestamp != nil {
-				continue
-			}
-			err = c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Delete(context.TODO(), desc.Name, metav1.DeleteOptions{
-				PropagationPolicy: &deletePropagationBackground,
-			})
-			if err != nil {
-				allErrors = append(allErrors, err)
-			}
-		}
-
-		if len(allErrors) > 0 {
-			c.deleteSubscription(obj)
-			return
-		}
-	} else {
-		c.deleteSubscription(obj)
-		return
-	}
-
 	klog.V(4).Infof("deleting Subscription %q", klog.KObj(subs))
 	c.enqueue(subs)
 }
@@ -231,7 +202,7 @@ func (c *Controller) deleteDescription(obj interface{}) {
 	}
 
 	controllerRef := &metav1.OwnerReference{
-		Kind: desc.Labels[known.ConfigUIDLabel],
+		Kind: desc.Labels[known.ConfigSourceKindLabel],
 		Name: desc.Labels[known.ConfigNameLabel],
 		UID:  types.UID(desc.Labels[known.ConfigUIDLabel]),
 	}
@@ -353,6 +324,9 @@ func (c *Controller) syncHandler(key string) error {
 	if err != nil {
 		return err
 	}
+
+	subs.Kind = controllerKind.Kind
+	subs.APIVersion = controllerKind.Version
 
 	return c.SyncHandler(subs)
 }
