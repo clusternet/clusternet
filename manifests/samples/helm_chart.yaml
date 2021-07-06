@@ -1,9 +1,24 @@
 apiVersion: apps.clusternet.io/v1alpha1
 kind: HelmChart
 metadata:
-  name: helm-app-mysql
+  name: mysql
+  namespace: default
 spec:
   repo: https://charts.bitnami.com/bitnami
   chart: mysql
   version: 8.6.2
+  targetNamespace: abc
+
+---
+apiVersion: apps.clusternet.io/v1alpha1
+kind: HelmChart
+metadata:
+  name: wordpress
+  namespace: default
+  labels:
+    app: wordpress
+spec:
+  repo: https://charts.bitnami.com/bitnami
+  chart: wordpress
+  version: 11.0.17
   targetNamespace: abc
