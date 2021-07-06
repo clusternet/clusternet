@@ -37,6 +37,9 @@ import (
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 )
 
+// controllerKind contains the schema.GroupVersionKind for this controller type.
+var controllerKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
+
 type SyncHandlerFunc func(chart *appsapi.HelmChart) error
 
 // Controller is a controller that handle HelmChart
@@ -236,6 +239,9 @@ func (c *Controller) syncHandler(key string) error {
 	if err != nil {
 		return err
 	}
+
+	chart.Kind = controllerKind.Kind
+	chart.APIVersion = controllerKind.Version
 
 	return c.SyncHandler(chart)
 }

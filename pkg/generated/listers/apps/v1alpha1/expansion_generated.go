@@ -17,14 +17,6 @@ limitations under the License.
 
 package v1alpha1
 
-// AnnouncementListerExpansion allows custom methods to be added to
-// AnnouncementLister.
-type AnnouncementListerExpansion interface{}
-
-// AnnouncementNamespaceListerExpansion allows custom methods to be added to
-// AnnouncementNamespaceLister.
-type AnnouncementNamespaceListerExpansion interface{}
-
 // DescriptionListerExpansion allows custom methods to be added to
 // DescriptionLister.
 type DescriptionListerExpansion interface{}
@@ -48,3 +40,11 @@ type HelmReleaseListerExpansion interface{}
 // HelmReleaseNamespaceListerExpansion allows custom methods to be added to
 // HelmReleaseNamespaceLister.
 type HelmReleaseNamespaceListerExpansion interface{}
+
+// SubscriptionListerExpansion allows custom methods to be added to
+// SubscriptionLister.
+type SubscriptionListerExpansion interface{}
+
+// SubscriptionNamespaceListerExpansion allows custom methods to be added to
+// SubscriptionNamespaceLister.
+type SubscriptionNamespaceListerExpansion interface{}

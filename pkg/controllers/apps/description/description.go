@@ -57,6 +57,7 @@ type Controller struct {
 
 	descLister appListers.DescriptionLister
 	descSynced cache.InformerSynced
+	hrSynced   cache.InformerSynced
 
 	SyncHandler SyncHandlerFunc
 }
@@ -74,6 +75,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "description"),
 		descLister:       descInformer.Lister(),
 		descSynced:       descInformer.Informer().HasSynced,
+		hrSynced:         hrInformer.Informer().HasSynced,
 		SyncHandler:      syncHandler,
 	}
 
@@ -85,6 +87,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 	})
 
 	hrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.updateHelmRelease,
 		DeleteFunc: c.deleteHelmRelease,
 	})
 
@@ -104,7 +107,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.descSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.descSynced, c.hrSynced) {
 		return
 	}
 
@@ -126,6 +129,11 @@ func (c *Controller) addDescription(obj interface{}) {
 func (c *Controller) updateDescription(old, cur interface{}) {
 	oldDesc := old.(*appsapi.Description)
 	newDesc := cur.(*appsapi.Description)
+
+	if newDesc.DeletionTimestamp != nil {
+		c.enqueue(newDesc)
+		return
+	}
 
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldDesc.Spec, newDesc.Spec) {
@@ -152,6 +160,27 @@ func (c *Controller) deleteDescription(obj interface{}) {
 		}
 	}
 	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
+	c.enqueue(desc)
+}
+
+func (c *Controller) updateHelmRelease(old, cur interface{}) {
+	// this update could be an update of removing finalizers
+	hr := cur.(*appsapi.HelmRelease)
+
+	if hr.DeletionTimestamp == nil {
+		return
+	}
+
+	controllerRef := metav1.GetControllerOf(hr)
+	if controllerRef == nil {
+		// No controller should care about orphans being deleted.
+		return
+	}
+	desc := c.resolveControllerRef(hr.Namespace, controllerRef)
+	if desc == nil {
+		return
+	}
+	klog.V(4).Infof("deleting HelmRelease %q", klog.KObj(hr))
 	c.enqueue(desc)
 }
 
@@ -293,6 +322,9 @@ func (c *Controller) syncHandler(key string) error {
 	if err != nil {
 		return err
 	}
+
+	desc.Kind = controllerKind.Kind
+	desc.APIVersion = controllerKind.Version
 
 	return c.SyncHandler(desc)
 }

@@ -31,59 +31,59 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// AnnouncementInformer provides access to a shared informer and lister for
-// Announcements.
-type AnnouncementInformer interface {
+// SubscriptionInformer provides access to a shared informer and lister for
+// Subscriptions.
+type SubscriptionInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.AnnouncementLister
+	Lister() v1alpha1.SubscriptionLister
 }
 
-type announcementInformer struct {
+type subscriptionInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 	namespace        string
 }
 
-// NewAnnouncementInformer constructs a new informer for Announcement type.
+// NewSubscriptionInformer constructs a new informer for Subscription type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewAnnouncementInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredAnnouncementInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewSubscriptionInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredSubscriptionInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredAnnouncementInformer constructs a new informer for Announcement type.
+// NewFilteredSubscriptionInformer constructs a new informer for Subscription type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredAnnouncementInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredSubscriptionInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.AppsV1alpha1().Announcements(namespace).List(context.TODO(), options)
+				return client.AppsV1alpha1().Subscriptions(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.AppsV1alpha1().Announcements(namespace).Watch(context.TODO(), options)
+				return client.AppsV1alpha1().Subscriptions(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&appsv1alpha1.Announcement{},
+		&appsv1alpha1.Subscription{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *announcementInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredAnnouncementInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *subscriptionInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredSubscriptionInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *announcementInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&appsv1alpha1.Announcement{}, f.defaultInformer)
+func (f *subscriptionInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&appsv1alpha1.Subscription{}, f.defaultInformer)
 }
 
-func (f *announcementInformer) Lister() v1alpha1.AnnouncementLister {
-	return v1alpha1.NewAnnouncementLister(f.Informer().GetIndexer())
+func (f *subscriptionInformer) Lister() v1alpha1.SubscriptionLister {
+	return v1alpha1.NewSubscriptionLister(f.Informer().GetIndexer())
 }

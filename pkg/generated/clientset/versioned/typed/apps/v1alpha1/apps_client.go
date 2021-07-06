@@ -25,19 +25,15 @@ import (
 
 type AppsV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	AnnouncementsGetter
 	DescriptionsGetter
 	HelmChartsGetter
 	HelmReleasesGetter
+	SubscriptionsGetter
 }
 
 // AppsV1alpha1Client is used to interact with features provided by the apps.clusternet.io group.
 type AppsV1alpha1Client struct {
 	restClient rest.Interface
-}
-
-func (c *AppsV1alpha1Client) Announcements(namespace string) AnnouncementInterface {
-	return newAnnouncements(c, namespace)
 }
 
 func (c *AppsV1alpha1Client) Descriptions(namespace string) DescriptionInterface {
@@ -50,6 +46,10 @@ func (c *AppsV1alpha1Client) HelmCharts(namespace string) HelmChartInterface {
 
 func (c *AppsV1alpha1Client) HelmReleases(namespace string) HelmReleaseInterface {
 	return newHelmReleases(c, namespace)
+}
+
+func (c *AppsV1alpha1Client) Subscriptions(namespace string) SubscriptionInterface {
+	return newSubscriptions(c, namespace)
 }
 
 // NewForConfig creates a new AppsV1alpha1Client for the given config.

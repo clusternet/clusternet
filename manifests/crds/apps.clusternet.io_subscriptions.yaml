@@ -6,18 +6,19 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.5.0
   creationTimestamp: null
-  name: announcements.apps.clusternet.io
+  name: subscriptions.apps.clusternet.io
 spec:
   group: apps.clusternet.io
   names:
     categories:
     - clusternet
-    kind: Announcement
-    listKind: AnnouncementList
-    plural: announcements
+    kind: Subscription
+    listKind: SubscriptionList
+    plural: subscriptions
     shortNames:
-    - annc
-    singular: announcement
+    - sub
+    - subs
+    singular: subscription
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -27,7 +28,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Announcement represents the policy that install a group of resources to one or more clusters.
+        description: Subscription represents the policy that install a group of resources to one or more clusters.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
@@ -38,15 +39,18 @@ spec:
           metadata:
             type: object
           spec:
-            description: AnnouncementSpec defines the desired state of Announcement
+            description: SubscriptionSpec defines the desired state of Subscription
             properties:
-              chartSelectors:
-                description: ChartSelectors select all matching HelmChart(s) in current namespace
+              feeds:
+                description: Feeds
                 items:
-                  description: ChartSelector selects the HelmChart to be deployed
+                  description: Feed defines the resource to be selected.
                   properties:
-                    labelSelector:
-                      description: A label query over a set of HelmChart. LabelSelector will be ignored if Name is not empty.
+                    apiVersion:
+                      description: APIVersion defines the versioned schema of this representation of an object.
+                      type: string
+                    feedSelector:
+                      description: FeedSelector selects all matching resources. FeedSelector will be ignored if Name is specified.
                       properties:
                         matchExpressions:
                           description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
@@ -75,54 +79,76 @@ spec:
                           description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
                           type: object
                       type: object
-                    name:
-                      description: Name of the HelmChart.
+                    kind:
+                      description: Kind is a string value representing the REST resource this object represents. In CamelCase.
                       type: string
+                    name:
+                      description: Name of the target resource. Either Name or FeedSelector should be set.
+                      type: string
+                    namespace:
+                      description: Namespace of the target resource. Default to use the same Namespace of Subscription.
+                      type: string
+                  required:
+                  - apiVersion
+                  - kind
                   type: object
                 type: array
-              clusterAffinity:
-                description: ClusterAffinity is a label query over managed clusters by labels.
-                properties:
-                  matchExpressions:
-                    description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
-                    items:
-                      description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+              schedulerName:
+                default: default
+                description: If specified, the Subscription will be handled by specified scheduler. If not specified, the Subscription will be handled by default scheduler.
+                type: string
+              subscribers:
+                description: Subscribers subscribes
+                items:
+                  description: Subscriber defines
+                  properties:
+                    clusterAffinity:
+                      description: ClusterAffinity is a label query over managed clusters by labels.
                       properties:
-                        key:
-                          description: key is the label key that the selector applies to.
-                          type: string
-                        operator:
-                          description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
-                          type: string
-                        values:
-                          description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
                           items:
-                            type: string
+                            description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector applies to.
+                                type: string
+                              operator:
+                                description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                items:
+                                  type: string
+                                type: array
+                            required:
+                            - key
+                            - operator
+                            type: object
                           type: array
-                      required:
-                      - key
-                      - operator
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
                       type: object
-                    type: array
-                  matchLabels:
-                    additionalProperties:
-                      type: string
-                    description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
-                    type: object
-                type: object
+                  required:
+                  - clusterAffinity
+                  type: object
+                type: array
             required:
-            - chartSelectors
-            - clusterAffinity
+            - feeds
+            - subscribers
             type: object
           status:
-            description: AnnouncementStatus defines the observed state of Announcement
+            description: SubscriptionStatus defines the observed state of Subscription
             properties:
               completedReleases:
                 description: Total number of completed releases targeted by this deployment.
                 format: int32
                 type: integer
               desiredReleases:
-                description: Total number of Helm releases desired by this Announcement.
+                description: Total number of Helm releases desired by this Subscription.
                 format: int32
                 type: integer
             type: object

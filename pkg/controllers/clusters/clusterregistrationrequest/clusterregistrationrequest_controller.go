@@ -44,6 +44,9 @@ const (
 	InvalidSpec = "InvalidSpec"
 )
 
+// controllerKind contains the schema.GroupVersionKind for this controller type.
+var controllerKind = clusterapi.SchemeGroupVersion.WithKind("ClusterRegistrationRequest")
+
 type SyncHandlerFunc func(*clusterapi.ClusterRegistrationRequest) error
 
 // Controller is a controller that handle edge cluster registration requests
@@ -245,6 +248,13 @@ func (c *Controller) syncHandler(key string) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	if len(crr.Kind) == 0 {
+		crr.Kind = controllerKind.Kind
+	}
+	if len(crr.APIVersion) == 0 {
+		crr.Kind = controllerKind.Version
 	}
 
 	return c.SyncHandler(crr)
