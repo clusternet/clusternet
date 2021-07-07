@@ -7,7 +7,7 @@ spec:
   subscribers:
     - clusterAffinity:
         matchLabels:
-          clusters.clusternet.io/cluster-id: 9bb775e3-b177-4e77-8685-1aadcb03b0a8
+          clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118
   feeds:
     - apiVersion: apps.clusternet.io/v1alpha1
       kind: HelmChart
