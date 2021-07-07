@@ -53,6 +53,7 @@ func RegisterConversions(s *runtime.Scheme) error {
 }
 
 func autoConvert_v1alpha1_Socket_To_proxies_Socket(in *Socket, out *proxies.Socket, s conversion.Scope) error {
+	out.Path = in.Path
 	return nil
 }
 
@@ -62,6 +63,7 @@ func Convert_v1alpha1_Socket_To_proxies_Socket(in *Socket, out *proxies.Socket, 
 }
 
 func autoConvert_proxies_Socket_To_v1alpha1_Socket(in *proxies.Socket, out *Socket, s conversion.Scope) error {
+	out.Path = in.Path
 	return nil
 }
 
@@ -73,6 +75,13 @@ func Convert_proxies_Socket_To_v1alpha1_Socket(in *proxies.Socket, out *Socket, 
 func autoConvert_url_Values_To_v1alpha1_Socket(in *url.Values, out *Socket, s conversion.Scope) error {
 	// WARNING: Field TypeMeta does not have json tag, skipping.
 
+	if values, ok := map[string][]string(*in)["path"]; ok && len(values) > 0 {
+		if err := runtime.Convert_Slice_string_To_string(&values, &out.Path, s); err != nil {
+			return err
+		}
+	} else {
+		out.Path = ""
+	}
 	return nil
 }
 
