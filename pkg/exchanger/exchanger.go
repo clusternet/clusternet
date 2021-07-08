@@ -19,6 +19,7 @@ package exchanger
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -59,6 +60,12 @@ type Exchanger struct {
 
 var (
 	urlPrefix = fmt.Sprintf("/apis/%s/sockets/", proxies.SchemeGroupVersion.String())
+)
+
+const (
+	TokenHeaderKey       = "Clusternet-Token"
+	CertificateHeaderKey = "Clusternet-Certificate"
+	PrivateKeyHeaderKey  = "Clusternet-PrivateKey"
 )
 
 func authorizer(req *http.Request) (string, bool, error) {
@@ -112,7 +119,7 @@ func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket
 	return e.dialerServer, nil
 }
 
-func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder) (http.Handler, error) {
+func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder, extraHeaderPrefixes []string) (http.Handler, error) {
 	// Wait for the caches to be synced before starting workers
 	if !cache.WaitForCacheSync(ctx.Done(), e.mcSynced) {
 		err := apierrors.NewServiceUnavailable("cache for ManagedCluster is not ready yet, please retry later")
@@ -132,6 +139,55 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 		location.RawQuery = request.URL.RawQuery
 		// proxy and re-dial through websocket connection
 		klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), id)
+
+		extra := newExtra(request.Header, extraHeaderPrefixes)
+
+		if token, ok := extra[strings.ToLower(TokenHeaderKey)]; ok && len(token) > 0 {
+			request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token[0]))
+		}
+
+		publicCertificate := extra[strings.ToLower(CertificateHeaderKey)]
+		privateKey := extra[strings.ToLower(PrivateKeyHeaderKey)]
+		if len(publicCertificate) > 0 && len(privateKey) > 0 {
+			certPEMBlock, err := base64.StdEncoding.DecodeString(publicCertificate[0])
+			if err != nil {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid certificate in header %s: %v", CertificateHeaderKey, err)))
+				return
+			}
+			keyPEMBlock, err := base64.StdEncoding.DecodeString(privateKey[0])
+			if err != nil {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid private key in header %s: %v", PrivateKeyHeaderKey, err)))
+				return
+			}
+			cert, err := tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+			if err != nil {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid key pair in header: %v", err)))
+				return
+			}
+
+			dialer := e.dialerServer.Dialer(id)
+			transport = &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+					Certificates: []tls.Certificate{
+						cert,
+					},
+				},
+				DialContext: dialer,
+				// apply default settings from http.DefaultTransport
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			}
+		}
+
+		for k := range extra {
+			for _, prefix := range extraHeaderPrefixes {
+				request.Header.Del(prefix + k)
+			}
+		}
+
 		handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, false, true, true, responder)
 		handler.ServeHTTP(writer, request)
 	})
@@ -188,15 +244,10 @@ func (e *Exchanger) ClusterLocation(useSocket bool, id string, opts *proxies.Soc
 		}
 	}
 
-	// TODO: support https as well
-	if location.Scheme != "http" {
-		return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("scheme %s is not supported now, please use http", location.Scheme))
-	}
-
 	if useSocket {
-		if !e.dialerServer.HasSession(id) {
-			return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id))
-		}
+		//if !e.dialerServer.HasSession(id) {
+		//	return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id))
+		//}
 		transport = e.getClonedTransport(id)
 	}
 
@@ -211,4 +262,30 @@ func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.Roun
 	handler.RequireSameHostRedirects = utilfeature.DefaultFeatureGate.Enabled(genericfeatures.ValidateProxyRedirects)
 	handler.UseLocationHost = useLocationHost
 	return handler
+}
+
+func unescapeExtraKey(encodedKey string) string {
+	key, err := url.PathUnescape(encodedKey) // Decode %-encoded bytes.
+	if err != nil {
+		return encodedKey // Always record extra strings, even if malformed/unencoded.
+	}
+	return key
+}
+
+func newExtra(h http.Header, headerPrefixes []string) map[string][]string {
+	ret := map[string][]string{}
+
+	// we have to iterate over prefixes first in order to have proper ordering inside the value slices
+	for _, prefix := range headerPrefixes {
+		for headerName, vv := range h {
+			if !strings.HasPrefix(strings.ToLower(headerName), strings.ToLower(prefix)) {
+				continue
+			}
+
+			extraKey := unescapeExtraKey(strings.ToLower(headerName[len(prefix):]))
+			ret[extraKey] = append(ret[extraKey], vv...)
+		}
+	}
+
+	return ret
 }
