@@ -27,8 +27,10 @@ import (
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	"github.com/clusternet/clusternet/pkg/apis/proxies/install"
+	"github.com/clusternet/clusternet/pkg/exchanger"
 	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
 	socketstorage "github.com/clusternet/clusternet/pkg/registry/proxies/socket"
+	"github.com/clusternet/clusternet/pkg/registry/proxies/socket/subresources"
 )
 
 var (
@@ -113,8 +115,14 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, mclsInformer 
 
 	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(proxies.GroupName, Scheme, ParameterCodec, Codecs)
 
+	var ec *exchanger.Exchanger
+	if socketConnection {
+		ec = exchanger.NewExchanger(tunnelLogging, mclsInformer)
+	}
+
 	v1alpha1storage := map[string]rest.Storage{}
-	v1alpha1storage["sockets"] = socketstorage.NewREST(tunnelLogging, socketConnection, mclsInformer)
+	v1alpha1storage["sockets"] = socketstorage.NewREST(socketConnection, ec)
+	v1alpha1storage["sockets/proxy"] = subresources.NewProxyREST(socketConnection, ec)
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 
 	if err := s.GenericAPIServer.InstallAPIGroup(&apiGroupInfo); err != nil {

@@ -106,6 +106,13 @@ func schema_pkg_apis_proxies_v1alpha1_Socket(ref common.ReferenceCallback) commo
 							Format:      "",
 						},
 					},
+					"path": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Path is the part of URLs that include service endpoints, suffixes, and parameters to use for the current proxy request to child cluster. For example, the whole request URL is http://localhost:8001/apis/proxies.clusternet.io/v1alpha1/sockets/cae6feb5-a23f-4354-8ee7-66527aa03f54/proxy/https/demo.com:6443. Path is /https/demo.com:6443.\n\nPath is the URL path to use for the current proxy request",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
