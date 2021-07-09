@@ -35,6 +35,22 @@ rules:
     resources:
       - "sockets/proxy"
     verbs: ["*"]
+  - apiGroups:
+      - ""
+    resources:
+      - "users"
+    resourceNames:
+      - "clusternet"
+    verbs:
+      - impersonate
+  - apiGroups:
+      - "authentication.k8s.io"
+    resources:
+      - "userextras/clusternet-token"
+      - "userextras/clusternet-certificate"
+      - "userextras/clusternet-privatekey"
+    verbs:
+      - impersonate
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
