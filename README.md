@@ -43,7 +43,7 @@ Clusternet is multiple platforms supported now, including
     - [Deploying `clusternet-agent` in child cluster](#deploying-clusternet-agent-in-child-cluster)
   - [Check Cluster Registrations](#check-cluster-registrations)
   - [Check ManagedCluster Status](#check-managedcluster-status)
-  - [Visit ManagedCluster](#visit-managedcluster)
+  - [Visit ManagedCluster](#visit-managedcluster-with-rbac)
   - [Deploying Helm Charts to Multiple Clusters](#deploying-helm-charts-to-multiple-clusters)
 
 ----
@@ -208,7 +208,7 @@ rules:
       - '*'
 ```
 
-### Check ManagedCluster Status
+## Check ManagedCluster Status
 
 ```bash
 # mcls is an alias for ManagedCluster
@@ -243,63 +243,184 @@ status:
 The status of `ManagedCluster` is updated by `clusternet-agent` every 3 minutes for default, which can be configured by
 flag `--cluster-status-update-frequency`.
 
-### Visit ManagedCluster
+## Visit ManagedCluster With RBAC
 
-You can visit all your managed clusters using the kubeConfig of parent cluster.
-Only a small modification is needed.
+***Clusternet supports visiting all your managed clusters with RBAC.***
 
-```bash
-# suppose your parent cluster kubeconfig locates at /home/demo/.kube/config
-$ kubectl config view --kubeconfig=/home/demo/.kube/config --minify=true --raw=true > ./config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
-$ export KUBECONFIG=`pwd`/config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
-$ kubectl config view
-apiVersion: v1
-clusters:
-- cluster:
-    certificate-authority-data: DATA+OMITTED
-    server: https://10.0.0.10:6443
-  name: kubernetes
-contexts:
-- context:
-    cluster: kubernetes
-    user: kubernetes-admin
-  name: kubernetes-admin@kubernetes
-current-context: kubernetes-admin@kubernetes
-kind: Config
-preferences: {}
-users:
-- name: kubernetes-admin
-  user:
-    client-certificate-data: REDACTED
-    client-key-data: REDACTED
-# suppose your child cluster running at http://demo1.cluster.net
-$ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
-  --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy/http/demo1.cluster.net
-# or just use the proxy path
-$ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
-  --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy
-```
+There is one prerequisite here, that is `kube-apiserver` should **allow anonymous requests**.
+The flag `--anonymous-auth` is set to be `true` by default. So you can just ignore this unless this flag is set
+to `false` explicitly.
 
-What you need is to append `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/http/<SERVER-URL>`
-or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy` at the end of original parent cluster server address.
-- `CLUSTER-ID` is a UUID for your child cluster, which is auto-populated by `clusternet-agent`, such as
-  dc91021d-2361-4f6d-a404-7c33b9e01118. You could get this UUID from objects `ClusterRegistrationRequest`,
-  `ManagedCluster`, etc. Also this UUID is labeled with key `clusters.clusternet.io/cluster-id`.
-- `SERVER-URL` is the apiserver address of your child cluster, it could be `localhost`, `127.0.0.1` and etc, only if
-  `clusternet-agent` could access.
+Actually what you need is to
+1. Append `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/https/<SERVER-URL>`
+or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy` at the end of original **parent cluster** server
+address
 
-> :pushpin: :pushpin: Note:
->
-> Currently Clusternet only support http scheme. If your child clusters are running with https scheme, you could run a
-local proxy instead, for example,
->
-> ```bash
-> kubectl proxy --address='10.212.0.7' --accept-hosts='^*$'
-> ```
->
-> Please replace `10.212.0.7` with your real local IP address.
->
-> Then you can visit child cluster as usual.
+    > - `CLUSTER-ID` is a UUID for your child cluster, which is auto-populated by `clusternet-agent`, such as
+      dc91021d-2361-4f6d-a404-7c33b9e01118. You could get this UUID from objects `ClusterRegistrationRequest`,
+      `ManagedCluster`, etc. Also this UUID is labeled with key `clusters.clusternet.io/cluster-id`.
+    >
+    >- `SERVER-URL` is the apiserver address of your child cluster, it could be `localhost`, `127.0.0.1` and etc, only if
+      `clusternet-agent` could access.
+
+    You can follow below commands to help modify above changes.
+
+    ```bash
+    # suppose your parent cluster kubeconfig locates at /home/demo/.kube/config.parent
+    $ kubectl config view --kubeconfig=/home/demo/.kube/config.parent --minify=true --raw=true > ./config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
+    $ export KUBECONFIG=`pwd`/config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
+    $ kubectl config view
+    apiVersion: v1
+    clusters:
+    - cluster:
+        certificate-authority-data: DATA+OMITTED
+        server: https://10.0.0.10:6443
+      name: kubernetes
+    contexts:
+    - context:
+        cluster: kubernetes
+        user: kubernetes-admin
+      name: kubernetes-admin@kubernetes
+    current-context: kubernetes-admin@kubernetes
+    kind: Config
+    preferences: {}
+    users:
+    - name: kubernetes-admin
+      user:
+        client-certificate-data: REDACTED
+        client-key-data: REDACTED
+    # suppose your child cluster running at https://demo1.cluster.net
+    $ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
+      --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy/https/demo1.cluster.net
+    # or just use the proxy path
+    $ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
+      --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy
+    ```
+
+    > :pushpin: :pushpin: Note:
+    >
+    > Clusternet supports both http and https scheme.
+    >
+    > If you want to use scheme `http` to demonstrate how it works,
+    i.e. `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/http/<SERVER-URL>`,
+    you can simply ***run a local proxy in your child cluster***, for example,
+    >
+    > ```bash
+    > kubectl proxy --address='10.212.0.7' --accept-hosts='^*$'
+    > ```
+    >
+    > Please replace `10.212.0.7` with your real local IP address.
+    >
+    > Then you can visit child cluster with http scheme. The KubeConfig here would be quite simple,
+    >
+    ```bash
+    apiVersion: v1
+    clusters:
+    - cluster:
+        certificate-authority-data: DATA+OMITTED
+        server: https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy/http/10.212.0.7
+      name: kubernetes
+    contexts:
+    - context:
+        cluster: kubernetes
+        user: kubernetes-admin
+      name: kubernetes-admin@kubernetes
+    current-context: kubernetes-admin@kubernetes
+    kind: Config
+    preferences: {}
+    users:
+    - name: kubernetes-admin
+      user:
+        username: system:anonymous
+    ```
+
+2. Then update user entry with **credentials from child clusters**
+
+   > :see_no_evil: :see_no_evil: NOTE
+   >
+   > `Clusternet-hub` does not care about those credentials at all, passing them directly to child clusters.
+
+    - If you're using tokens, such as [bootstrap tokens](https://kubernetes.io/docs/reference/access-authn-authz/bootstrap-tokens/),
+      [ServiceAccount tokens](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-multiple-service-accounts),
+      etc, please follow below modifications.
+
+      ```bash
+      $ export KUBECONFIG=`pwd`/config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
+      # below is what we modified in above step 1
+      $ kubectl config view
+      apiVersion: v1
+      clusters:
+      - cluster:
+          certificate-authority-data: DATA+OMITTED
+          server: https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy
+        name: kubernetes
+      contexts:
+      - context:
+          cluster: kubernetes
+          user: kubernetes-admin
+        name: kubernetes-admin@kubernetes
+      current-context: kubernetes-admin@kubernetes
+      kind: Config
+      preferences: {}
+      users:
+      - name: kubernetes-admin
+        user:
+          client-certificate-data: REDACTED
+          client-key-data: REDACTED
+      # modify user part to below
+      $ vim config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
+        ...
+        user:
+          username: system:anonymous
+          as: clusternet
+          as-user-extra:
+              clusternet-token:
+                  - BASE64-DECODED-PLEASE-CHANGE-ME
+      ```
+
+      Please replace `BASE64-DECODED-PLEASE-CHANGE-ME` to a token that valid from **child cluster**. ***Be remember the tokens replaced here
+      should be base64 decoded.***
+
+   - If you're using TLS certificates, please follow below modifications.
+
+     ```bash
+     $ export KUBECONFIG=`pwd`/config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
+     # below is what we modified in above step 1
+     $ kubectl config view
+     apiVersion: v1
+     clusters:
+     - cluster:
+         certificate-authority-data: DATA+OMITTED
+         server: https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy
+       name: kubernetes
+     contexts:
+     - context:
+         cluster: kubernetes
+         user: kubernetes-admin
+       name: kubernetes-admin@kubernetes
+     current-context: kubernetes-admin@kubernetes
+     kind: Config
+     preferences: {}
+     users:
+     - name: kubernetes-admin
+       user:
+         client-certificate-data: REDACTED
+         client-key-data: REDACTED
+     # modify user part to below
+     $ vim config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
+       ...
+       user:
+         username: system:anonymous
+         as: clusternet
+         as-user-extra:
+             clusternet-certificate:
+                 - CLIENT-CERTIFICATE-DATE-BASE64-ENCODED-PLEASE-CHANGE-ME
+             clusternet-privatekey:
+                 - CLIENT-KEY-DATE-PLEASE-BASE64-ENCODED-CHANGE-ME
+     ```
+
+     Please replace `CLIENT-CERTIFICATE-DATE-BASE64-ENCODED-PLEASE-CHANGE-ME` and `CLIENT-KEY-DATE-PLEASE-BASE64-ENCODED-CHANGE-ME`
+     with certficate and private key from child cluster. **Be remember the tokens replaced here should be base64 encoded.**
 
 ## Deploying Helm Charts to Multiple Clusters
 

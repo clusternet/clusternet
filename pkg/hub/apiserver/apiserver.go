@@ -103,7 +103,8 @@ func (cfg *Config) Complete() CompletedConfig {
 }
 
 // New returns a new instance of HubAPIServer from the given config.
-func (c completedConfig) New(tunnelLogging, socketConnection bool, mclsInformer clusterInformers.ManagedClusterInformer) (*HubAPIServer, error) {
+func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
+	mclsInformer clusterInformers.ManagedClusterInformer) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
@@ -122,7 +123,7 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, mclsInformer 
 
 	v1alpha1storage := map[string]rest.Storage{}
 	v1alpha1storage["sockets"] = socketstorage.NewREST(socketConnection, ec)
-	v1alpha1storage["sockets/proxy"] = subresources.NewProxyREST(socketConnection, ec)
+	v1alpha1storage["sockets/proxy"] = subresources.NewProxyREST(socketConnection, ec, extraHeaderPrefixes)
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 
 	if err := s.GenericAPIServer.InstallAPIGroup(&apiGroupInfo); err != nil {

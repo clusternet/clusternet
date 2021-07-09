@@ -23,3 +23,51 @@ subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group
     name: system:bootstrappers:clusternet:register-cluster-token
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clusternet:system:socketsproxy
+rules:
+  - apiGroups:
+      - "proxies.clusternet.io"
+    resources:
+      - "sockets/proxy"
+    verbs: ["*"]
+  - apiGroups:
+      - ""
+    resources:
+      - "users"
+    resourceNames:
+      - "clusternet"
+    verbs:
+      - impersonate
+  - apiGroups:
+      - "authentication.k8s.io"
+    resources:
+      - "userextras/clusternet-token"
+      - "userextras/clusternet-certificate"
+      - "userextras/clusternet-privatekey"
+    verbs:
+      - impersonate
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clusternet:system:socketsproxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clusternet:system:socketsproxy
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:unauthenticated
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:authenticated
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:anonymous

@@ -32,8 +32,9 @@ import (
 
 // ProxyREST implements the proxy subresource for a Socket
 type ProxyREST struct {
-	Exchanger        *exchanger.Exchanger
-	socketConnection bool
+	Exchanger           *exchanger.Exchanger
+	socketConnection    bool
+	ExtraHeaderPrefixes []string
 }
 
 // Implement Connecter
@@ -67,13 +68,14 @@ func (r *ProxyREST) Connect(ctx context.Context, id string, opts runtime.Object,
 		return nil, fmt.Errorf("invalid options object: %#v", opts)
 	}
 
-	return r.Exchanger.ProxyConnect(ctx, id, proxyOpts, responder)
+	return r.Exchanger.ProxyConnect(ctx, id, proxyOpts, responder, r.ExtraHeaderPrefixes)
 }
 
 // NewProxyREST returns a RESTStorage object that will work against API services.
-func NewProxyREST(socketConnection bool, ec *exchanger.Exchanger) *ProxyREST {
+func NewProxyREST(socketConnection bool, ec *exchanger.Exchanger, extraHeaderPrefixes []string) *ProxyREST {
 	return &ProxyREST{
-		Exchanger:        ec,
-		socketConnection: socketConnection,
+		Exchanger:           ec,
+		socketConnection:    socketConnection,
+		ExtraHeaderPrefixes: extraHeaderPrefixes,
 	}
 }
