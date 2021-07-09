@@ -48,7 +48,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-hub
-          image: ghcr.io/clusternet/clusternet-hub:v0.1.0
+          image: ghcr.io/clusternet/clusternet-hub:v0.2.0
           imagePullPolicy: IfNotPresent
           command:
             - /usr/local/bin/clusternet-hub
