@@ -1,0 +1,128 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.5.0
+  creationTimestamp: null
+  name: localizations.apps.clusternet.io
+spec:
+  group: apps.clusternet.io
+  names:
+    categories:
+    - clusternet
+    kind: Localization
+    listKind: LocalizationList
+    plural: localizations
+    shortNames:
+    - loc
+    - local
+    singular: localization
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Localization represents the override rule for a group of resources.
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: LocalizationSpec defines the desired state of Localization
+            properties:
+              feed:
+                description: Feed holds references to the objects the Localization applies to.
+                properties:
+                  apiVersion:
+                    description: APIVersion defines the versioned schema of this representation of an object.
+                    type: string
+                  feedSelector:
+                    description: FeedSelector selects all matching resources. FeedSelector will be ignored if Name is specified.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                        items:
+                          description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector applies to.
+                              type: string
+                            operator:
+                              description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                              items:
+                                type: string
+                              type: array
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                  kind:
+                    description: Kind is a string value representing the REST resource this object represents. In CamelCase.
+                    type: string
+                  name:
+                    description: Name of the target resource. Either Name or FeedSelector should be set.
+                    type: string
+                  namespace:
+                    description: Namespace of the target resource. Default to use the same Namespace of Subscription.
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                type: object
+              overrideType:
+                description: OverrideType specifies the override type for this Localization.
+                type: string
+              overrides:
+                description: Overrides holds all the OverrideRule.
+                items:
+                  description: OverrideRule holds information that describes a override rule.
+                  properties:
+                    ruleName:
+                      description: RuleName indicate the OverrideRule name.
+                      type: string
+                    value:
+                      additionalProperties:
+                        type: string
+                      description: OverrideValue represents override values.
+                      type: object
+                  type: object
+                type: array
+              priority:
+                default: 1000
+                description: Priority is an integer defining the relative importance of this Localization compared to others. Lower numbers are considered lower priority.
+                format: int32
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

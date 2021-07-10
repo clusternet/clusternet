@@ -27,8 +27,16 @@ type FakeAppsV1alpha1 struct {
 	*testing.Fake
 }
 
+func (c *FakeAppsV1alpha1) Bases(namespace string) v1alpha1.BaseInterface {
+	return &FakeBases{c, namespace}
+}
+
 func (c *FakeAppsV1alpha1) Descriptions(namespace string) v1alpha1.DescriptionInterface {
 	return &FakeDescriptions{c, namespace}
+}
+
+func (c *FakeAppsV1alpha1) Globalizations() v1alpha1.GlobalizationInterface {
+	return &FakeGlobalizations{c}
 }
 
 func (c *FakeAppsV1alpha1) HelmCharts(namespace string) v1alpha1.HelmChartInterface {
@@ -37,6 +45,10 @@ func (c *FakeAppsV1alpha1) HelmCharts(namespace string) v1alpha1.HelmChartInterf
 
 func (c *FakeAppsV1alpha1) HelmReleases(namespace string) v1alpha1.HelmReleaseInterface {
 	return &FakeHelmReleases{c, namespace}
+}
+
+func (c *FakeAppsV1alpha1) Localizations(namespace string) v1alpha1.LocalizationInterface {
+	return &FakeLocalizations{c, namespace}
 }
 
 func (c *FakeAppsV1alpha1) Subscriptions(namespace string) v1alpha1.SubscriptionInterface {

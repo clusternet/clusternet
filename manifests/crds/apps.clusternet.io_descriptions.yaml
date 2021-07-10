@@ -67,6 +67,10 @@ spec:
                 - Helm
                 - Default
                 type: string
+              raw:
+                description: Raw is the underlying serialization of all objects.
+                format: byte
+                type: string
             required:
             - deployer
             type: object

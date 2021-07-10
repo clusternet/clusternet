@@ -17,6 +17,14 @@ limitations under the License.
 
 package v1alpha1
 
+// BaseListerExpansion allows custom methods to be added to
+// BaseLister.
+type BaseListerExpansion interface{}
+
+// BaseNamespaceListerExpansion allows custom methods to be added to
+// BaseNamespaceLister.
+type BaseNamespaceListerExpansion interface{}
+
 // DescriptionListerExpansion allows custom methods to be added to
 // DescriptionLister.
 type DescriptionListerExpansion interface{}
@@ -24,6 +32,10 @@ type DescriptionListerExpansion interface{}
 // DescriptionNamespaceListerExpansion allows custom methods to be added to
 // DescriptionNamespaceLister.
 type DescriptionNamespaceListerExpansion interface{}
+
+// GlobalizationListerExpansion allows custom methods to be added to
+// GlobalizationLister.
+type GlobalizationListerExpansion interface{}
 
 // HelmChartListerExpansion allows custom methods to be added to
 // HelmChartLister.
@@ -40,6 +52,14 @@ type HelmReleaseListerExpansion interface{}
 // HelmReleaseNamespaceListerExpansion allows custom methods to be added to
 // HelmReleaseNamespaceLister.
 type HelmReleaseNamespaceListerExpansion interface{}
+
+// LocalizationListerExpansion allows custom methods to be added to
+// LocalizationLister.
+type LocalizationListerExpansion interface{}
+
+// LocalizationNamespaceListerExpansion allows custom methods to be added to
+// LocalizationNamespaceLister.
+type LocalizationNamespaceListerExpansion interface{}
 
 // SubscriptionListerExpansion allows custom methods to be added to
 // SubscriptionLister.

@@ -25,9 +25,12 @@ import (
 
 type AppsV1alpha1Interface interface {
 	RESTClient() rest.Interface
+	BasesGetter
 	DescriptionsGetter
+	GlobalizationsGetter
 	HelmChartsGetter
 	HelmReleasesGetter
+	LocalizationsGetter
 	SubscriptionsGetter
 }
 
@@ -36,8 +39,16 @@ type AppsV1alpha1Client struct {
 	restClient rest.Interface
 }
 
+func (c *AppsV1alpha1Client) Bases(namespace string) BaseInterface {
+	return newBases(c, namespace)
+}
+
 func (c *AppsV1alpha1Client) Descriptions(namespace string) DescriptionInterface {
 	return newDescriptions(c, namespace)
+}
+
+func (c *AppsV1alpha1Client) Globalizations() GlobalizationInterface {
+	return newGlobalizations(c)
 }
 
 func (c *AppsV1alpha1Client) HelmCharts(namespace string) HelmChartInterface {
@@ -46,6 +57,10 @@ func (c *AppsV1alpha1Client) HelmCharts(namespace string) HelmChartInterface {
 
 func (c *AppsV1alpha1Client) HelmReleases(namespace string) HelmReleaseInterface {
 	return newHelmReleases(c, namespace)
+}
+
+func (c *AppsV1alpha1Client) Localizations(namespace string) LocalizationInterface {
+	return newLocalizations(c, namespace)
 }
 
 func (c *AppsV1alpha1Client) Subscriptions(namespace string) SubscriptionInterface {
