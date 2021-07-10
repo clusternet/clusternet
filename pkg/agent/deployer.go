@@ -115,11 +115,15 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 			Name:      known.ChildClusterSecretName,
 			Namespace: dedicatedNamespace,
 			Labels: map[string]string{
-				known.ClusterRegisteredByLabel: known.ClusternetAgentName,
-				known.ClusterIDLabel:           clusterID,
+				known.ObjectCreatedByLabel:      known.ClusternetAgentName,
+				known.ClusterIDLabel:            clusterID,
+				known.ClusterBootstrappingLabel: known.CredentialsAuto,
 			},
 			Annotations: map[string]string{
 				known.AutoUpdateAnnotationKey: "true",
+			},
+			Finalizers: []string{
+				known.AppFinalizer,
 			},
 		},
 		Data: map[string][]byte{

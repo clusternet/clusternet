@@ -96,7 +96,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	}
 	deployer.recorder = deployer.broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-hub"})
 
-	helmDeployer, err := helm.NewHelmDeployer(ctx, clusternetclient, clusternetInformerFactory, kubeInformerFactory, deployer.recorder)
+	helmDeployer, err := helm.NewHelmDeployer(ctx, clusternetclient, kubeclient, clusternetInformerFactory, kubeInformerFactory, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
