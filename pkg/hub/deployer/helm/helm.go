@@ -29,8 +29,10 @@ import (
 	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	kubeInformers "k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	corev1Lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -39,6 +41,7 @@ import (
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmrelease"
+	"github.com/clusternet/clusternet/pkg/controllers/misc/secret"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
@@ -56,7 +59,10 @@ type HelmDeployer struct {
 	helmChartController   *helmchart.Controller
 	helmReleaseController *helmrelease.Controller
 
+	secretController *secret.Controller
+
 	clusternetclient *clusternetClientSet.Clientset
+	kubeclient       *kubernetes.Clientset
 
 	chartLister appListers.HelmChartLister
 	hrLister    appListers.HelmReleaseLister
@@ -66,7 +72,8 @@ type HelmDeployer struct {
 	recorder record.EventRecorder
 }
 
-func NewHelmDeployer(ctx context.Context, clusternetclient *clusternetClientSet.Clientset,
+func NewHelmDeployer(ctx context.Context,
+	clusternetclient *clusternetClientSet.Clientset, kubeclient *kubernetes.Clientset,
 	clusternetInformerFactory clusternetInformers.SharedInformerFactory,
 	kubeInformerFactory kubeInformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*HelmDeployer, error) {
@@ -74,6 +81,7 @@ func NewHelmDeployer(ctx context.Context, clusternetclient *clusternetClientSet.
 	hd := &HelmDeployer{
 		ctx:              ctx,
 		clusternetclient: clusternetclient,
+		kubeclient:       kubeclient,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
 		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
@@ -96,6 +104,15 @@ func NewHelmDeployer(ctx context.Context, clusternetclient *clusternetClientSet.
 	}
 	hd.helmReleaseController = hrController
 
+	secretController, err := secret.NewController(ctx,
+		kubeclient,
+		kubeInformerFactory.Core().V1().Secrets(),
+		hd.handleSecret)
+	if err != nil {
+		return nil, err
+	}
+	hd.secretController = secretController
+
 	return hd, nil
 }
 
@@ -105,6 +122,8 @@ func (hd *HelmDeployer) Run(workers int) {
 
 	go hd.helmChartController.Run(workers, hd.ctx.Done())
 	go hd.helmReleaseController.Run(workers, hd.ctx.Done())
+	// 1 worker may get hang up, so we set minimum 2 workers here
+	go hd.secretController.Run(2, hd.ctx.Done())
 
 	<-hd.ctx.Done()
 }
@@ -307,4 +326,32 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 	}
 
 	return hd.helmReleaseController.UpdateHelmReleaseStatus(hr, status)
+}
+
+func (hd *HelmDeployer) handleSecret(secret *corev1.Secret) error {
+	if secret.DeletionTimestamp == nil {
+		return nil
+	}
+
+	if secret.Name != known.ChildClusterSecretName {
+		return nil
+	}
+
+	// check wether HelmReleases get cleaned up
+	hrs, err := hd.hrLister.HelmReleases(secret.Namespace).List(labels.SelectorFromSet(labels.Set{}))
+	if err != nil {
+		return err
+	}
+
+	if len(hrs) > 0 {
+		return fmt.Errorf("waiting all HelmReleases in namespace %s get cleanedup", secret.Namespace)
+	}
+
+	secret.Finalizers = utils.RemoveString(secret.Finalizers, known.AppFinalizer)
+	_, err = hd.kubeclient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+	if err != nil {
+		klog.WarningDepth(4,
+			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secret), err))
+	}
+	return err
 }
