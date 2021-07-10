@@ -301,8 +301,7 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 	if err != nil {
 		// repo update
 		if strings.Contains(err.Error(), "helm repo update") {
-			// TODO
-			return err
+			return UpdateRepo(hr.Spec.Repository)
 		}
 
 		if err := hd.helmReleaseController.UpdateHelmReleaseStatus(hr, &appsapi.HelmReleaseStatus{

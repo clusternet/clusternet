@@ -25,7 +25,9 @@ import (
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
+	"helm.sh/helm/v3/pkg/repo"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -121,4 +123,24 @@ func ReleaseNeedsUpgrade(rel *release.Release, hr *appsapi.HelmRelease, chart *c
 	}
 
 	return false
+}
+
+func UpdateRepo(repoURL string) error {
+	klog.V(4).Infof("updating helm repo %s", repoURL)
+
+	entry := repo.Entry{
+		URL:                   repoURL,
+		InsecureSkipTLSverify: true,
+	}
+	cr, err := repo.NewChartRepository(&entry, getter.All(settings))
+	if err != nil {
+		return err
+	}
+
+	if _, err := cr.DownloadIndexFile(); err != nil {
+		return err
+	}
+
+	klog.V(5).Infof("successfully got an repository update for %s", repoURL)
+	return nil
 }
