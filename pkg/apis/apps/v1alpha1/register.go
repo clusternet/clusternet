@@ -59,6 +59,12 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&DescriptionList{},
 		&HelmRelease{},
 		&HelmReleaseList{},
+		&Base{},
+		&BaseList{},
+		&Localization{},
+		&LocalizationList{},
+		&Globalization{},
+		&GlobalizationList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
