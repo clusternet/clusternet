@@ -40,15 +40,19 @@ type Controller struct {
 	collectingPeriod metav1.Duration
 	apiserverURL     string
 	appPusherEnabled bool
+	useSocket        bool
+	parentAPIServer  string
 }
 
-func NewController(apiserverURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration) *Controller {
+func NewController(apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration) *Controller {
 	return &Controller{
 		kubeClient:       kubeClient,
 		lock:             &sync.Mutex{},
 		collectingPeriod: collectingPeriod,
 		apiserverURL:     apiserverURL,
 		appPusherEnabled: utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
+		useSocket:        utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		parentAPIServer:  parentAPIServerURL,
 	}
 }
 
@@ -72,6 +76,8 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
 	status.AppPusher = c.appPusherEnabled
+	status.UseSocket = c.useSocket
+	status.ParentAPIServerURL = c.parentAPIServer
 
 	c.setClusterStatus(status)
 }

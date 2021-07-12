@@ -223,6 +223,16 @@ type ManagedClusterStatus struct {
 	// Mainly for security concerns.
 	// +optional
 	AppPusher bool `json:"appPusher,omitempty"`
+
+	// UseSocket indicates whether to use socket proxy when connecting to child cluster.
+	//
+	// +optional
+	UseSocket bool `json:"useSocket,omitempty"`
+
+	// ParentAPIServerURL is the advertising url/address of managed Kubernetes cluster registering to
+	//
+	// +optional
+	ParentAPIServerURL string `json:"parentAPIServerURL,omitempty"`
 }
 
 // +genclient

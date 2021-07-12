@@ -99,11 +99,17 @@ spec:
               livez:
                 description: Livez indicates the livez status of the cluster
                 type: boolean
+              parentAPIServerURL:
+                description: ParentAPIServerURL is the advertising url/address of managed Kubernetes cluster registering to
+                type: string
               platform:
                 description: platform indicates the running platform of the cluster
                 type: string
               readyz:
                 description: Readyz indicates the readyz status of the cluster
+                type: boolean
+              useSocket:
+                description: UseSocket indicates whether to use socket proxy when connecting to child cluster.
                 type: boolean
             type: object
         type: object
