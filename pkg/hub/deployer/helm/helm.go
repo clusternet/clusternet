@@ -19,6 +19,7 @@ package helm
 import (
 	"context"
 	"fmt"
+	"path"
 	"reflect"
 	"strings"
 
@@ -39,12 +40,14 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmrelease"
 	"github.com/clusternet/clusternet/pkg/controllers/misc/secret"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -64,8 +67,9 @@ type HelmDeployer struct {
 	clusternetclient *clusternetClientSet.Clientset
 	kubeclient       *kubernetes.Clientset
 
-	chartLister appListers.HelmChartLister
-	hrLister    appListers.HelmReleaseLister
+	chartLister   appListers.HelmChartLister
+	hrLister      appListers.HelmReleaseLister
+	clusterLister clusterListers.ManagedClusterLister
 
 	secretLister corev1Lister.SecretLister
 
@@ -84,6 +88,7 @@ func NewHelmDeployer(ctx context.Context,
 		kubeclient:       kubeclient,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
+		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
 		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
 		recorder:         recorder,
 	}
@@ -162,6 +167,8 @@ func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
 					known.ConfigNameLabel:       desc.Name,
 					known.ConfigNamespaceLabel:  desc.Namespace,
 					known.ConfigUIDLabel:        string(desc.UID),
+					known.ClusterIDLabel:        desc.Labels[known.ClusterIDLabel],
+					known.ClusterNameLabel:      desc.Labels[known.ClusterNameLabel],
 				},
 				Finalizers: []string{
 					known.AppFinalizer,
@@ -245,8 +252,31 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 	if err != nil {
 		return err
 	}
+
+	mcls, err := hd.clusterLister.ManagedClusters(hr.Namespace).List(
+		labels.SelectorFromSet(labels.Set{
+			known.ClusterIDLabel: hr.Labels[known.ClusterIDLabel],
+		}))
+	if err != nil {
+		return err
+	}
+	if mcls == nil {
+		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", hr.Namespace)
+	}
+
+	childClusterAPIServer := string(childClusterSecret.Data[known.ClusterAPIServerURLKey])
+	if len(mcls) > 1 {
+		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", hr.Namespace)
+	}
+	if mcls[0].Status.UseSocket {
+		childClusterAPIServer = path.Join([]string{
+			mcls[0].Status.ParentAPIServerURL,
+			"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls[0].Spec.ClusterID),
+			"proxy/direct"}...)
+	}
+
 	config := utils.CreateKubeConfigWithToken(
-		string(childClusterSecret.Data[known.ClusterAPIServerURLKey]),
+		childClusterAPIServer,
 		string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
 		childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
 	)
