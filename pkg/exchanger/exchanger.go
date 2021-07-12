@@ -129,7 +129,6 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 
 	location, transport, err := e.ClusterLocation(true, id, opts)
 	if err != nil {
-		responder.Error(err)
 		return nil, err
 	}
 
@@ -198,20 +197,26 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 func (e *Exchanger) ClusterLocation(useSocket bool, id string, opts *proxies.Socket) (*url.URL, http.RoundTripper, error) {
 	var transport *http.Transport
 
-	location := new(url.URL)
-
 	reqPath := strings.TrimLeft(opts.Path, "/")
+	parts := strings.Split(reqPath, "/")
+	if len(parts) == 0 {
+		return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("unexpected error: invalid request path %s", reqPath))
+	}
 	var isShortPath bool
-	if len(reqPath) == 0 {
+	if parts[0] == "direct" {
 		isShortPath = true
 	}
 
+	location := new(url.URL)
 	if isShortPath {
 		mcls, err := e.mcLister.List(labels.SelectorFromSet(labels.Set{
 			known.ClusterIDLabel: id,
 		}))
 		if err != nil {
 			return nil, nil, apierrors.NewServiceUnavailable(err.Error())
+		}
+		if mcls == nil {
+			return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("no cluster id is %s", id))
 		}
 		if len(mcls) > 1 {
 			klog.Warningf("found multiple ManagedCluster dedicated for cluster %s !!!", id)
@@ -229,12 +234,13 @@ func (e *Exchanger) ClusterLocation(useSocket bool, id string, opts *proxies.Soc
 
 		location.Scheme = loc.Scheme
 		location.Host = loc.Host
-		location.Path = loc.Path
-	} else {
-		parts := strings.Split(reqPath, "/")
-		if len(parts) == 0 {
-			return nil, nil, fmt.Errorf("unexpected error: invalid request path %s", reqPath)
+
+		paths := []string{loc.Path}
+		if len(parts) > 1 {
+			paths = append(paths, parts[1:]...)
 		}
+		location.Path = path.Join(paths...)
+	} else {
 		location.Scheme = parts[0]
 		if len(parts) > 1 {
 			location.Host = parts[1]
@@ -245,9 +251,9 @@ func (e *Exchanger) ClusterLocation(useSocket bool, id string, opts *proxies.Soc
 	}
 
 	if useSocket {
-		//if !e.dialerServer.HasSession(id) {
-		//	return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id))
-		//}
+		if !e.dialerServer.HasSession(id) {
+			return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id))
+		}
 		transport = e.getClonedTransport(id)
 	}
 

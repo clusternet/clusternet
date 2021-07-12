@@ -262,7 +262,7 @@ explicitly.
 Actually what you need is to
 
 1. Append `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/https/<SERVER-URL>`
-   or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy` at the end of original **parent cluster** server
+   or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/direct` at the end of original **parent cluster** server
    address
 
    > - `CLUSTER-ID` is a UUID for your child cluster, which is auto-populated by `clusternet-agent`, such as dc91021d-2361-4f6d-a404-7c33b9e01118. You could get this UUID from objects `ClusterRegistrationRequest`,
@@ -302,9 +302,9 @@ Actually what you need is to
     $ # suppose your child cluster running at https://demo1.cluster.net
     $ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
       --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy/https/demo1.cluster.net
-    $ # or just use the proxy path
+    $ # or just use the direct proxy path
     $ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
-      --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy
+      --server=https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy/direct
     ```
 
    > :pushpin: :pushpin: Note:
@@ -361,7 +361,7 @@ Actually what you need is to
       clusters:
       - cluster:
           certificate-authority-data: DATA+OMITTED
-          server: https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy
+          server: https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy/direct
         name: kubernetes
       contexts:
       - context:
@@ -401,7 +401,7 @@ Actually what you need is to
       clusters:
       - cluster:
           certificate-authority-data: DATA+OMITTED
-          server: https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy
+          server: https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/dc91021d-2361-4f6d-a404-7c33b9e01118/proxy/direct
         name: kubernetes
       contexts:
       - context:
