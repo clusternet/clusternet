@@ -19,6 +19,7 @@ package utils
 import (
 	"fmt"
 
+	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -60,6 +61,23 @@ func CreateKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcm
 	config := createBasicKubeConfig(serverURL, clusterName, userName, caCert)
 	config.AuthInfos[userName] = &clientcmdapi.AuthInfo{
 		Token: token,
+	}
+	return config
+}
+
+// CreateKubeConfigForSocketProxyWithToken creates a KubeConfig object with access to the API server with a token
+func CreateKubeConfigForSocketProxyWithToken(serverURL, token string) *clientcmdapi.Config {
+	userName := "clusternet"
+	clusterName := "clusternet-cluster"
+	config := createBasicKubeConfig(serverURL, clusterName, userName, nil)
+	config.AuthInfos[userName] = &clientcmdapi.AuthInfo{
+		Username:    user.Anonymous,
+		Impersonate: "clusternet",
+		ImpersonateUserExtra: map[string][]string{
+			"clusternet-token": {
+				token,
+			},
+		},
 	}
 	return config
 }

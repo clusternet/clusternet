@@ -35,6 +35,7 @@ import (
 	kubeInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1Lister "k8s.io/client-go/listers/core/v1"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -264,22 +265,28 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", hr.Namespace)
 	}
 
-	childClusterAPIServer := string(childClusterSecret.Data[known.ClusterAPIServerURLKey])
+	var config *clientcmdapi.Config
 	if len(mcls) > 1 {
 		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", hr.Namespace)
 	}
 	if mcls[0].Status.UseSocket {
-		childClusterAPIServer = path.Join([]string{
+		childClusterAPIServer := path.Join([]string{
 			mcls[0].Status.ParentAPIServerURL,
 			"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls[0].Spec.ClusterID),
 			"proxy/direct"}...)
+
+		config = utils.CreateKubeConfigForSocketProxyWithToken(
+			childClusterAPIServer,
+			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
+		)
+	} else {
+		config = utils.CreateKubeConfigWithToken(
+			string(childClusterSecret.Data[known.ClusterAPIServerURLKey]),
+			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
+			childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
+		)
 	}
 
-	config := utils.CreateKubeConfigWithToken(
-		childClusterAPIServer,
-		string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
-		childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
-	)
 	deployCtx, err := newDeployContext(config)
 	if err != nil {
 		return err
