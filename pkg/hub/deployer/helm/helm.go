@@ -18,8 +18,8 @@ package helm
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"path"
 	"reflect"
 	"strings"
 
@@ -41,6 +41,7 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmrelease"
@@ -270,11 +271,10 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", hr.Namespace)
 	}
 	if mcls[0].Status.UseSocket {
-		childClusterAPIServer := path.Join([]string{
-			mcls[0].Status.ParentAPIServerURL,
-			"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls[0].Spec.ClusterID),
-			"proxy/direct"}...)
-
+		childClusterAPIServer, err := getChildAPIServerProxyURL(mcls[0])
+		if err != nil {
+			return err
+		}
 		config = utils.CreateKubeConfigForSocketProxyWithToken(
 			childClusterAPIServer,
 			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
@@ -390,4 +390,15 @@ func (hd *HelmDeployer) handleSecret(secret *corev1.Secret) error {
 			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secret), err))
 	}
 	return err
+}
+
+func getChildAPIServerProxyURL(mcls *clusterapi.ManagedCluster) (string, error) {
+	if mcls == nil {
+		return "", errors.New("unable to generate child cluster apiserver proxy url from nil ManagedCluster object")
+	}
+
+	return strings.Join([]string{
+		strings.TrimRight(mcls.Status.ParentAPIServerURL, "/"),
+		"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls.Spec.ClusterID),
+		"proxy/direct"}, "/"), nil
 }
