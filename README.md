@@ -50,6 +50,8 @@ Clusternet is multiple platforms supported now, including
 
 # Architecture
 
+![](./docs/images/clusternet-arch.png)
+
 Clusternet is light-weighted that consists of two components, `clusternet-agent` and `clusternet-hub`.
 
 `clusternet-agent` is responsible for
