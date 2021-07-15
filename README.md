@@ -43,12 +43,14 @@ Clusternet is multiple platforms supported now, including
         - [Deploying `clusternet-agent` in child cluster](#deploying-clusternet-agent-in-child-cluster)
     - [Check Cluster Registrations](#check-cluster-registrations)
     - [Check ManagedCluster Status](#check-managedcluster-status)
-    - [Visit ManagedCluster](#visit-managedcluster-with-rbac)
+    - [Visit ManagedCluster With RBAC](#visit-managedcluster-with-rbac)
     - [Deploying Helm Charts to Multiple Clusters](#deploying-helm-charts-to-multiple-clusters)
 
 ----
 
 # Architecture
+
+![](./docs/images/clusternet-arch.png)
 
 Clusternet is light-weighted that consists of two components, `clusternet-agent` and `clusternet-hub`.
 
@@ -62,11 +64,12 @@ Clusternet is light-weighted that consists of two components, `clusternet-agent`
 
 `clusternet-hub` is responsible for
 
-- approving cluster registration requests and creating exclusive resources, such as namespaces, serviceaccounts and RBAC
+- approving cluster registration requests and creating dedicated resources, such as namespaces, serviceaccounts and RBAC
   rules, for each child cluster;
 - serving as an **aggregated apiserver (AA)**, which is used to serve as a websocket server that maintain multiple
   active websocket connections from child clusters;
 - providing Kubernstes-styled API to redirect/proxy/upgrade requests to each child cluster;
+- coordinating and deploying applications to multiple clusters from a single set of APIs;
 
 > :pushpin: :pushpin: Note:
 >
@@ -84,6 +87,8 @@ are registerring to, we call it **parent cluster**.
   registration.
 - `ManagedCluster` is an object that `clusternet-hub` creates in parent cluster after
   approving `ClusterRegistrationRequest`.
+- `HelmChart` is an object contains a [helm chart](https://helm.sh/docs/topics/charts/) configuration.
+- `Subscription` defines the resources that subscribers want to install into clusters.
 
 # Contributing & Developing
 
