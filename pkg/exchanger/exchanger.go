@@ -127,7 +127,7 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 		return nil, err
 	}
 
-	location, transport, err := e.ClusterLocation(true, id, opts)
+	location, transport, err := e.ClusterLocation(id, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -194,8 +194,21 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 	return handler, nil
 }
 
-func (e *Exchanger) ClusterLocation(useSocket bool, id string, opts *proxies.Socket) (*url.URL, http.RoundTripper, error) {
+func (e *Exchanger) ClusterLocation(id string, opts *proxies.Socket) (*url.URL, http.RoundTripper, error) {
 	var transport *http.Transport
+
+	mcls, err := e.mcLister.List(labels.SelectorFromSet(labels.Set{
+		known.ClusterIDLabel: id,
+	}))
+	if err != nil {
+		return nil, nil, apierrors.NewServiceUnavailable(err.Error())
+	}
+	if mcls == nil {
+		return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("no cluster id is %s", id))
+	}
+	if len(mcls) > 1 {
+		klog.Warningf("found multiple ManagedCluster dedicated for cluster %s !!!", id)
+	}
 
 	reqPath := strings.TrimLeft(opts.Path, "/")
 	parts := strings.Split(reqPath, "/")
@@ -209,19 +222,6 @@ func (e *Exchanger) ClusterLocation(useSocket bool, id string, opts *proxies.Soc
 
 	location := new(url.URL)
 	if isShortPath {
-		mcls, err := e.mcLister.List(labels.SelectorFromSet(labels.Set{
-			known.ClusterIDLabel: id,
-		}))
-		if err != nil {
-			return nil, nil, apierrors.NewServiceUnavailable(err.Error())
-		}
-		if mcls == nil {
-			return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("no cluster id is %s", id))
-		}
-		if len(mcls) > 1 {
-			klog.Warningf("found multiple ManagedCluster dedicated for cluster %s !!!", id)
-		}
-
 		apiserverURL := mcls[0].Status.APIServerURL
 		if len(apiserverURL) == 0 {
 			return nil, nil, apierrors.NewServiceUnavailable(fmt.Sprintf("cannot retrieve valid apiserver url for cluster %s", id))
@@ -250,7 +250,7 @@ func (e *Exchanger) ClusterLocation(useSocket bool, id string, opts *proxies.Soc
 		}
 	}
 
-	if useSocket {
+	if mcls[0].Status.UseSocket {
 		if !e.dialerServer.HasSession(id) {
 			return nil, nil, apierrors.NewBadRequest(fmt.Sprintf("cannot proxy through cluster %s, whose agent is disconnected", id))
 		}
