@@ -139,7 +139,7 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 		// proxy and re-dial through websocket connection
 		klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), id)
 
-		extra := newExtra(request.Header, extraHeaderPrefixes)
+		extra := getExtraFromHeaders(request.Header, extraHeaderPrefixes)
 
 		if token, ok := extra[strings.ToLower(TokenHeaderKey)]; ok && len(token) > 0 {
 			request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token[0]))
@@ -270,6 +270,7 @@ func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.Roun
 	return handler
 }
 
+// copied from k8s.io/apiserver/pkg/authentication/request/headerrequest/requestheader.go
 func unescapeExtraKey(encodedKey string) string {
 	key, err := url.PathUnescape(encodedKey) // Decode %-encoded bytes.
 	if err != nil {
@@ -278,7 +279,8 @@ func unescapeExtraKey(encodedKey string) string {
 	return key
 }
 
-func newExtra(h http.Header, headerPrefixes []string) map[string][]string {
+// copied from k8s.io/apiserver/pkg/authentication/request/headerrequest/requestheader.go
+func getExtraFromHeaders(h http.Header, headerPrefixes []string) map[string][]string {
 	ret := map[string][]string{}
 
 	// we have to iterate over prefixes first in order to have proper ordering inside the value slices
