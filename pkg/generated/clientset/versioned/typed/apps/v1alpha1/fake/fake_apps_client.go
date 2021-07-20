@@ -51,6 +51,10 @@ func (c *FakeAppsV1alpha1) Localizations(namespace string) v1alpha1.Localization
 	return &FakeLocalizations{c, namespace}
 }
 
+func (c *FakeAppsV1alpha1) Manifests(namespace string) v1alpha1.ManifestInterface {
+	return &FakeManifests{c, namespace}
+}
+
 func (c *FakeAppsV1alpha1) Subscriptions(namespace string) v1alpha1.SubscriptionInterface {
 	return &FakeSubscriptions{c, namespace}
 }

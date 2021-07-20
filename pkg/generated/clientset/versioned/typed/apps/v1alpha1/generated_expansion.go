@@ -29,4 +29,6 @@ type HelmReleaseExpansion interface{}
 
 type LocalizationExpansion interface{}
 
+type ManifestExpansion interface{}
+
 type SubscriptionExpansion interface{}

@@ -10,13 +10,19 @@ metadata:
 spec:
   group: apps.clusternet.io
   names:
+    categories:
+    - clusternet
     kind: Manifest
     listKind: ManifestList
     plural: manifests
     singular: manifest
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Manifest stores the raw object
@@ -38,6 +44,7 @@ spec:
         type: object
     served: true
     storage: true
+    subresources: {}
 status:
   acceptedNames:
     kind: ""
