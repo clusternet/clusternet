@@ -40,6 +40,11 @@ const (
 	// Works as a deployer that help distribute kinds of resources to a group of clusters
 	Deployer featuregate.Feature = "Deployer"
 
+	// alpha: v0.3.0
+	//
+	// Shadow all the Kubernetes objects, including CRDs.
+	ShadowAPI featuregate.Feature = "ShadowAPI"
+
 	// TODO
 )
 
@@ -54,4 +59,5 @@ var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	SocketConnection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	AppPusher:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	Deployer:         {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	ShadowAPI:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }
