@@ -22,12 +22,14 @@ import (
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -62,12 +64,14 @@ type Controller struct {
 	subsSynced cache.InformerSynced
 	descSynced cache.InformerSynced
 
+	recorder record.EventRecorder
+
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
 	subsInformer appInformers.SubscriptionInformer, descInformer appInformers.DescriptionInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -79,6 +83,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		subsLister:       subsInformer.Lister(),
 		subsSynced:       subsInformer.Informer().HasSynced,
 		descSynced:       descInformer.Informer().HasSynced,
+		recorder:         recorder,
 		SyncHandler:      syncHandler,
 	}
 
@@ -136,10 +141,11 @@ func (c *Controller) addSubscription(obj interface{}) {
 		if err == nil {
 			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(subs))
 			klog.V(4).Info(msg)
-			// todo: add recorder
+			c.recorder.Event(subs, corev1.EventTypeNormal, "FinalizerInjected", msg)
 		} else {
-			klog.WarningDepth(4,
-				fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err))
+			msg := fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(subs, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
 			c.addSubscription(obj)
 			return
 		}
