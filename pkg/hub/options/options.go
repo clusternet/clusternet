@@ -36,11 +36,12 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/version"
 	"k8s.io/klog/v2"
 
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	sampleopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
+	clusternetopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
 	"github.com/clusternet/clusternet/pkg/hub/apiserver"
 )
 
@@ -111,9 +112,9 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 		}
 		return genericfilters.BasicLongRunningRequestCheck(sets.NewString("watch"), sets.NewString())(r, requestInfo)
 	}
-	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(sampleopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
+	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(clusternetopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
 	serverConfig.OpenAPIConfig.Info.Title = openAPITitle
-	serverConfig.OpenAPIConfig.Info.Version = "0.1"
+	serverConfig.OpenAPIConfig.Info.Version = version.Get().GitVersion
 
 	if err := o.recommendedOptionsApplyTo(serverConfig); err != nil {
 		return nil, err
