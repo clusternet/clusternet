@@ -23,12 +23,18 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// Bases returns a BaseInformer.
+	Bases() BaseInformer
 	// Descriptions returns a DescriptionInformer.
 	Descriptions() DescriptionInformer
+	// Globalizations returns a GlobalizationInformer.
+	Globalizations() GlobalizationInformer
 	// HelmCharts returns a HelmChartInformer.
 	HelmCharts() HelmChartInformer
 	// HelmReleases returns a HelmReleaseInformer.
 	HelmReleases() HelmReleaseInformer
+	// Localizations returns a LocalizationInformer.
+	Localizations() LocalizationInformer
 	// Subscriptions returns a SubscriptionInformer.
 	Subscriptions() SubscriptionInformer
 }
@@ -44,9 +50,19 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
+// Bases returns a BaseInformer.
+func (v *version) Bases() BaseInformer {
+	return &baseInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
 // Descriptions returns a DescriptionInformer.
 func (v *version) Descriptions() DescriptionInformer {
 	return &descriptionInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Globalizations returns a GlobalizationInformer.
+func (v *version) Globalizations() GlobalizationInformer {
+	return &globalizationInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // HelmCharts returns a HelmChartInformer.
@@ -57,6 +73,11 @@ func (v *version) HelmCharts() HelmChartInformer {
 // HelmReleases returns a HelmReleaseInformer.
 func (v *version) HelmReleases() HelmReleaseInformer {
 	return &helmReleaseInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Localizations returns a LocalizationInformer.
+func (v *version) Localizations() LocalizationInformer {
+	return &localizationInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Subscriptions returns a SubscriptionInformer.

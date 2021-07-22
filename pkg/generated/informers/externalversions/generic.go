@@ -53,12 +53,18 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=apps.clusternet.io, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("bases"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Bases().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("descriptions"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Descriptions().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("globalizations"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Globalizations().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("helmcharts"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().HelmCharts().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("helmreleases"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().HelmReleases().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("localizations"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Localizations().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("subscriptions"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Subscriptions().Informer()}, nil
 

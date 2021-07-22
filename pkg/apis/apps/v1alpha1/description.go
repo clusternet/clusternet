@@ -53,6 +53,11 @@ type DescriptionSpec struct {
 	//
 	// +optional
 	Charts []ChartReference `json:"charts,omitempty"`
+
+	// Raw is the underlying serialization of all objects.
+	//
+	// +optional
+	Raw []byte `json:"raw,omitempty"`
 }
 
 // DescriptionStatus defines the observed state of Description
