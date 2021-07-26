@@ -1,6 +1,12 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: clusternet-reserved
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: clusternet-system
 
 ---
