@@ -25,11 +25,11 @@ const (
 
 	ObjectCreatedByLabel = "clusternet.io/created-by"
 
-	ConfigSourceApiVersionLabel = "apps.clusternet.io/config.apiVersion"
-	ConfigSourceKindLabel       = "apps.clusternet.io/config.kind"
-	ConfigNameLabel             = "apps.clusternet.io/config.name"
-	ConfigNamespaceLabel        = "apps.clusternet.io/config.namespace"
-	ConfigUIDLabel              = "apps.clusternet.io/config.uid"
+	ConfigApiVersionLabel = "apps.clusternet.io/config.apiVersion"
+	ConfigKindLabel       = "apps.clusternet.io/config.kind"
+	ConfigNameLabel       = "apps.clusternet.io/config.name"
+	ConfigNamespaceLabel  = "apps.clusternet.io/config.namespace"
+	ConfigUIDLabel        = "apps.clusternet.io/config.uid"
 )
 
 // label value

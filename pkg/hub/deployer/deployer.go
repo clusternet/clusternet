@@ -138,9 +138,9 @@ func (deployer *Deployer) Run(workers int) {
 func (deployer *Deployer) handleSubscription(subs *appsapi.Subscription) error {
 	if subs.DeletionTimestamp != nil {
 		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
-			known.ConfigSourceKindLabel: subscriptionKind.Kind,
-			known.ConfigNameLabel:       subs.Name,
-			known.ConfigNamespaceLabel:  subs.Namespace,
+			known.ConfigKindLabel:      subscriptionKind.Kind,
+			known.ConfigNameLabel:      subs.Name,
+			known.ConfigNamespaceLabel: subs.Namespace,
 		}))
 		if err != nil {
 			return err
@@ -298,13 +298,13 @@ func (deployer *Deployer) populateDescriptionsForHelm(subs *appsapi.Subscription
 				Name:      subs.Name,
 				Namespace: cluster.Namespace,
 				Labels: map[string]string{
-					known.ObjectCreatedByLabel:  known.ClusternetHubName,
-					known.ClusterIDLabel:        cluster.Labels[known.ClusterIDLabel],
-					known.ClusterNameLabel:      cluster.Labels[known.ClusterNameLabel],
-					known.ConfigSourceKindLabel: subscriptionKind.Kind,
-					known.ConfigNameLabel:       subs.Name,
-					known.ConfigNamespaceLabel:  subs.Namespace,
-					known.ConfigUIDLabel:        string(subs.UID),
+					known.ObjectCreatedByLabel: known.ClusternetHubName,
+					known.ClusterIDLabel:       cluster.Labels[known.ClusterIDLabel],
+					known.ClusterNameLabel:     cluster.Labels[known.ClusterNameLabel],
+					known.ConfigKindLabel:      subscriptionKind.Kind,
+					known.ConfigNameLabel:      subs.Name,
+					known.ConfigNamespaceLabel: subs.Namespace,
+					known.ConfigUIDLabel:       string(subs.UID),
 				},
 				Finalizers: []string{
 					known.AppFinalizer,
@@ -375,9 +375,9 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	if desc.DeletionTimestamp != nil {
 		// make sure all controllees have been deleted
 		hrs, err := deployer.hrLister.HelmReleases(desc.Namespace).List(labels.SelectorFromSet(labels.Set{
-			known.ConfigSourceKindLabel: descriptionKind.Kind,
-			known.ConfigNameLabel:       desc.Name,
-			known.ConfigNamespaceLabel:  desc.Namespace,
+			known.ConfigKindLabel:      descriptionKind.Kind,
+			known.ConfigNameLabel:      desc.Name,
+			known.ConfigNamespaceLabel: desc.Namespace,
 		}))
 		if err != nil {
 			return err

@@ -97,10 +97,10 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 			Name:      r.generateNameForManifest(result.GetName()),
 			Namespace: ReservedNamespace,
 			Labels: map[string]string{
-				known.ConfigSourceApiVersionLabel: result.GetObjectKind().GroupVersionKind().GroupVersion().String(),
-				known.ConfigSourceKindLabel:       r.kind,
-				known.ConfigNameLabel:             result.GetName(),
-				known.ConfigNamespaceLabel:        result.GetNamespace(),
+				known.ConfigApiVersionLabel: result.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+				known.ConfigKindLabel:       r.kind,
+				known.ConfigNameLabel:       result.GetName(),
+				known.ConfigNamespaceLabel:  result.GetNamespace(),
 			},
 		},
 		Template: runtime.RawExtension{
@@ -516,7 +516,7 @@ func (r *REST) convertListOptionsToLabels(options *internalversion.ListOptions) 
 	}
 
 	// apply default labels
-	requirement, err := labels.NewRequirement(known.ConfigSourceKindLabel, selection.Equals, []string{r.kind})
+	requirement, err := labels.NewRequirement(known.ConfigKindLabel, selection.Equals, []string{r.kind})
 	if err != nil {
 		return nil, err
 	}
