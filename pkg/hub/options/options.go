@@ -27,6 +27,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
+	"k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
@@ -98,6 +99,9 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 		// TODO: add initializer
 		return []admission.PluginInitializer{}, nil
 	}
+
+	// remove NamespaceLifecycle admission plugin explicitly
+	o.RecommendedOptions.Admission.DisablePlugins = append(o.RecommendedOptions.Admission.DisablePlugins, lifecycle.PluginName)
 
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
 	serverConfig.Config.RequestTimeout = time.Duration(40) * time.Second // override default 60s
