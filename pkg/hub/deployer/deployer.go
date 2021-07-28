@@ -62,9 +62,9 @@ type Deployer struct {
 	descLister     appListers.DescriptionLister
 	subsLister     appListers.SubscriptionLister
 	hrLister       appListers.HelmReleaseLister
-	clusterLister  clusterListers.ManagedClusterLister
 	baseLister     appListers.BaseLister
 	manifestLister appListers.ManifestLister
+	clusterLister  clusterListers.ManagedClusterLister
 
 	kubeclient       *kubernetes.Clientset
 	clusternetclient *clusternetClientSet.Clientset
@@ -183,16 +183,15 @@ func (deployer *Deployer) handleSubscription(subs *appsapi.Subscription) error {
 		}
 
 		bases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
-			known.ConfigSourceKindLabel: subscriptionKind.Kind,
-			known.ConfigNameLabel:       subs.Name,
-			known.ConfigNamespaceLabel:  subs.Namespace,
+			known.ConfigKindLabel:      subscriptionKind.Kind,
+			known.ConfigNameLabel:      subs.Name,
+			known.ConfigNamespaceLabel: subs.Namespace,
 		}))
 		if err != nil {
 			return err
 		}
 
 		// delete all matching Base
-		// TODO: support other delete propatation
 		for _, base := range bases {
 			if base.DeletionTimestamp != nil {
 				continue
@@ -238,15 +237,15 @@ func (deployer *Deployer) handleSubscription(subs *appsapi.Subscription) error {
 		} else {
 			manifestList, err := deployer.getManifestsBySelector(subs, feed)
 			if errors.IsNotFound(err) {
-				msg := fmt.Sprintf("Subscription %s is using a nonexistent k8s Objects, feed %s/%s %s/%s %s", klog.KObj(subs), feed.APIVersion, feed.Kind, feed.Namespace, feed.Name, feed.FeedSelector.String())
+				msg := fmt.Sprintf("Subscription %s is using a nonexistent Objects %s", klog.KObj(subs), FormatFeed(feed))
 				klog.Error(msg)
-				deployer.recorder.Event(subs, corev1.EventTypeWarning, "NonexistentK8SObjects", msg)
+				deployer.recorder.Event(subs, corev1.EventTypeWarning, "NonexistentObject", msg)
 				return nil
 			}
 			if err != nil {
-				msg := fmt.Sprintf("failed to get k8s Objects matching %q for Subscription %s: %v", feed, klog.KObj(subs), err)
+				msg := fmt.Sprintf("failed to get Objects matching %q for Subscription %s: %v", feed, klog.KObj(subs), err)
 				klog.Error(msg)
-				deployer.recorder.Event(subs, corev1.EventTypeWarning, "FailedRetrievingK8SObject", msg)
+				deployer.recorder.Event(subs, corev1.EventTypeWarning, "FailedRetrievingObject", msg)
 				return err
 			}
 			manifests = append(manifests, manifestList...)
@@ -254,7 +253,7 @@ func (deployer *Deployer) handleSubscription(subs *appsapi.Subscription) error {
 	}
 
 	if len(charts) == 0 && len(manifests) == 0 {
-		deployer.recorder.Event(subs, corev1.EventTypeWarning, "NoMatchedFeeds", "No feeds get matched")
+		deployer.recorder.Event(subs, corev1.EventTypeWarning, "NoFeedsMatched", "No feeds get matched")
 		return nil
 	}
 
@@ -288,14 +287,22 @@ func (deployer *Deployer) handleSubscription(subs *appsapi.Subscription) error {
 
 	if len(manifests) > 0 {
 		deployer.recorder.Event(subs, corev1.EventTypeNormal, "ManifestsMatched", "manifests get matched")
-		allErrs = append(allErrs, deployer.populateBasesForK8SObjects(subs, manifests)...)
+		allErrs = append(allErrs, deployer.populateBases(subs, manifests)...)
 	}
 
 	return utilerrors.NewAggregate(allErrs)
 }
 
 func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
-	// TODO: handle deletion
+	if manifest.DeletionTimestamp != nil {
+		manifest.Finalizers = utils.RemoveString(manifest.Finalizers, known.AppFinalizer)
+		_, err := deployer.clusternetclient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(), manifest, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Manifest %s: %v", known.AppFinalizer, klog.KObj(manifest), err))
+		}
+		return err
+	}
 
 	subscriptions, err := deployer.subsLister.List(labels.NewSelector())
 	if err != nil {
@@ -315,7 +322,7 @@ func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 
 	if matched != nil {
 		deployer.recorder.Event(matched, corev1.EventTypeNormal, "ManifestsMatched", "manifests get matched")
-		allErrs = deployer.populateBasesForK8SObjects(matched, []*appsapi.Manifest{manifest})
+		allErrs = deployer.populateBases(matched, []*appsapi.Manifest{manifest})
 	}
 
 	return utilerrors.NewAggregate(allErrs)
@@ -364,7 +371,7 @@ func (deployer *Deployer) getManifestsBySelector(subs *appsapi.Subscription, fee
 
 	selector := labels.NewSelector()
 	if len(feed.Kind) > 0 {
-		requirement, err := labels.NewRequirement(known.ConfigSourceKindLabel, selection.Equals, []string{feed.Kind})
+		requirement, err := labels.NewRequirement(known.ConfigKindLabel, selection.Equals, []string{feed.Kind})
 		if err != nil {
 			return nil, err
 		}
@@ -373,7 +380,7 @@ func (deployer *Deployer) getManifestsBySelector(subs *appsapi.Subscription, fee
 	}
 
 	if len(feed.APIVersion) > 0 {
-		requirement, err := labels.NewRequirement(known.ConfigSourceApiVersionLabel, selection.Equals, []string{feed.APIVersion})
+		requirement, err := labels.NewRequirement(known.ConfigVersionLabel, selection.Equals, []string{feed.APIVersion})
 		if err != nil {
 			return nil, err
 		}
@@ -572,7 +579,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	return nil
 }
 
-func (deployer *Deployer) populateBasesForK8SObjects(subs *appsapi.Subscription, manifests []*appsapi.Manifest) (errs []error) {
+func (deployer *Deployer) populateBases(subs *appsapi.Subscription, manifests []*appsapi.Manifest) (errs []error) {
 	toCreate, toSync, toDelete, err := deployer.calcClustersToSyncBases(subs)
 	if err != nil {
 		return []error{err}
@@ -587,8 +594,8 @@ func (deployer *Deployer) populateBasesForK8SObjects(subs *appsapi.Subscription,
 		feed := appsapi.Feed{
 			Name:       manifest.Name,
 			Namespace:  manifest.Namespace,
-			APIVersion: manifest.Labels[known.ConfigSourceApiVersionLabel],
-			Kind:       manifest.Labels[known.ConfigSourceKindLabel],
+			APIVersion: manifest.Labels[known.ConfigVersionLabel],
+			Kind:       manifest.Labels[known.ConfigKindLabel],
 		}
 
 		feeds = append(feeds, feed)
@@ -672,9 +679,9 @@ func (deployer *Deployer) calcClustersToSyncBases(subs *appsapi.Subscription) (t
 	}
 
 	deployedBases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
-		known.ConfigSourceKindLabel: subscriptionKind.Kind,
-		known.ConfigNameLabel:       subs.Name,
-		known.ConfigNamespaceLabel:  subs.Namespace,
+		known.ConfigKindLabel:      subscriptionKind.Kind,
+		known.ConfigNameLabel:      subs.Name,
+		known.ConfigNamespaceLabel: subs.Namespace,
 	}))
 	if err != nil {
 		return
@@ -719,13 +726,17 @@ func (deployer *Deployer) newBase(subs *appsapi.Subscription, cluster *clusterap
 			Name:      subs.Name,
 			Namespace: cluster.Namespace,
 			Labels: map[string]string{
-				known.ObjectCreatedByLabel:  known.ClusternetHubName,
-				known.ClusterIDLabel:        cluster.Labels[known.ClusterIDLabel],
-				known.ClusterNameLabel:      cluster.Labels[known.ClusterNameLabel],
-				known.ConfigSourceKindLabel: subscriptionKind.Kind,
-				known.ConfigNameLabel:       subs.Name,
-				known.ConfigNamespaceLabel:  subs.Namespace,
-				known.ConfigUIDLabel:        string(subs.UID),
+				known.ObjectCreatedByLabel: known.ClusternetHubName,
+				known.ClusterIDLabel:       cluster.Labels[known.ClusterIDLabel],
+				known.ClusterNameLabel:     cluster.Labels[known.ClusterNameLabel],
+				known.ConfigKindLabel:      subscriptionKind.Kind,
+				known.ConfigNameLabel:      subs.Name,
+				known.ConfigNamespaceLabel: subs.Namespace,
+				known.ConfigUIDLabel:       string(subs.UID),
+				// add subscription info
+				known.ConfigSubscriptionNameLabel:      subs.Name,
+				known.ConfigSubscriptionNamespaceLabel: subs.Namespace,
+				known.ConfigSubscriptionUIDLabel:       string(subs.UID),
 			},
 			Finalizers: []string{
 				known.AppFinalizer,
@@ -740,30 +751,30 @@ func (deployer *Deployer) newBase(subs *appsapi.Subscription, cluster *clusterap
 }
 
 func (deployer *Deployer) syncBases(subs *appsapi.Subscription, base *appsapi.Base) error {
-	existBase, err := deployer.baseLister.Bases(base.Namespace).Get(base.Name)
+	curBase, err := deployer.baseLister.Bases(base.Namespace).Get(base.Name)
 	if err == nil {
-		if existBase.DeletionTimestamp != nil {
-			return fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(existBase))
+		if curBase.DeletionTimestamp != nil {
+			return fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(curBase))
 		}
 
 		// update it
-		if !reflect.DeepEqual(existBase.Spec, base.Spec) {
-			if existBase.Labels == nil {
-				existBase.Labels = make(map[string]string)
+		if !reflect.DeepEqual(curBase.Spec, base.Spec) {
+			if curBase.Labels == nil {
+				curBase.Labels = make(map[string]string)
 			}
 			for key, value := range base.Labels {
-				existBase.Labels[key] = value
+				curBase.Labels[key] = value
 			}
 
-			existBase.Spec = base.Spec
-			if !utils.ContainsString(existBase.Finalizers, known.AppFinalizer) {
-				existBase.Finalizers = append(existBase.Finalizers, known.AppFinalizer)
+			curBase.Spec = base.Spec
+			if !utils.ContainsString(curBase.Finalizers, known.AppFinalizer) {
+				curBase.Finalizers = append(curBase.Finalizers, known.AppFinalizer)
 			}
 
-			_, err = deployer.clusternetclient.AppsV1alpha1().Bases(existBase.Namespace).Update(context.TODO(),
-				existBase, metav1.UpdateOptions{})
+			_, err = deployer.clusternetclient.AppsV1alpha1().Bases(curBase.Namespace).Update(context.TODO(),
+				curBase, metav1.UpdateOptions{})
 			if err == nil {
-				msg := fmt.Sprintf("Description %s is updated successfully", klog.KObj(existBase))
+				msg := fmt.Sprintf("Description %s is updated successfully", klog.KObj(curBase))
 				klog.V(4).Info(msg)
 				deployer.recorder.Event(subs, corev1.EventTypeNormal, "BaseUpdated", msg)
 			}
@@ -779,8 +790,8 @@ func IsFeedMatches(f appsapi.Feed, manifest *appsapi.Manifest) bool {
 	if len(f.Name) > 0 {
 		if f.Namespace == manifest.Namespace &&
 			f.Name == manifest.Name &&
-			f.Kind == manifest.Labels[known.ConfigSourceKindLabel] &&
-			f.APIVersion == manifest.Labels[known.ConfigSourceApiVersionLabel] {
+			f.Kind == manifest.Labels[known.ConfigKindLabel] &&
+			f.APIVersion == manifest.Labels[known.ConfigVersionLabel] {
 			return true
 		} else {
 			return false
