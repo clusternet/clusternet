@@ -136,8 +136,8 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(cl discovery.DiscoveryInterfac
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)
 			resourceRest.SetKind(apiresource.Kind)
-			resourceRest.SetOriginalGroup(apiGroupResource.Group.Name)
-			resourceRest.SetOriginalVersion(preferredVersion)
+			resourceRest.SetGroup(apiGroupResource.Group.Name)
+			resourceRest.SetVersion(preferredVersion)
 			shadowv1alpha1storage[apiresource.Name] = resourceRest
 		}
 	}

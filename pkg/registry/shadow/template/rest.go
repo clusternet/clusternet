@@ -65,12 +65,12 @@ type REST struct {
 	shortNames []string
 	// namespaced indicates if a resource is namespaced or not.
 	namespaced bool
-	// kind is the kind for the resource (e.g. 'Foo' is the kind for a resource 'foo')
+	// kind is the Kind for the resource (e.g. 'Foo' is the kind for a resource 'foo')
 	kind string
-	// originalGroup is the original group of the resource.
-	originalGroup string
-	// originalVersion is the original version of the resource.
-	originalVersion string
+	// group is the Group of the resource.
+	group string
+	// version is the Version of the resource.
+	version string
 
 	ParameterCodec runtime.ParameterCodec
 
@@ -97,10 +97,11 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 			Name:      r.generateNameForManifest(result.GetName()),
 			Namespace: ReservedNamespace,
 			Labels: map[string]string{
-				known.ConfigApiVersionLabel: result.GetObjectKind().GroupVersionKind().GroupVersion().String(),
-				known.ConfigKindLabel:       r.kind,
-				known.ConfigNameLabel:       result.GetName(),
-				known.ConfigNamespaceLabel:  result.GetNamespace(),
+				known.ConfigGroupLabel:     r.group,
+				known.ConfigVersionLabel:   r.version,
+				known.ConfigKindLabel:      r.kind,
+				known.ConfigNameLabel:      result.GetName(),
+				known.ConfigNamespaceLabel: result.GetNamespace(),
 			},
 		},
 		Template: runtime.RawExtension{
@@ -110,7 +111,7 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 	manifest, err = r.ClusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Create(ctx, manifest, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
-			return nil, errors.NewAlreadyExists(schema.GroupResource{Group: r.originalGroup, Resource: r.name}, result.GetName())
+			return nil, errors.NewAlreadyExists(schema.GroupResource{Group: r.group, Resource: r.name}, result.GetName())
 		}
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	manifest, err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Get(ctx, r.generateNameForManifest(name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return nil, errors.NewNotFound(schema.GroupResource{Group: r.originalGroup, Resource: r.name}, name)
+			return nil, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
 		}
 		return nil, errors.NewInternalError(err)
 	}
@@ -137,7 +138,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	manifest, err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Get(ctx, r.generateNameForManifest(name), metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.originalGroup, Resource: r.name}, name)
+			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
 		}
 		return nil, false, errors.NewInternalError(err)
 	}
@@ -176,7 +177,7 @@ func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.Va
 	err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Delete(ctx, r.generateNameForManifest(name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			err = errors.NewNotFound(schema.GroupResource{Group: r.originalGroup, Resource: r.name}, name)
+			err = errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
 		}
 	}
 	return nil, err == nil, err
@@ -362,7 +363,7 @@ func (r *REST) NewList() runtime.Object {
 }
 
 func (r *REST) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
-	tableConvertor := rest.NewDefaultTableConvertor(schema.GroupResource{Group: r.originalGroup, Resource: r.name})
+	tableConvertor := rest.NewDefaultTableConvertor(schema.GroupResource{Group: r.group, Resource: r.name})
 	return tableConvertor.ConvertToTable(ctx, object, tableOptions)
 }
 
@@ -390,12 +391,12 @@ func (r *REST) Categories() []string {
 	return []string{category}
 }
 
-func (r *REST) SetOriginalGroup(originalGroup string) {
-	r.originalGroup = originalGroup
+func (r *REST) SetGroup(group string) {
+	r.group = group
 }
 
-func (r *REST) SetOriginalVersion(originalVersion string) {
-	r.originalVersion = originalVersion
+func (r *REST) SetVersion(version string) {
+	r.version = version
 }
 
 func (r *REST) SetKind(kind string) {
@@ -413,17 +414,17 @@ func (r *REST) New() runtime.Object {
 func (r *REST) GroupVersionKind(_ schema.GroupVersion) schema.GroupVersionKind {
 	// use original GVK
 	return schema.GroupVersionKind{
-		Group:   r.originalGroup,
-		Version: r.originalVersion,
+		Group:   r.group,
+		Version: r.version,
 		Kind:    r.kind,
 	}
 }
 
 func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *clientgorest.Request {
-	if len(r.originalGroup) == 0 {
-		req.Prefix(CoreGroupPrefix, r.originalVersion)
+	if len(r.group) == 0 {
+		req.Prefix(CoreGroupPrefix, r.version)
 	} else {
-		req.Prefix(NamedGroupPrefix, r.originalGroup, r.originalVersion)
+		req.Prefix(NamedGroupPrefix, r.group, r.version)
 	}
 	if r.namespaced {
 		req.Namespace(namespace)
@@ -432,7 +433,7 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 }
 
 func (r *REST) generateNameForManifest(name string) string {
-	return fmt.Sprintf("%s-%s", strings.ToLower(r.kind), name)
+	return fmt.Sprintf("%s-%s", r.getResourceName(), name)
 }
 
 func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValidation rest.ValidateObjectFunc, options *metav1.CreateOptions) (*unstructured.Unstructured, error) {
@@ -467,7 +468,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 	klog.V(7).Infof("creating %s with %s", r.kind, body)
 	// first we dry-run the creation
 	req := client.Post().
-		Resource(r.name).
+		Resource(r.getResourceName()).
 		Param("dryRun", "All").
 		VersionedParams(options, r.ParameterCodec).
 		Body(body)
@@ -477,7 +478,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 		// get existing object
 		req := client.Get().
 			Name(u.GetName()).
-			Resource(r.name).
+			Resource(r.getResourceName()).
 			VersionedParams(options, r.ParameterCodec).
 			Body(body)
 		err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
@@ -523,6 +524,15 @@ func (r *REST) convertListOptionsToLabels(options *internalversion.ListOptions) 
 	label = label.Add(*requirement)
 
 	return label, nil
+}
+
+func (r *REST) getResourceName() string {
+	resourceName := r.name
+	// is subresource
+	if strings.Contains(resourceName, "/") {
+		resourceName = strings.Split(resourceName, "/")[0]
+	}
+	return resourceName
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
