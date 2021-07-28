@@ -35,6 +35,8 @@ type Interface interface {
 	HelmReleases() HelmReleaseInformer
 	// Localizations returns a LocalizationInformer.
 	Localizations() LocalizationInformer
+	// Manifests returns a ManifestInformer.
+	Manifests() ManifestInformer
 	// Subscriptions returns a SubscriptionInformer.
 	Subscriptions() SubscriptionInformer
 }
@@ -78,6 +80,11 @@ func (v *version) HelmReleases() HelmReleaseInformer {
 // Localizations returns a LocalizationInformer.
 func (v *version) Localizations() LocalizationInformer {
 	return &localizationInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Manifests returns a ManifestInformer.
+func (v *version) Manifests() ManifestInformer {
+	return &manifestInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Subscriptions returns a SubscriptionInformer.

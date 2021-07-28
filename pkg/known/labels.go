@@ -25,7 +25,8 @@ const (
 
 	ObjectCreatedByLabel = "clusternet.io/created-by"
 
-	ConfigSourceKindLabel = "apps.clusternet.io/config.kind"
+	ConfigApiVersionLabel = "apps.clusternet.io/config.apiVersion"
+	ConfigKindLabel       = "apps.clusternet.io/config.kind"
 	ConfigNameLabel       = "apps.clusternet.io/config.name"
 	ConfigNamespaceLabel  = "apps.clusternet.io/config.namespace"
 	ConfigUIDLabel        = "apps.clusternet.io/config.uid"

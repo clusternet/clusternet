@@ -61,6 +61,14 @@ type LocalizationListerExpansion interface{}
 // LocalizationNamespaceLister.
 type LocalizationNamespaceListerExpansion interface{}
 
+// ManifestListerExpansion allows custom methods to be added to
+// ManifestLister.
+type ManifestListerExpansion interface{}
+
+// ManifestNamespaceListerExpansion allows custom methods to be added to
+// ManifestNamespaceLister.
+type ManifestNamespaceListerExpansion interface{}
+
 // SubscriptionListerExpansion allows custom methods to be added to
 // SubscriptionLister.
 type SubscriptionListerExpansion interface{}

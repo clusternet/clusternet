@@ -31,6 +31,7 @@ type AppsV1alpha1Interface interface {
 	HelmChartsGetter
 	HelmReleasesGetter
 	LocalizationsGetter
+	ManifestsGetter
 	SubscriptionsGetter
 }
 
@@ -61,6 +62,10 @@ func (c *AppsV1alpha1Client) HelmReleases(namespace string) HelmReleaseInterface
 
 func (c *AppsV1alpha1Client) Localizations(namespace string) LocalizationInterface {
 	return newLocalizations(c, namespace)
+}
+
+func (c *AppsV1alpha1Client) Manifests(namespace string) ManifestInterface {
+	return newManifests(c, namespace)
 }
 
 func (c *AppsV1alpha1Client) Subscriptions(namespace string) SubscriptionInterface {

@@ -24,11 +24,17 @@ import (
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apiserver/pkg/registry/rest"
 	genericapiserver "k8s.io/apiserver/pkg/server"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
-	"github.com/clusternet/clusternet/pkg/apis/proxies/install"
+	proxiesinstall "github.com/clusternet/clusternet/pkg/apis/proxies/install"
 	"github.com/clusternet/clusternet/pkg/exchanger"
+	"github.com/clusternet/clusternet/pkg/features"
+	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
+	shadowapiserver "github.com/clusternet/clusternet/pkg/hub/apiserver/shadow"
 	socketstorage "github.com/clusternet/clusternet/pkg/registry/proxies/socket"
 	"github.com/clusternet/clusternet/pkg/registry/proxies/socket/subresources"
 )
@@ -44,7 +50,7 @@ var (
 )
 
 func init() {
-	install.Install(Scheme)
+	proxiesinstall.Install(Scheme)
 
 	// we need to add the options to empty v1
 	// TODO fix the server code to avoid this
@@ -104,7 +110,8 @@ func (cfg *Config) Complete() CompletedConfig {
 
 // New returns a new instance of HubAPIServer from the given config.
 func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
-	mclsInformer clusterInformers.ManagedClusterInformer) (*HubAPIServer, error) {
+	mclsInformer clusterInformers.ManagedClusterInformer,
+	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
@@ -114,21 +121,40 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 		GenericAPIServer: genericServer,
 	}
 
-	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(proxies.GroupName, Scheme, ParameterCodec, Codecs)
+	proxiesAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(proxies.GroupName, Scheme, ParameterCodec, Codecs)
 
 	var ec *exchanger.Exchanger
 	if socketConnection {
 		ec = exchanger.NewExchanger(tunnelLogging, mclsInformer)
 	}
 
-	v1alpha1storage := map[string]rest.Storage{}
-	v1alpha1storage["sockets"] = socketstorage.NewREST(socketConnection, ec)
-	v1alpha1storage["sockets/proxy"] = subresources.NewProxyREST(socketConnection, ec, extraHeaderPrefixes)
-	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
+	proxiesv1alpha1storage := map[string]rest.Storage{}
+	proxiesv1alpha1storage["sockets"] = socketstorage.NewREST(socketConnection, ec)
+	proxiesv1alpha1storage["sockets/proxy"] = subresources.NewProxyREST(socketConnection, ec, extraHeaderPrefixes)
+	proxiesAPIGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = proxiesv1alpha1storage
 
-	if err := s.GenericAPIServer.InstallAPIGroup(&apiGroupInfo); err != nil {
+	if err := s.GenericAPIServer.InstallAPIGroup(&proxiesAPIGroupInfo); err != nil {
 		return nil, err
 	}
+
+	s.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-shadowapis", func(context genericapiserver.PostStartHookContext) error {
+		if s.GenericAPIServer.OpenAPIVersionedService != nil && s.GenericAPIServer.StaticOpenAPISpec != nil {
+			//openapiController := openapi.NewController(hub.crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions())
+			//go openapiController.Run(server.GenericAPIServer.StaticOpenAPISpec, server.GenericAPIServer.OpenAPIVersionedService, context.StopCh)
+
+			if utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
+				klog.Infof("install shadow apis...")
+				ss := shadowapiserver.NewShadowAPIServer(s.GenericAPIServer,
+					c.GenericConfig.MaxRequestBodyBytes,
+					c.GenericConfig.MinRequestTimeout,
+					c.GenericConfig.AdmissionControl,
+					kubeclient,
+					clusternetclient)
+				return ss.InstallShadowAPIGroups(kubeclient.DiscoveryClient)
+			}
+		}
+		return nil
+	})
 
 	return s, nil
 }

@@ -27,6 +27,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
+	"k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
@@ -36,11 +37,12 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/version"
 	"k8s.io/klog/v2"
 
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	sampleopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
+	clusternetopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
 	"github.com/clusternet/clusternet/pkg/hub/apiserver"
 )
 
@@ -98,6 +100,9 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 		return []admission.PluginInitializer{}, nil
 	}
 
+	// remove NamespaceLifecycle admission plugin explicitly
+	o.RecommendedOptions.Admission.DisablePlugins = append(o.RecommendedOptions.Admission.DisablePlugins, lifecycle.PluginName)
+
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
 	serverConfig.Config.RequestTimeout = time.Duration(40) * time.Second // override default 60s
 	serverConfig.LongRunningFunc = func(r *http.Request, requestInfo *apirequest.RequestInfo) bool {
@@ -111,9 +116,9 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 		}
 		return genericfilters.BasicLongRunningRequestCheck(sets.NewString("watch"), sets.NewString())(r, requestInfo)
 	}
-	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(sampleopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
+	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(clusternetopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
 	serverConfig.OpenAPIConfig.Info.Title = openAPITitle
-	serverConfig.OpenAPIConfig.Info.Version = "0.1"
+	serverConfig.OpenAPIConfig.Info.Version = version.Get().GitVersion
 
 	if err := o.recommendedOptionsApplyTo(serverConfig); err != nil {
 		return nil, err

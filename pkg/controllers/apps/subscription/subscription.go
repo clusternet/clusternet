@@ -202,7 +202,7 @@ func (c *Controller) deleteDescription(obj interface{}) {
 	}
 
 	controllerRef := &metav1.OwnerReference{
-		Kind: desc.Labels[known.ConfigSourceKindLabel],
+		Kind: desc.Labels[known.ConfigKindLabel],
 		Name: desc.Labels[known.ConfigNameLabel],
 		UID:  types.UID(desc.Labels[known.ConfigUIDLabel]),
 	}

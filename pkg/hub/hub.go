@@ -20,6 +20,8 @@ import (
 	"context"
 	"time"
 
+	crdclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeInformers "k8s.io/client-go/informers"
@@ -27,7 +29,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/clusternet/clusternet/pkg/features"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	"github.com/clusternet/clusternet/pkg/hub/approver"
 	"github.com/clusternet/clusternet/pkg/hub/deployer"
@@ -44,16 +46,23 @@ const (
 
 // Hub defines configuration for clusternet-hub
 type Hub struct {
-	ctx                       context.Context
-	options                   *options.HubServerOptions
-	crrApprover               *approver.CRRApprover
+	ctx context.Context
+
+	options *options.HubServerOptions
+
 	clusternetInformerFactory informers.SharedInformerFactory
 	kubeInformerFactory       kubeInformers.SharedInformerFactory
-	kubeclient                *kubernetes.Clientset
-	clusternetclient          *clusternetClientSet.Clientset
-	deployer                  *deployer.Deployer
-	socketConnection          bool
-	deployerEnabled           bool
+	crdInformerFactory        crdinformers.SharedInformerFactory
+
+	kubeclient       *kubernetes.Clientset
+	clusternetclient *clusternet.Clientset
+	crdclient        *crdclientset.Clientset
+
+	crrApprover *approver.CRRApprover
+	deployer    *deployer.Deployer
+
+	socketConnection bool
+	deployerEnabled  bool
 }
 
 // NewHub returns a new Hub.
@@ -68,11 +77,13 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 
 	// creating the clientset
 	kubeclient := kubernetes.NewForConfigOrDie(config)
-	clusternetclient := clusternetClientSet.NewForConfigOrDie(config)
+	clusternetclient := clusternet.NewForConfigOrDie(config)
+	crdclient := crdclientset.NewForConfigOrDie(config)
 
 	// creates the informer factory
 	kubeInformerFactory := kubeInformers.NewSharedInformerFactory(kubeclient, DefaultResync)
 	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetclient, DefaultResync)
+	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdclient, 5*time.Minute)
 	approver, err := approver.NewCRRApprover(ctx, kubeclient, clusternetclient, clusternetInformerFactory,
 		kubeInformerFactory, socketConnection)
 	if err != nil {
@@ -90,6 +101,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	kubeInformerFactory.Core().V1().Secrets().Informer()
 	clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests().Informer()
 	clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer()
+	crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Informer()
 	if deployerEnabled {
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
@@ -103,8 +115,10 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		options:                   opts,
 		kubeclient:                kubeclient,
 		clusternetclient:          clusternetclient,
+		crdclient:                 crdclient,
 		clusternetInformerFactory: clusternetInformerFactory,
 		kubeInformerFactory:       kubeInformerFactory,
+		crdInformerFactory:        crdInformerFactory,
 		socketConnection:          socketConnection,
 		deployer:                  deployer,
 		deployerEnabled:           deployerEnabled,
@@ -114,6 +128,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
 	kubeInformerFactory.Start(ctx.Done())
 	clusternetInformerFactory.Start(ctx.Done())
+	crdInformerFactory.Start(ctx.Done())
 
 	return hub, nil
 }
@@ -147,12 +162,16 @@ func (hub *Hub) RunAPIServer() error {
 
 	server, err := config.Complete().New(hub.options.TunnelLogging, hub.socketConnection,
 		hub.options.RecommendedOptions.Authentication.RequestHeader.ExtraHeaderPrefixes,
-		hub.clusternetInformerFactory.Clusters().V1beta1().ManagedClusters())
+		hub.clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
+		hub.kubeclient,
+		hub.clusternetclient)
 	if err != nil {
 		return err
 	}
 
-	server.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-apiserver-informers", func(context genericapiserver.PostStartHookContext) error {
+	//config.Complete().GenericConfig.MaxRequestBodyBytes
+
+	server.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-informers", func(context genericapiserver.PostStartHookContext) error {
 		config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
 		// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
 		// hub.options.LoopbackSharedInformerFactory.Start(context.StopCh)
