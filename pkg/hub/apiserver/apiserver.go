@@ -33,7 +33,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/exchanger"
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	shadowapiserver "github.com/clusternet/clusternet/pkg/hub/apiserver/shadow"
 	socketstorage "github.com/clusternet/clusternet/pkg/registry/proxies/socket"
 	"github.com/clusternet/clusternet/pkg/registry/proxies/socket/subresources"
@@ -110,8 +110,8 @@ func (cfg *Config) Complete() CompletedConfig {
 
 // New returns a new instance of HubAPIServer from the given config.
 func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
-	mclsInformer clusterInformers.ManagedClusterInformer,
-	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset) (*HubAPIServer, error) {
+	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset,
+	clusternetInformerFactory informers.SharedInformerFactory) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 
 	var ec *exchanger.Exchanger
 	if socketConnection {
-		ec = exchanger.NewExchanger(tunnelLogging, mclsInformer)
+		ec = exchanger.NewExchanger(tunnelLogging, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters())
 	}
 
 	proxiesv1alpha1storage := map[string]rest.Storage{}
@@ -149,7 +149,8 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 					c.GenericConfig.MinRequestTimeout,
 					c.GenericConfig.AdmissionControl,
 					kubeclient,
-					clusternetclient)
+					clusternetclient,
+					clusternetInformerFactory)
 				return ss.InstallShadowAPIGroups(kubeclient.DiscoveryClient)
 			}
 		}

@@ -109,6 +109,10 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
 	}
 
+	if utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
+		clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer()
+	}
+
 	hub := &Hub{
 		ctx:                       ctx,
 		crrApprover:               approver,
@@ -162,9 +166,9 @@ func (hub *Hub) RunAPIServer() error {
 
 	server, err := config.Complete().New(hub.options.TunnelLogging, hub.socketConnection,
 		hub.options.RecommendedOptions.Authentication.RequestHeader.ExtraHeaderPrefixes,
-		hub.clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
 		hub.kubeclient,
-		hub.clusternetclient)
+		hub.clusternetclient,
+		hub.clusternetInformerFactory)
 	if err != nil {
 		return err
 	}
