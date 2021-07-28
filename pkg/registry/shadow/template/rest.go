@@ -42,6 +42,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	"github.com/clusternet/clusternet/pkg/known"
 )
 
@@ -53,7 +54,7 @@ const (
 	// cluster-scoped objects will be store into Manifest with ReservedNamespace
 	ReservedNamespace = "clusternet-reserved"
 
-	// default value for DeleteCollectionWorkers
+	// default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
 )
 
@@ -72,15 +73,16 @@ type REST struct {
 	// version is the Version of the resource.
 	version string
 
-	ParameterCodec runtime.ParameterCodec
+	parameterCodec runtime.ParameterCodec
 
-	DryRunClient     *kubernetes.Clientset
-	ClusternetClient *clusternet.Clientset
+	dryRunClient              *kubernetes.Clientset
+	clusternetClient          *clusternet.Clientset
+	clusternetInformerFactory informers.SharedInformerFactory
 
-	// DeleteCollectionWorkers is the maximum number of workers in a single
+	// deleteCollectionWorkers is the maximum number of workers in a single
 	// DeleteCollection call. Delete requests for the items in a collection
 	// are issued in parallel.
-	DeleteCollectionWorkers int
+	deleteCollectionWorkers int
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -108,7 +110,7 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 			Object: result,
 		},
 	}
-	manifest, err = r.ClusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Create(ctx, manifest, metav1.CreateOptions{})
+	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Create(ctx, manifest, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			return nil, errors.NewAlreadyExists(schema.GroupResource{Group: r.group, Resource: r.name}, result.GetName())
@@ -120,7 +122,13 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 
 // Get retrieves the item from Manifest.
 func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
-	manifest, err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Get(ctx, r.generateNameForManifest(name), *options)
+	var manifest *appsapi.Manifest
+	var err error
+	if len(options.ResourceVersion) == 0 {
+		manifest, err = r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(ReservedNamespace).Get(r.generateNameForManifest(name))
+	} else {
+		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Get(ctx, r.generateNameForManifest(name), *options)
+	}
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -135,7 +143,7 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 // or an error. If the registry allows create-on-update, the create flow will be executed.
 // A bool is returned along with the object and any errors, to indicate object creation.
 func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
-	manifest, err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Get(ctx, r.generateNameForManifest(name), metav1.GetOptions{})
+	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(ReservedNamespace).Get(r.generateNameForManifest(name))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -162,7 +170,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 
 	manifest.Template.Reset()
 	manifest.Template.Object = result
-	manifest, err = r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Update(ctx, manifest, *options)
+	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Update(ctx, manifest, *options)
 	if err != nil {
 		return nil, false, err
 	}
@@ -174,7 +182,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 // Delete removes the item from storage.
 // options can be mutated by rest.BeforeDelete due to a graceful deletion strategy.
 func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions) (runtime.Object, bool, error) {
-	err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Delete(ctx, r.generateNameForManifest(name), *options)
+	err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Delete(ctx, r.generateNameForManifest(name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -211,9 +219,9 @@ func (r *REST) DeleteCollection(ctx context.Context, deleteValidation rest.Valid
 	// Spawn a number of goroutines, so that we can issue requests to storage
 	// in parallel to speed up deletion.
 	// It is proportional to the number of items to delete, up to
-	// DeleteCollectionWorkers (it doesn't make much sense to spawn 16
+	// deleteCollectionWorkers (it doesn't make much sense to spawn 16
 	// workers to delete 10 items).
-	workersNumber := r.DeleteCollectionWorkers
+	workersNumber := r.deleteCollectionWorkers
 	if workersNumber > len(items) {
 		workersNumber = len(items)
 	}
@@ -278,7 +286,7 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 	}
 
 	klog.V(5).Infof("%v", label)
-	watcher, err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Watch(ctx, metav1.ListOptions{
+	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Watch(ctx, metav1.ListOptions{
 		TypeMeta:             metav1.TypeMeta{},
 		LabelSelector:        label.String(),
 		FieldSelector:        "",
@@ -320,7 +328,7 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		return nil, err
 	}
 
-	manifests, err := r.ClusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).List(ctx, metav1.ListOptions{
+	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).List(ctx, metav1.ListOptions{
 		//TypeMeta:             metav1.TypeMeta{},
 		LabelSelector: label.String(),
 		//FieldSelector:        "",
@@ -463,14 +471,14 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 		return nil, errors.NewBadRequest(fmt.Sprintf("failed to marshal to json: %v", u.Object))
 	}
 
-	client := r.DryRunClient.RESTClient()
+	client := r.dryRunClient.RESTClient()
 	result := &unstructured.Unstructured{}
 	klog.V(7).Infof("creating %s with %s", r.kind, body)
 	// first we dry-run the creation
 	req := client.Post().
 		Resource(r.getResourceName()).
 		Param("dryRun", "All").
-		VersionedParams(options, r.ParameterCodec).
+		VersionedParams(options, r.parameterCodec).
 		Body(body)
 	err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
 	if err != nil && errors.IsAlreadyExists(err) {
@@ -479,7 +487,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 		req := client.Get().
 			Name(u.GetName()).
 			Resource(r.getResourceName()).
-			VersionedParams(options, r.ParameterCodec).
+			VersionedParams(options, r.parameterCodec).
 			Body(body)
 		err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
 	}
@@ -536,14 +544,16 @@ func (r *REST) getResourceName() string {
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
-func NewREST(dryRunClient *kubernetes.Clientset, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec) *REST {
+func NewREST(dryRunClient *kubernetes.Clientset, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
+	clusternetInformerFactory informers.SharedInformerFactory) *REST {
 	return &REST{
-		DryRunClient:     dryRunClient,
-		ClusternetClient: clusternetclient,
-		ParameterCodec:   parameterCodec,
-		// currently we only set a default value for DeleteCollectionWorkers
+		dryRunClient:              dryRunClient,
+		clusternetClient:          clusternetclient,
+		clusternetInformerFactory: clusternetInformerFactory,
+		parameterCodec:            parameterCodec,
+		// currently we only set a default value for deleteCollectionWorkers
 		// TODO: make it configurable?
-		DeleteCollectionWorkers: DefaultDeleteCollectionWorkers,
+		deleteCollectionWorkers: DefaultDeleteCollectionWorkers,
 	}
 }
 
