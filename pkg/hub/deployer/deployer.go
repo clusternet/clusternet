@@ -305,6 +305,10 @@ func (deployer *Deployer) populateDescriptionsForHelm(subs *appsapi.Subscription
 					known.ConfigNameLabel:      subs.Name,
 					known.ConfigNamespaceLabel: subs.Namespace,
 					known.ConfigUIDLabel:       string(subs.UID),
+					// add subscription info
+					known.ConfigSubscriptionNameLabel:      subs.Name,
+					known.ConfigSubscriptionNamespaceLabel: subs.Namespace,
+					known.ConfigSubscriptionUIDLabel:       string(subs.UID),
 				},
 				Finalizers: []string{
 					known.AppFinalizer,

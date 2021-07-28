@@ -171,6 +171,10 @@ func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
 					known.ConfigUIDLabel:       string(desc.UID),
 					known.ClusterIDLabel:       desc.Labels[known.ClusterIDLabel],
 					known.ClusterNameLabel:     desc.Labels[known.ClusterNameLabel],
+					// add subscription info
+					known.ConfigSubscriptionNameLabel:      desc.Labels[known.ConfigSubscriptionNameLabel],
+					known.ConfigSubscriptionNamespaceLabel: desc.Labels[known.ConfigSubscriptionNamespaceLabel],
+					known.ConfigSubscriptionUIDLabel:       desc.Labels[known.ConfigSubscriptionUIDLabel],
 				},
 				Finalizers: []string{
 					known.AppFinalizer,
