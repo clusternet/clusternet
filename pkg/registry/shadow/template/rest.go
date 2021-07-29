@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -142,7 +143,18 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 // Update performs an atomic update and set of the object. Returns the result of the update
 // or an error. If the registry allows create-on-update, the create flow will be executed.
 // A bool is returned along with the object and any errors, to indicate object creation.
-func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
+func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo,
+	createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc,
+	forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
+	resource, subresource := r.getResourceName()
+	if len(subresource) > 0 && !supportedSubresources.Has(subresource) {
+		// all these shadow apis are considered as templates, updating subresources, such as 'status' makes no sense.
+		err := errors.NewMethodNotSupported(schema.GroupResource{Group: r.group, Resource: r.name}, "")
+		err.ErrStatus.Message = fmt.Sprintf("%s are considered as templates, which make no sense to update templates' %s",
+			resource, subresource)
+		return nil, false, err
+	}
+
 	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(ReservedNamespace).Get(r.generateNameForManifest(name))
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -441,7 +453,8 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 }
 
 func (r *REST) generateNameForManifest(name string) string {
-	return fmt.Sprintf("%s-%s", r.getResourceName(), name)
+	resource, _ := r.getResourceName()
+	return fmt.Sprintf("%s-%s", resource, name)
 }
 
 func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValidation rest.ValidateObjectFunc, options *metav1.CreateOptions) (*unstructured.Unstructured, error) {
@@ -474,9 +487,10 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 	client := r.dryRunClient.RESTClient()
 	result := &unstructured.Unstructured{}
 	klog.V(7).Infof("creating %s with %s", r.kind, body)
+	resource, _ := r.getResourceName()
 	// first we dry-run the creation
 	req := client.Post().
-		Resource(r.getResourceName()).
+		Resource(resource).
 		Param("dryRun", "All").
 		VersionedParams(options, r.parameterCodec).
 		Body(body)
@@ -486,7 +500,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 		// get existing object
 		req := client.Get().
 			Name(u.GetName()).
-			Resource(r.getResourceName()).
+			Resource(resource).
 			VersionedParams(options, r.parameterCodec).
 			Body(body)
 		err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
@@ -534,13 +548,14 @@ func (r *REST) convertListOptionsToLabels(options *internalversion.ListOptions) 
 	return label, nil
 }
 
-func (r *REST) getResourceName() string {
-	resourceName := r.name
+func (r *REST) getResourceName() (string, string) {
 	// is subresource
-	if strings.Contains(resourceName, "/") {
-		resourceName = strings.Split(resourceName, "/")[0]
+	if strings.Contains(r.name, "/") {
+		resources := strings.Split(r.name, "/")
+		return resources[0], resources[1]
 	}
-	return resourceName
+
+	return r.name, ""
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
@@ -561,3 +576,7 @@ var _ rest.GroupVersionKindProvider = &REST{}
 var _ rest.CategoriesProvider = &REST{}
 var _ rest.ShortNamesProvider = &REST{}
 var _ rest.StandardStorage = &REST{}
+
+var supportedSubresources = sets.NewString(
+	"scale",
+)
