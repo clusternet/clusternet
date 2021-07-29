@@ -32,11 +32,11 @@ type FixupFunc func(runtime.Object) runtime.Object
 
 type WatchWrapper struct {
 	// watch and report changes
-	Watcher watch.Interface
+	watcher watch.Interface
 	// used to correct the object before we send it to the serializer
-	Fixup FixupFunc
+	fixup FixupFunc
 
-	Ctx context.Context
+	ctx context.Context
 
 	result chan watch.Event
 	sync.Mutex
@@ -46,7 +46,7 @@ func (w *WatchWrapper) Stop() {
 	w.Lock()
 	defer w.Unlock()
 
-	w.Watcher.Stop()
+	w.watcher.Stop()
 }
 
 func (w *WatchWrapper) ResultChan() <-chan watch.Event {
@@ -57,8 +57,8 @@ func (w *WatchWrapper) Run() {
 	w.Lock()
 	defer w.Unlock()
 
-	ch := w.Watcher.ResultChan()
-	done := w.Ctx.Done()
+	ch := w.watcher.ResultChan()
+	done := w.ctx.Done()
 
 	for {
 		select {
@@ -70,10 +70,10 @@ func (w *WatchWrapper) Run() {
 				return
 			}
 
-			if w.Fixup == nil {
+			if w.fixup == nil {
 				w.result <- event
 			} else {
-				obj := w.Fixup(event.Object)
+				obj := w.fixup(event.Object)
 				w.result <- watch.Event{
 					Type:   event.Type,
 					Object: obj,
@@ -85,9 +85,9 @@ func (w *WatchWrapper) Run() {
 
 func NewWatchWrapper(ctx context.Context, watcher watch.Interface, fixup FixupFunc, size int) *WatchWrapper {
 	return &WatchWrapper{
-		Ctx:     ctx,
-		Watcher: watcher,
-		Fixup:   fixup,
+		ctx:     ctx,
+		watcher: watcher,
+		fixup:   fixup,
 		result:  make(chan watch.Event, size),
 	}
 }
