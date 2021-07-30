@@ -38,4 +38,7 @@ require (
 	sigs.k8s.io/yaml v1.2.0
 )
 
-replace k8s.io/apiserver => github.com/clusternet/apiserver v0.21.2-0.20210722062202-17431d287b5c
+replace (
+	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210730131630-f4caefbd02ac
+	k8s.io/apiserver => github.com/clusternet/apiserver v0.21.2-0.20210722062202-17431d287b5c
+)
