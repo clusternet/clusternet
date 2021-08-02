@@ -299,9 +299,8 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 
 	klog.V(5).Infof("%v", label)
 	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Watch(ctx, metav1.ListOptions{
-		TypeMeta:             metav1.TypeMeta{},
 		LabelSelector:        label.String(),
-		FieldSelector:        "",
+		FieldSelector:        "", // explicitly set FieldSelector to an empty string
 		Watch:                options.Watch,
 		AllowWatchBookmarks:  options.AllowWatchBookmarks,
 		ResourceVersion:      options.ResourceVersion,
@@ -341,16 +340,15 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 	}
 
 	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).List(ctx, metav1.ListOptions{
-		//TypeMeta:             metav1.TypeMeta{},
-		LabelSelector: label.String(),
-		//FieldSelector:        "",
-		//Watch:                false,
-		//AllowWatchBookmarks:  false,
-		//ResourceVersion:      "",
-		//ResourceVersionMatch: "",
-		//TimeoutSeconds:       nil,
-		//Limit:                0,
-		//Continue:             "",
+		LabelSelector:        label.String(),
+		FieldSelector:        "", // explicitly set FieldSelector to an empty string
+		Watch:                options.Watch,
+		AllowWatchBookmarks:  options.AllowWatchBookmarks,
+		ResourceVersion:      options.ResourceVersion,
+		ResourceVersionMatch: options.ResourceVersionMatch,
+		TimeoutSeconds:       options.TimeoutSeconds,
+		Limit:                options.Limit,
+		Continue:             options.Continue,
 	})
 	if err != nil {
 		return nil, err
@@ -360,6 +358,7 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 	orignalGVK := r.GroupVersionKind(schema.GroupVersion{})
 	result.SetAPIVersion(orignalGVK.GroupVersion().String())
 	result.SetKind(r.getListKind())
+	result.SetResourceVersion(manifests.ResourceVersion)
 	if len(manifests.Items) == 0 {
 		return result, nil
 	}
