@@ -359,7 +359,7 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 	result := &unstructured.UnstructuredList{}
 	orignalGVK := r.GroupVersionKind(schema.GroupVersion{})
 	result.SetAPIVersion(orignalGVK.GroupVersion().String())
-	result.SetKind("List")
+	result.SetKind(r.getListKind())
 	if len(manifests.Items) == 0 {
 		return result, nil
 	}
@@ -370,14 +370,14 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		}
 		result.Items = append(result.Items, *obj)
 	}
-
-	return result, err
+	return result, nil
 }
 
 func (r *REST) NewList() runtime.Object {
+	// Here the list GVK "meta.k8s.io/v1 List" is just a symbol,
+	// since the real GVK will be set when List()
 	newObj := &unstructured.UnstructuredList{}
-	orignalGVK := r.GroupVersionKind(schema.GroupVersion{})
-	newObj.SetAPIVersion(orignalGVK.GroupVersion().String())
+	newObj.SetAPIVersion(metav1.SchemeGroupVersion.String())
 	newObj.SetKind("List")
 	return newObj
 }
@@ -426,8 +426,7 @@ func (r *REST) SetKind(kind string) {
 func (r *REST) New() runtime.Object {
 	newObj := &unstructured.Unstructured{}
 	orignalGVK := r.GroupVersionKind(schema.GroupVersion{})
-	newObj.SetAPIVersion(orignalGVK.GroupVersion().String())
-	newObj.SetKind(orignalGVK.Kind)
+	newObj.SetGroupVersionKind(orignalGVK)
 	return newObj
 }
 
@@ -556,6 +555,13 @@ func (r *REST) getResourceName() (string, string) {
 	}
 
 	return r.name, ""
+}
+
+func (r *REST) getListKind() string {
+	if strings.Contains(r.name, "/") {
+		return r.kind
+	}
+	return fmt.Sprintf("%sList", r.kind)
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
