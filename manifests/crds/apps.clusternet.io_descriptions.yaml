@@ -69,8 +69,10 @@ spec:
                 type: string
               raw:
                 description: Raw is the underlying serialization of all objects.
-                format: byte
-                type: string
+                items:
+                  format: byte
+                  type: string
+                type: array
             required:
             - deployer
             type: object

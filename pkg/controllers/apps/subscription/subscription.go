@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -136,16 +135,14 @@ func (c *Controller) addSubscription(obj interface{}) {
 		if !utils.ContainsString(subs.Finalizers, known.AppFinalizer) {
 			subs.Finalizers = append(subs.Finalizers, known.AppFinalizer)
 		}
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subs.Namespace).Update(context.TODO(),
+		updated, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subs.Namespace).Update(context.TODO(),
 			subs, metav1.UpdateOptions{})
 		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(subs))
+			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(updated))
 			klog.V(4).Info(msg)
-			c.recorder.Event(subs, corev1.EventTypeNormal, "FinalizerInjected", msg)
 		} else {
 			msg := fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err)
 			klog.WarningDepth(4, msg)
-			c.recorder.Event(subs, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
 			c.addSubscription(obj)
 			return
 		}

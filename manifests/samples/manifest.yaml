@@ -1,0 +1,19 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Manifest
+metadata:
+  name: manifest-configmap
+  namespace: default
+  labels:
+    apps.clusternet.io/config.group: ""
+    apps.clusternet.io/config.version: v1
+    apps.clusternet.io/config.kind: ConfigMap
+    apps.clusternet.io/config.name: foo
+template:
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: foo
+    namespace: default
+  data:
+    foo: bar
+

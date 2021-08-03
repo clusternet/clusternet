@@ -57,8 +57,10 @@ type DescriptionSpec struct {
 	// Raw is the underlying serialization of all objects.
 	//
 	// +optional
-	Raw []byte `json:"raw,omitempty"`
+	Raw []RawObject `json:"raw,omitempty"`
 }
+
+type RawObject []byte
 
 // DescriptionStatus defines the observed state of Description
 type DescriptionStatus struct {
