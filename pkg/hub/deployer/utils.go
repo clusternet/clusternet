@@ -19,9 +19,57 @@ package deployer
 import (
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
-func FormatFeed(feed appsapi.Feed) string {
-	return fmt.Sprintf(" APIVersion: %s, Kind: %s with Name %s in Namespace %s that matches %q", feed.APIVersion, feed.Kind, feed.Name, feed.Namespace, feed.FeedSelector.String())
+func formatFeed(feed appsapi.Feed) string {
+	if len(feed.Name) != 0 {
+		return fmt.Sprintf("%s %s/%s", feed.Kind, feed.Namespace, feed.Name)
+	}
+
+	return fmt.Sprintf("%s with selector %q", feed.Kind, feed.FeedSelector.String())
+}
+
+func getLabelsSelectorFromFeed(feed appsapi.Feed, namespace string) (labels.Selector, error) {
+	var gv schema.GroupVersion
+	var err error
+	if len(feed.APIVersion) > 0 {
+		gv, err = schema.ParseGroupVersion(feed.APIVersion)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	labelSet := labels.Set{
+		known.ConfigGroupLabel:     gv.Group,
+		known.ConfigVersionLabel:   gv.Version,
+		known.ConfigKindLabel:      feed.Kind,
+		known.ConfigNamespaceLabel: namespace,
+	}
+	if len(feed.Namespace) > 0 {
+		labelSet[known.ConfigNamespaceLabel] = namespace
+	}
+	if len(feed.Name) > 0 {
+		labelSet[known.ConfigNameLabel] = feed.Name
+	}
+	selector := labels.SelectorFromSet(labelSet)
+
+	if feed.FeedSelector != nil {
+		feedSelector, err := metav1.LabelSelectorAsSelector(feed.FeedSelector)
+		if err != nil {
+			return nil, err
+		}
+
+		reqs, _ := feedSelector.Requirements()
+		for _, r := range reqs {
+			selector.Add(r)
+		}
+	}
+
+	return selector, nil
 }

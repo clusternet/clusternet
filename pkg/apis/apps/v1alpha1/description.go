@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // Important: Run "make generated" to regenerate code after modifying this file
@@ -57,10 +58,8 @@ type DescriptionSpec struct {
 	// Raw is the underlying serialization of all objects.
 	//
 	// +optional
-	Raw []RawObject `json:"raw,omitempty"`
+	Raw []runtime.RawExtension `json:"raw,omitempty"`
 }
-
-type RawObject []byte
 
 // DescriptionStatus defines the observed state of Description
 type DescriptionStatus struct {
@@ -77,7 +76,7 @@ type DescriptionDeployer string
 
 const (
 	DescriptionHelmDeployer    DescriptionDeployer = "Helm"
-	DescriptionDefaultDeployer DescriptionDeployer = "Default"
+	DescriptionGenericDeployer DescriptionDeployer = "Generic"
 )
 
 type DescriptionPhase string

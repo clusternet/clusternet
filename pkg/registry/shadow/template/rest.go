@@ -52,9 +52,6 @@ const (
 	CoreGroupPrefix  = "api"
 	NamedGroupPrefix = "apis"
 
-	// cluster-scoped objects will be store into Manifest with ReservedNamespace
-	ReservedNamespace = "clusternet-reserved"
-
 	// default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
 )
@@ -98,7 +95,7 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 	manifest := &appsapi.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.generateNameForManifest(result.GetName()),
-			Namespace: ReservedNamespace,
+			Namespace: appsapi.ReservedNamespace,
 			Labels: map[string]string{
 				known.ConfigGroupLabel:     r.group,
 				known.ConfigVersionLabel:   r.version,
@@ -126,9 +123,9 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
-		manifest, err = r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(ReservedNamespace).Get(r.generateNameForManifest(name))
+		manifest, err = r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(name))
 	} else {
-		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Get(ctx, r.generateNameForManifest(name), *options)
+		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Get(ctx, r.generateNameForManifest(name), *options)
 	}
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -155,7 +152,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, err
 	}
 
-	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(ReservedNamespace).Get(r.generateNameForManifest(name))
+	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(name))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -182,7 +179,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 
 	manifest.Template.Reset()
 	manifest.Template.Object = result
-	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Update(ctx, manifest, *options)
+	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifest, *options)
 	if err != nil {
 		return nil, false, err
 	}
@@ -194,7 +191,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 // Delete removes the item from storage.
 // options can be mutated by rest.BeforeDelete due to a graceful deletion strategy.
 func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions) (runtime.Object, bool, error) {
-	err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Delete(ctx, r.generateNameForManifest(name), *options)
+	err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Delete(ctx, r.generateNameForManifest(name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -298,7 +295,7 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 	}
 
 	klog.V(5).Infof("%v", label)
-	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).Watch(ctx, metav1.ListOptions{
+	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Watch(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
 		Watch:                options.Watch,
@@ -339,7 +336,7 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		return nil, err
 	}
 
-	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(ReservedNamespace).List(ctx, metav1.ListOptions{
+	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
 		Watch:                options.Watch,
@@ -470,9 +467,9 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 	u.SetLabels(labels)
 
 	if r.kind != "Namespace" && r.namespaced {
-		u.SetNamespace(ReservedNamespace)
+		u.SetNamespace(appsapi.ReservedNamespace)
 	}
-	dryRunNamespace := ReservedNamespace
+	dryRunNamespace := appsapi.ReservedNamespace
 	if r.kind == "Namespace" {
 		dryRunNamespace = ""
 	}
