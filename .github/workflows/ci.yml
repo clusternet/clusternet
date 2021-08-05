@@ -14,7 +14,7 @@ jobs:
       run:
         working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     strategy:
-      max-parallel: 2
+      max-parallel: 3
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:

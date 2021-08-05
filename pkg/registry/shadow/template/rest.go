@@ -94,7 +94,7 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 	// next we create manifest to store the result
 	manifest := &appsapi.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.generateNameForManifest(result.GetName()),
+			Name:      r.generateNameForManifest(result.GetNamespace(), result.GetName()),
 			Namespace: appsapi.ReservedNamespace,
 			Labels: map[string]string{
 				known.ConfigGroupLabel:     r.group,
@@ -123,9 +123,11 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
-		manifest, err = r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(name))
+		manifest, err = r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).
+			Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
 	} else {
-		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Get(ctx, r.generateNameForManifest(name), *options)
+		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
+			Get(ctx, r.generateNameForManifest(request.NamespaceValue(ctx), name), *options)
 	}
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -152,7 +154,8 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, err
 	}
 
-	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(name))
+	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).
+		Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -191,7 +194,8 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 // Delete removes the item from storage.
 // options can be mutated by rest.BeforeDelete due to a graceful deletion strategy.
 func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions) (runtime.Object, bool, error) {
-	err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Delete(ctx, r.generateNameForManifest(name), *options)
+	err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
+		Delete(ctx, r.generateNameForManifest(request.NamespaceValue(ctx), name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -447,8 +451,11 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 	return req
 }
 
-func (r *REST) generateNameForManifest(name string) string {
+func (r *REST) generateNameForManifest(namespace, name string) string {
 	resource, _ := r.getResourceName()
+	if len(namespace) > 0 {
+		return fmt.Sprintf("%s-%s-%s", resource, namespace, name)
+	}
 	return fmt.Sprintf("%s-%s", resource, name)
 }
 

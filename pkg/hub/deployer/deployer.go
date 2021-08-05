@@ -18,14 +18,17 @@ package deployer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	kubeinformers "k8s.io/client-go/informers"
@@ -146,6 +149,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	mfstController, err := manifest.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
+		deployer.recorder,
 		deployer.handleManifest)
 	if err != nil {
 		return nil, err
@@ -391,6 +395,11 @@ func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base
 }
 
 func (deployer *Deployer) handleBase(base *appsapi.Base) error {
+	// patch manifest labels
+	if err := deployer.patchLabelsToReferredManifests(base); err != nil {
+		return err
+	}
+
 	if base.DeletionTimestamp != nil {
 		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      baseKind.Kind,
@@ -657,7 +666,130 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 }
 
 func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
-	// TODO: @dixudx
+	if manifest.DeletionTimestamp != nil {
+		// TODO: other strategies
 
-	return nil
+		// remove finalizer
+		manifest.Finalizers = utils.RemoveString(manifest.Finalizers, known.AppFinalizer)
+		_, err := deployer.clusternetclient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(), manifest, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Manifest %s: %v", known.AppFinalizer, klog.KObj(manifest), err))
+		}
+		return err
+	}
+
+	// find all referred Base UIDs
+	var baseUIDs []string
+	for key, val := range manifest.Labels {
+		if val == baseKind.Kind {
+			baseUIDs = append(baseUIDs, key)
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(baseUIDs))
+	errCh := make(chan error, len(baseUIDs))
+	for _, baseuid := range baseUIDs {
+		bases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
+			baseuid: baseKind.Kind,
+		}))
+
+		if err != nil {
+			return err
+		}
+
+		go func() {
+			defer wg.Done()
+			if len(bases) == 0 {
+				return
+			}
+			// here the length should always be 1
+			if err := deployer.populateDescriptions(bases[0]); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// collect errors
+	close(errCh)
+	var allErrs []error
+	for err := range errCh {
+		allErrs = append(allErrs, err)
+	}
+	return utilerrors.NewAggregate(allErrs)
+}
+
+func (deployer *Deployer) patchLabelsToReferredManifests(b *appsapi.Base) error {
+	var allManifests []*appsapi.Manifest
+	var allErrs []error
+	for _, feed := range b.Spec.Feeds {
+		if feed.Kind != helmChartKind.Kind {
+			manifests, err := deployer.getManifestsBySelector(b, feed)
+			if err == nil {
+				allManifests = append(allManifests, manifests...)
+			}
+
+			if errors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				allErrs = append(allErrs, err)
+			}
+
+		}
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(allManifests))
+	errCh := make(chan error, len(allManifests))
+	for _, manifest := range allManifests {
+		go func(manifest *appsapi.Manifest) {
+			defer wg.Done()
+
+			curVal, ok := manifest.Labels[string(b.UID)]
+			var labelsToPatch map[string]*string
+			if b.DeletionTimestamp != nil {
+				if !ok {
+					return
+				}
+				labelsToPatch[string(b.UID)] = nil
+			} else {
+				if curVal == baseKind.Kind {
+					return
+				}
+				labelsToPatch[string(b.UID)] = utilpointer.StringPtr(baseKind.Kind)
+			}
+
+			if err := deployer.patchManifestLabels(manifest, labelsToPatch); err != nil {
+				errCh <- err
+			}
+		}(manifest)
+	}
+
+	wg.Wait()
+
+	// collect errors
+	close(errCh)
+	for err := range errCh {
+		allErrs = append(allErrs, err)
+	}
+	return utilerrors.NewAggregate(allErrs)
+}
+
+func (deployer *Deployer) patchManifestLabels(manifest *appsapi.Manifest, labels map[string]*string) error {
+	labelOption := base.LabelOption{Meta: base.Meta{Labels: labels}}
+	patchData, err := json.Marshal(labelOption)
+	if err != nil {
+		return err
+	}
+
+	_, err = deployer.clusternetclient.AppsV1alpha1().Manifests(manifest.Namespace).Patch(context.TODO(),
+		manifest.Name,
+		types.MergePatchType,
+		patchData,
+		metav1.PatchOptions{})
+	return err
 }
