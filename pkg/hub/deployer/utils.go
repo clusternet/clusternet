@@ -35,7 +35,7 @@ func formatFeed(feed appsapi.Feed) string {
 	return fmt.Sprintf("%s with selector %q", feed.Kind, feed.FeedSelector.String())
 }
 
-func getLabelsSelectorFromFeed(feed appsapi.Feed, namespace string) (labels.Selector, error) {
+func getLabelsSelectorFromFeed(feed appsapi.Feed) (labels.Selector, error) {
 	var gv schema.GroupVersion
 	var err error
 	if len(feed.APIVersion) > 0 {
@@ -46,13 +46,12 @@ func getLabelsSelectorFromFeed(feed appsapi.Feed, namespace string) (labels.Sele
 	}
 
 	labelSet := labels.Set{
-		known.ConfigGroupLabel:     gv.Group,
-		known.ConfigVersionLabel:   gv.Version,
-		known.ConfigKindLabel:      feed.Kind,
-		known.ConfigNamespaceLabel: namespace,
+		known.ConfigGroupLabel:   gv.Group,
+		known.ConfigVersionLabel: gv.Version,
+		known.ConfigKindLabel:    feed.Kind,
 	}
 	if len(feed.Namespace) > 0 {
-		labelSet[known.ConfigNamespaceLabel] = namespace
+		labelSet[known.ConfigNamespaceLabel] = feed.Namespace
 	}
 	if len(feed.Name) > 0 {
 		labelSet[known.ConfigNameLabel] = feed.Name
