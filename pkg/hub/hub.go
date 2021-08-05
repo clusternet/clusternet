@@ -90,23 +90,27 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		return nil, err
 	}
 
-	deployer, err := deployer.NewDeployer(ctx, kubeclient, clusternetclient, clusternetInformerFactory, kubeInformerFactory)
-	if err != nil {
-		return nil, err
-	}
-
-	// add informers
+	// add informers for minimum requirements
 	kubeInformerFactory.Core().V1().Namespaces().Informer()
 	kubeInformerFactory.Core().V1().ServiceAccounts().Informer()
 	kubeInformerFactory.Core().V1().Secrets().Informer()
 	clusternetInformerFactory.Clusters().V1beta1().ClusterRegistrationRequests().Informer()
 	clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer()
 	crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Informer()
+
+	var d *deployer.Deployer
 	if deployerEnabled {
+		clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer()
+		clusternetInformerFactory.Apps().V1alpha1().Bases().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
+
+		d, err = deployer.NewDeployer(ctx, kubeclient, clusternetclient, clusternetInformerFactory, kubeInformerFactory)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
@@ -124,7 +128,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		kubeInformerFactory:       kubeInformerFactory,
 		crdInformerFactory:        crdInformerFactory,
 		socketConnection:          socketConnection,
-		deployer:                  deployer,
+		deployer:                  d,
 		deployerEnabled:           deployerEnabled,
 	}
 

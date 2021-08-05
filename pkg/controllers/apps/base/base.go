@@ -18,6 +18,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -32,11 +33,12 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -50,7 +52,7 @@ type SyncHandlerFunc func(orig *appsapi.Base) error
 type Controller struct {
 	ctx context.Context
 
-	clusternetClient clusternetClientSet.Interface
+	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -59,7 +61,7 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	baseLister appListers.BaseLister
+	baseLister applisters.BaseLister
 	baseSynced cache.InformerSynced
 
 	recorder record.EventRecorder
@@ -67,8 +69,8 @@ type Controller struct {
 	SyncHandler SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	baseInformer appInformers.BaseInformer, descInformer appInformers.DescriptionInformer,
+func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+	baseInformer appinformers.BaseInformer, descInformer appinformers.DescriptionInformer,
 	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
@@ -148,6 +150,17 @@ func (c *Controller) addBase(obj interface{}) {
 		}
 	}
 
+	// label Base self uid
+	if val, ok := base.Labels[string(base.UID)]; !ok || val != controllerKind.Kind {
+		err := c.patchBaseLabels(base, map[string]*string{
+			string(base.UID): utilpointer.StringPtr(controllerKind.Kind),
+		})
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
+			c.addBase(obj)
+		}
+	}
+
 	c.enqueue(base)
 }
 
@@ -167,6 +180,18 @@ func (c *Controller) updateBase(old, cur interface{}) {
 	}
 
 	klog.V(4).Infof("updating Base %q", klog.KObj(oldBase))
+
+	// label Base self uid
+	if val, ok := newBase.Labels[string(newBase.UID)]; !ok || val != controllerKind.Kind {
+		err := c.patchBaseLabels(newBase, map[string]*string{
+			string(newBase.UID): utilpointer.StringPtr(controllerKind.Kind),
+		})
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
+			c.updateBase(old, cur)
+		}
+	}
+
 	c.enqueue(newBase)
 }
 
@@ -344,4 +369,28 @@ func (c *Controller) enqueue(base *appsapi.Base) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+type LabelOption struct {
+	Meta Meta `json:"metadata"`
+}
+
+type Meta struct {
+	Labels map[string]*string `json:"labels"`
+}
+
+func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*string) error {
+	klog.V(5).Infof("patching Base labels")
+	option := LabelOption{Meta: Meta{Labels: labels}}
+	patchData, err := json.Marshal(option)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Patch(context.TODO(),
+		base.Name,
+		types.MergePatchType,
+		patchData,
+		metav1.PatchOptions{})
+	return err
 }

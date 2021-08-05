@@ -22,10 +22,13 @@ import (
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -33,6 +36,8 @@ import (
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
@@ -56,12 +61,14 @@ type Controller struct {
 	manifestLister appListers.ManifestLister
 	manifestSynced cache.InformerSynced
 
+	recorder record.EventRecorder
+
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
 	manifestInformer appInformers.ManifestInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -72,6 +79,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "manifest"),
 		manifestLister:   manifestInformer.Lister(),
 		manifestSynced:   manifestInformer.Informer().HasSynced,
+		recorder:         recorder,
 		SyncHandler:      syncHandler,
 	}
 
@@ -114,6 +122,27 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addManifest(obj interface{}) {
 	manifest := obj.(*appsapi.Manifest)
 	klog.V(4).Infof("adding Manifest %q", klog.KObj(manifest))
+
+	// add finalizer
+	if manifest.DeletionTimestamp == nil {
+		if !utils.ContainsString(manifest.Finalizers, known.AppFinalizer) {
+			manifest.Finalizers = append(manifest.Finalizers, known.AppFinalizer)
+		}
+		_, err := c.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(),
+			manifest, metav1.UpdateOptions{})
+		if err == nil {
+			msg := fmt.Sprintf("successfully inject finalizer %s to Manifest %s", known.AppFinalizer, klog.KObj(manifest))
+			klog.V(4).Info(msg)
+			c.recorder.Event(manifest, corev1.EventTypeNormal, "FinalizerInjected", msg)
+		} else {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Manifest %s: %v", known.AppFinalizer, klog.KObj(manifest), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			c.addManifest(obj)
+			return
+		}
+	}
+
 	c.enqueue(manifest)
 }
 
