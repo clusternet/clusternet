@@ -22,11 +22,13 @@ import (
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -35,6 +37,8 @@ import (
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
@@ -59,12 +63,14 @@ type Controller struct {
 	descSynced cache.InformerSynced
 	hrSynced   cache.InformerSynced
 
+	recorder record.EventRecorder
+
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
 	descInformer appInformers.DescriptionInformer, hrInformer appInformers.HelmReleaseInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -76,6 +82,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		descLister:       descInformer.Lister(),
 		descSynced:       descInformer.Informer().HasSynced,
 		hrSynced:         hrInformer.Informer().HasSynced,
+		recorder:         recorder,
 		SyncHandler:      syncHandler,
 	}
 
@@ -87,7 +94,6 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 	})
 
 	hrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: c.updateHelmRelease,
 		DeleteFunc: c.deleteHelmRelease,
 	})
 
@@ -123,6 +129,27 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addDescription(obj interface{}) {
 	desc := obj.(*appsapi.Description)
 	klog.V(4).Infof("adding Description %q", klog.KObj(desc))
+
+	// add finalizer
+	if desc.DeletionTimestamp == nil {
+		if !utils.ContainsString(desc.Finalizers, known.AppFinalizer) {
+			desc.Finalizers = append(desc.Finalizers, known.AppFinalizer)
+		}
+		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(),
+			desc, metav1.UpdateOptions{})
+		if err == nil {
+			msg := fmt.Sprintf("successfully inject finalizer %s to Description %s", known.AppFinalizer, klog.KObj(desc))
+			klog.V(4).Info(msg)
+			c.recorder.Event(desc, corev1.EventTypeNormal, "FinalizerInjected", msg)
+		} else {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Description %s: %v", known.AppFinalizer, klog.KObj(desc), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(desc, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			c.addDescription(obj)
+			return
+		}
+	}
+
 	c.enqueue(desc)
 }
 
@@ -160,27 +187,6 @@ func (c *Controller) deleteDescription(obj interface{}) {
 		}
 	}
 	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
-	c.enqueue(desc)
-}
-
-func (c *Controller) updateHelmRelease(old, cur interface{}) {
-	// this update could be an update of removing finalizers
-	hr := cur.(*appsapi.HelmRelease)
-
-	if hr.DeletionTimestamp == nil {
-		return
-	}
-
-	controllerRef := metav1.GetControllerOf(hr)
-	if controllerRef == nil {
-		// No controller should care about orphans being deleted.
-		return
-	}
-	desc := c.resolveControllerRef(hr.Namespace, controllerRef)
-	if desc == nil {
-		return
-	}
-	klog.V(4).Infof("deleting HelmRelease %q", klog.KObj(hr))
 	c.enqueue(desc)
 }
 

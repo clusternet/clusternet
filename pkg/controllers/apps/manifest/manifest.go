@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package base
+package manifest
 
 import (
 	"context"
@@ -22,14 +22,10 @@ import (
 	"reflect"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -37,16 +33,14 @@ import (
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
-	"github.com/clusternet/clusternet/pkg/known"
-	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
-var controllerKind = appsapi.SchemeGroupVersion.WithKind("Base")
+var controllerKind = appsapi.SchemeGroupVersion.WithKind("Manifest")
 
-type SyncHandlerFunc func(orig *appsapi.Base) error
+type SyncHandlerFunc func(orig *appsapi.Manifest) error
 
-// Controller is a controller that handle Base
+// Controller is a controller that handle Manifest
 type Controller struct {
 	ctx context.Context
 
@@ -59,17 +53,15 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	baseLister appListers.BaseLister
-	baseSynced cache.InformerSynced
-
-	recorder record.EventRecorder
+	manifestLister appListers.ManifestLister
+	manifestSynced cache.InformerSynced
 
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	baseInformer appInformers.BaseInformer, descInformer appInformers.DescriptionInformer,
-	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
+	manifestInformer appInformers.ManifestInformer,
+	syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -77,22 +69,17 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 	c := &Controller{
 		ctx:              ctx,
 		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "base"),
-		baseLister:       baseInformer.Lister(),
-		baseSynced:       baseInformer.Informer().HasSynced,
-		recorder:         recorder,
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "manifest"),
+		manifestLister:   manifestInformer.Lister(),
+		manifestSynced:   manifestInformer.Informer().HasSynced,
 		SyncHandler:      syncHandler,
 	}
 
-	// Manage the addition/update of Base
-	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addBase,
-		UpdateFunc: c.updateBase,
-		DeleteFunc: c.deleteBase,
-	})
-
-	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		DeleteFunc: c.deleteDescription,
+	// Manage the addition/update of Manifest
+	manifestInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addManifest,
+		UpdateFunc: c.updateManifest,
+		DeleteFunc: c.deleteManifest,
 	})
 
 	return c, nil
@@ -106,17 +93,17 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.workqueue.ShutDown()
 
-	klog.Info("starting base controller...")
-	defer klog.Info("shutting down base controller")
+	klog.Info("starting manifest controller...")
+	defer klog.Info("shutting down manifest controller")
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.baseSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.manifestSynced) {
 		return
 	}
 
 	klog.V(5).Infof("starting %d worker threads", workers)
-	// Launch workers to process Base resources
+	// Launch workers to process Manifest resources
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
@@ -124,118 +111,47 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (c *Controller) addBase(obj interface{}) {
-	base := obj.(*appsapi.Base)
-	klog.V(4).Infof("adding Base %q", klog.KObj(base))
-
-	// add finalizer
-	if base.DeletionTimestamp == nil {
-		if !utils.ContainsString(base.Finalizers, known.AppFinalizer) {
-			base.Finalizers = append(base.Finalizers, known.AppFinalizer)
-		}
-		_, err := c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Update(context.TODO(),
-			base, metav1.UpdateOptions{})
-		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Base %s", known.AppFinalizer, klog.KObj(base))
-			klog.V(4).Info(msg)
-			c.recorder.Event(base, corev1.EventTypeNormal, "FinalizerInjected", msg)
-		} else {
-			msg := fmt.Sprintf("failed to inject finalizer %s to Base %s: %v", known.AppFinalizer, klog.KObj(base), err)
-			klog.WarningDepth(4, msg)
-			c.recorder.Event(base, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-			c.addBase(obj)
-			return
-		}
-	}
-
-	c.enqueue(base)
+func (c *Controller) addManifest(obj interface{}) {
+	manifest := obj.(*appsapi.Manifest)
+	klog.V(4).Infof("adding Manifest %q", klog.KObj(manifest))
+	c.enqueue(manifest)
 }
 
-func (c *Controller) updateBase(old, cur interface{}) {
-	oldBase := old.(*appsapi.Base)
-	newBase := cur.(*appsapi.Base)
+func (c *Controller) updateManifest(old, cur interface{}) {
+	oldManifest := old.(*appsapi.Manifest)
+	newManifest := cur.(*appsapi.Manifest)
 
-	if newBase.DeletionTimestamp != nil {
-		c.enqueue(newBase)
+	if newManifest.DeletionTimestamp != nil {
+		c.enqueue(newManifest)
 		return
 	}
 
 	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldBase.Spec, newBase.Spec) {
-		klog.V(4).Infof("no updates on the spec of Base %q, skipping syncing", oldBase.Name)
+	if reflect.DeepEqual(oldManifest.Template, newManifest.Template) {
+		klog.V(4).Infof("no updates on Manifest template %q, skipping syncing", oldManifest.Name)
 		return
 	}
 
-	klog.V(4).Infof("updating Base %q", klog.KObj(oldBase))
-	c.enqueue(newBase)
+	klog.V(4).Infof("updating Manifest %q", klog.KObj(oldManifest))
+	c.enqueue(newManifest)
 }
 
-func (c *Controller) deleteBase(obj interface{}) {
-	base, ok := obj.(*appsapi.Base)
+func (c *Controller) deleteManifest(obj interface{}) {
+	manifest, ok := obj.(*appsapi.Manifest)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Base)
+		_, ok = tombstone.Obj.(*appsapi.Manifest)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Base %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Manifest %#v", obj))
 			return
 		}
 	}
-	klog.V(4).Infof("deleting Base %q", klog.KObj(base))
-	c.enqueue(base)
-}
-
-func (c *Controller) deleteDescription(obj interface{}) {
-	desc, ok := obj.(*appsapi.Description)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
-			return
-		}
-		_, ok = tombstone.Obj.(*appsapi.Description)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
-			return
-		}
-	}
-
-	controllerRef := &metav1.OwnerReference{
-		Kind: desc.Labels[known.ConfigKindLabel],
-		Name: desc.Labels[known.ConfigNameLabel],
-		UID:  types.UID(desc.Labels[known.ConfigUIDLabel]),
-	}
-	base := c.resolveControllerRef(desc.Labels[known.ConfigNamespaceLabel], controllerRef)
-	if base == nil {
-		return
-	}
-	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
-	c.enqueue(base)
-}
-
-// resolveControllerRef returns the controller referenced by a ControllerRef,
-// or nil if the ControllerRef could not be resolved to a matching controller
-// of the correct Kind.
-func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Base {
-	// We can't look up by UID, so look up by Name and then verify UID.
-	// Don't even try to look up by Name if it's the wrong Kind.
-	if controllerRef.Kind != controllerKind.Kind {
-		return nil
-	}
-
-	base, err := c.baseLister.Bases(namespace).Get(controllerRef.Name)
-	if err != nil {
-		return nil
-	}
-	if base.UID != controllerRef.UID {
-		// The controller we found with this Name is not the same one that the
-		// ControllerRef points to.
-		return nil
-	}
-	return base
+	klog.V(4).Infof("deleting Manifest %q", klog.KObj(manifest))
+	c.enqueue(manifest)
 }
 
 // runWorker is a long-running function that will continually call the
@@ -280,7 +196,7 @@ func (c *Controller) processNextWorkItem() bool {
 			return nil
 		}
 		// Run the syncHandler, passing it the namespace/name string of the
-		// Base resource to be synced.
+		// Manifest resource to be synced.
 		if err := c.syncHandler(key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
@@ -289,7 +205,7 @@ func (c *Controller) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("successfully synced Base %q", key)
+		klog.Infof("successfully synced Manifest %q", key)
 		return nil
 	}(obj)
 
@@ -302,7 +218,7 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 // syncHandler compares the actual state with the desired, and attempts to
-// converge the two. It then updates the Status block of the Base resource
+// converge the two. It then updates the Status block of the Manifest resource
 // with the current status of the resource.
 func (c *Controller) syncHandler(key string) error {
 	// If an error occurs during handling, we'll requeue the item so we can
@@ -316,29 +232,29 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	klog.V(4).Infof("start processing Base %q", key)
-	// Get the Base resource with this name
-	base, err := c.baseLister.Bases(ns).Get(name)
-	// The Base resource may no longer exist, in which case we stop processing.
+	klog.V(4).Infof("start processing Manifest %q", key)
+	// Get the Manifest resource with this name
+	manifest, err := c.manifestLister.Manifests(ns).Get(name)
+	// The Manifest resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
-		klog.V(2).Infof("Base %q has been deleted", key)
+		klog.V(2).Infof("Manifest %q has been deleted", key)
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	base.Kind = controllerKind.Kind
-	base.APIVersion = controllerKind.Version
+	manifest.Kind = controllerKind.Kind
+	manifest.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(base)
+	return c.SyncHandler(manifest)
 }
 
-// enqueue takes a Base resource and converts it into a namespace/name
+// enqueue takes a Manifest resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Base.
-func (c *Controller) enqueue(base *appsapi.Base) {
-	key, err := cache.MetaNamespaceKeyFunc(base)
+// passed resources of any type other than Manifest.
+func (c *Controller) enqueue(manifest *appsapi.Manifest) {
+	key, err := cache.MetaNamespaceKeyFunc(manifest)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return

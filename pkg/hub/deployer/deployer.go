@@ -25,22 +25,28 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	kubeInformers "k8s.io/client-go/informers"
+	"k8s.io/apimachinery/pkg/util/sets"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/description"
+	"github.com/clusternet/clusternet/pkg/controllers/apps/manifest"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/subscription"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
-	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/hub/deployer/helm"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
@@ -49,23 +55,33 @@ import (
 var (
 	helmChartKind    = appsapi.SchemeGroupVersion.WithKind("HelmChart")
 	subscriptionKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
+	baseKind         = appsapi.SchemeGroupVersion.WithKind("Base")
 	descriptionKind  = appsapi.SchemeGroupVersion.WithKind("Description")
+)
+
+const (
+	defaultScheduler = "default"
 )
 
 // Deployer defines configuration for the application deployer
 type Deployer struct {
 	ctx context.Context
 
-	chartLister   appListers.HelmChartLister
-	descLister    appListers.DescriptionLister
-	hrLister      appListers.HelmReleaseLister
-	clusterLister clusterListers.ManagedClusterLister
+	chartLister   applisters.HelmChartLister
+	descLister    applisters.DescriptionLister
+	subsLister    applisters.SubscriptionLister
+	hrLister      applisters.HelmReleaseLister
+	baseLister    applisters.BaseLister
+	mfstLister    applisters.ManifestLister
+	clusterLister clusterlisters.ManagedClusterLister
 
 	kubeclient       *kubernetes.Clientset
-	clusternetclient *clusternetClientSet.Clientset
+	clusternetclient *clusternetclientset.Clientset
 
 	subsController *subscription.Controller
 	descController *description.Controller
+	mfstController *manifest.Controller
+	baseController *base.Controller
 
 	helmDeployer *helm.HelmDeployer
 
@@ -73,15 +89,18 @@ type Deployer struct {
 	recorder    record.EventRecorder
 }
 
-func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetClientSet.Clientset,
-	clusternetInformerFactory clusternetInformers.SharedInformerFactory, kubeInformerFactory kubeInformers.SharedInformerFactory) (*Deployer, error) {
+func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
+	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory) (*Deployer, error) {
 
 	deployer := &Deployer{
 		ctx:              ctx,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		subsLister:       clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		baseLister:       clusternetInformerFactory.Apps().V1alpha1().Bases().Lister(),
+		mfstLister:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
 		kubeclient:       kubeclient,
 		clusternetclient: clusternetclient,
 		broadcaster:      record.NewBroadcaster(),
@@ -105,7 +124,8 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	subsController, err := subscription.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+		clusternetInformerFactory.Apps().V1alpha1().Bases(),
+		deployer.recorder,
 		deployer.handleSubscription)
 	if err != nil {
 		return nil, err
@@ -116,11 +136,32 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
+		deployer.recorder,
 		deployer.handleDescription)
 	if err != nil {
 		return nil, err
 	}
 	deployer.descController = descController
+
+	mfstController, err := manifest.NewController(ctx,
+		clusternetclient,
+		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
+		deployer.handleManifest)
+	if err != nil {
+		return nil, err
+	}
+	deployer.mfstController = mfstController
+
+	baseController, err := base.NewController(ctx,
+		clusternetclient,
+		clusternetInformerFactory.Apps().V1alpha1().Bases(),
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+		deployer.recorder,
+		deployer.handleBase)
+	if err != nil {
+		return nil, err
+	}
+	deployer.baseController = baseController
 
 	return deployer, nil
 }
@@ -131,134 +172,90 @@ func (deployer *Deployer) Run(workers int) {
 	go deployer.helmDeployer.Run(workers)
 	go deployer.subsController.Run(workers, deployer.ctx.Done())
 	go deployer.descController.Run(workers, deployer.ctx.Done())
+	go deployer.mfstController.Run(workers, deployer.ctx.Done())
+	go deployer.baseController.Run(workers, deployer.ctx.Done())
 
 	<-deployer.ctx.Done()
 }
 
-func (deployer *Deployer) handleSubscription(subs *appsapi.Subscription) error {
-	if subs.DeletionTimestamp != nil {
-		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
+func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
+	if sub.DeletionTimestamp != nil {
+		bases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      subscriptionKind.Kind,
-			known.ConfigNameLabel:      subs.Name,
-			known.ConfigNamespaceLabel: subs.Namespace,
+			known.ConfigNameLabel:      sub.Name,
+			known.ConfigNamespaceLabel: sub.Namespace,
+			known.ConfigUIDLabel:       string(sub.UID),
 		}))
 		if err != nil {
 			return err
 		}
-		// delete all matching Description
+
+		// delete all matching Base
 		deletePropagationBackground := metav1.DeletePropagationBackground
-		for _, desc := range descs {
-			if desc.DeletionTimestamp != nil {
+		for _, base := range bases {
+			if base.DeletionTimestamp != nil {
 				continue
 			}
-			err = deployer.clusternetclient.AppsV1alpha1().Descriptions(desc.Namespace).Delete(context.TODO(), desc.Name, metav1.DeleteOptions{
+			err = deployer.clusternetclient.AppsV1alpha1().Bases(base.Namespace).Delete(context.TODO(), base.Name, metav1.DeleteOptions{
 				PropagationPolicy: &deletePropagationBackground,
 			})
 			if err != nil {
 				return err
 			}
 		}
-		if descs != nil {
-			return fmt.Errorf("waiting for Descriptions belongs to Subscription %s getting deleted", klog.KObj(subs))
+		if bases != nil {
+			return fmt.Errorf("waiting for Bases belongs to Subscription %s getting deleted", klog.KObj(sub))
 		}
 
-		subs.Finalizers = utils.RemoveString(subs.Finalizers, known.AppFinalizer)
-		_, err = deployer.clusternetclient.AppsV1alpha1().Subscriptions(subs.Namespace).Update(context.TODO(), subs, metav1.UpdateOptions{})
+		sub.Finalizers = utils.RemoveString(sub.Finalizers, known.AppFinalizer)
+		_, err = deployer.clusternetclient.AppsV1alpha1().Subscriptions(sub.Namespace).Update(context.TODO(), sub, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err))
+				fmt.Sprintf("failed to remove finalizer %s from Subscription %s: %v", known.AppFinalizer, klog.KObj(sub), err))
 		}
 		return err
 	}
 
-	var charts []*appsapi.HelmChart
-	for _, feed := range subs.Spec.Feeds {
-		if feed.Kind != helmChartKind.Kind && feed.APIVersion != helmChartKind.Version {
-			msg := fmt.Sprintf("Subscription only support %s for now", helmChartKind.String())
-			klog.Error(msg)
-			deployer.recorder.Event(subs, corev1.EventTypeWarning, "OnlySupportHelmChart", msg)
-			return nil
-		}
-
-		chartList, err := deployer.getChartsBySelector(subs, feed)
-		if errors.IsNotFound(err) {
-			msg := fmt.Sprintf("Subscription %s is using a nonexistent HelmChart %s/%s", klog.KObj(subs), subs.Namespace, feed.Name)
-			klog.Error(msg)
-			deployer.recorder.Event(subs, corev1.EventTypeWarning, "NonexistentHelmChart", msg)
-			return nil
-		}
-		if err != nil {
-			msg := fmt.Sprintf("failed to get charts matching %q for Subscription %s: %v", feed, klog.KObj(subs), err)
-			klog.Error(msg)
-			deployer.recorder.Event(subs, corev1.EventTypeWarning, "FailedRetrievingHelmCharts", msg)
-			return err
-		}
-		charts = append(charts, chartList...)
-	}
-
-	if len(charts) == 0 {
-		deployer.recorder.Event(subs, corev1.EventTypeWarning, "NoHelmCharts", "No helm charts get matched")
+	if sub.Spec.SchedulerName != defaultScheduler {
+		klog.V(4).Infof("Subscription %s is using customized scheduler %q ", klog.KObj(sub), sub.Spec.SchedulerName)
 		return nil
 	}
 
-	// verify HelmChart can be found
-	var chartRefs []appsapi.ChartReference
-	for _, chart := range charts {
-		if len(chart.Status.Phase) == 0 {
-			msg := fmt.Sprintf("HelmChart %s is in verifying", klog.KObj(chart))
-			klog.Warning(msg)
-			deployer.recorder.Event(subs, corev1.EventTypeWarning, "VerifyingHelmChart", msg)
-			return fmt.Errorf(msg)
-		}
-
-		if chart.Status.Phase != appsapi.HelmChartFound {
-			deployer.recorder.Event(subs, corev1.EventTypeWarning, "HelmChartNotFound",
-				fmt.Sprintf("helm chart %s is not found", klog.KObj(chart)))
-			return nil
-		}
-
-		chartRefs = append(chartRefs, appsapi.ChartReference{
-			Name:      chart.Name,
-			Namespace: chart.Namespace,
-		})
+	err := deployer.populateBases(sub)
+	if err != nil {
+		return err
 	}
 
-	deployer.recorder.Event(subs, corev1.EventTypeNormal, "HelmChartsMatched", "helm charts get matched")
-
-	return deployer.populateDescriptionsForHelm(subs, chartRefs)
+	return nil
 }
 
-func (deployer *Deployer) getChartsBySelector(subs *appsapi.Subscription, feed appsapi.Feed) ([]*appsapi.HelmChart, error) {
-	namespace := subs.Namespace
-	if len(feed.Namespace) != 0 {
+func (deployer *Deployer) getChartsBySelector(base *appsapi.Base, feed appsapi.Feed) ([]*appsapi.HelmChart, error) {
+	namespace := base.Labels[known.ConfigSubscriptionNamespaceLabel]
+	if len(feed.Namespace) > 0 {
 		namespace = feed.Namespace
 	}
-	if len(feed.Name) > 0 {
-		chart, err := deployer.chartLister.HelmCharts(namespace).Get(feed.Name)
-		if err != nil {
-			return nil, err
-		}
-		return []*appsapi.HelmChart{chart}, nil
+	selector, err := getLabelsSelectorFromFeed(feed, namespace)
+	if err != nil {
+		return nil, err
 	}
-
-	if feed.FeedSelector != nil {
-		selector, err := metav1.LabelSelectorAsSelector(feed.FeedSelector)
-		if err != nil {
-			return nil, err
-		}
-		chartList, err := deployer.chartLister.HelmCharts(subs.Namespace).List(selector)
-		if err != nil {
-			return nil, err
-		}
-		return chartList, nil
-	}
-
-	return []*appsapi.HelmChart{}, nil
+	return deployer.chartLister.HelmCharts(namespace).List(selector)
 }
 
-func (deployer *Deployer) populateDescriptionsForHelm(subs *appsapi.Subscription, chartRefs []appsapi.ChartReference) error {
+func (deployer *Deployer) getManifestsBySelector(base *appsapi.Base, feed appsapi.Feed) ([]*appsapi.Manifest, error) {
+	namespace := base.Labels[known.ConfigSubscriptionNamespaceLabel]
+	if len(feed.Namespace) > 0 {
+		namespace = feed.Namespace
+	}
+	selector, err := getLabelsSelectorFromFeed(feed, namespace)
+	if err != nil {
+		return nil, err
+	}
+	return deployer.mfstLister.Manifests(appsapi.ReservedNamespace).List(selector)
+}
+
+func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 	var mcls []*clusterapi.ManagedCluster
-	for _, subscriber := range subs.Spec.Subscribers {
+	for _, subscriber := range sub.Spec.Subscribers {
 		selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
 		if err != nil {
 			return err
@@ -269,70 +266,305 @@ func (deployer *Deployer) populateDescriptionsForHelm(subs *appsapi.Subscription
 		}
 
 		if clusters == nil {
-			deployer.recorder.Event(subs, corev1.EventTypeWarning, "NoClusters", "No clusters get matched")
+			deployer.recorder.Event(sub, corev1.EventTypeWarning, "NoClusters", "No clusters get matched")
 			return nil
 		}
 
 		mcls = append(mcls, clusters...)
 	}
 
+	allExistingBases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
+		known.ConfigKindLabel:      subscriptionKind.Kind,
+		known.ConfigNameLabel:      sub.Name,
+		known.ConfigNamespaceLabel: sub.Namespace,
+		known.ConfigUIDLabel:       string(sub.UID),
+	}))
+	if err != nil {
+		return err
+	}
+	// Bases to be deleted
+	basesToBeDeleted := sets.String{}
+	for _, base := range allExistingBases {
+		basesToBeDeleted.Insert(fmt.Sprintf("%s/%s", base.Namespace, base.Name))
+	}
+
 	var allErrs []error
 	for _, cluster := range mcls {
-		if !cluster.Status.AppPusher {
-			msg := fmt.Sprintf("skip deploying Subscription %s to cluster %s for disabling AppPusher",
-				klog.KObj(subs), cluster.Spec.ClusterID)
-			klog.V(4).Info(msg)
-			deployer.recorder.Event(subs, corev1.EventTypeNormal, "SkipDeploying", msg)
-			continue
-		}
-		if cluster.Spec.SyncMode == clusterapi.Pull {
-			msg := fmt.Sprintf("skip deploying Subscription %s to cluster %s with sync mode setting to Pull",
-				klog.KObj(subs), cluster.Spec.ClusterID)
-			klog.V(4).Info(msg)
-			deployer.recorder.Event(subs, corev1.EventTypeNormal, "SkipDeploying", msg)
-			continue
-		}
-
-		description := &appsapi.Description{
+		base := &appsapi.Base{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      subs.Name,
+				Name:      sub.Name,
 				Namespace: cluster.Namespace,
 				Labels: map[string]string{
 					known.ObjectCreatedByLabel: known.ClusternetHubName,
+					known.ConfigKindLabel:      subscriptionKind.Kind,
+					known.ConfigNameLabel:      sub.Name,
+					known.ConfigNamespaceLabel: sub.Namespace,
+					known.ConfigUIDLabel:       string(sub.UID),
 					known.ClusterIDLabel:       cluster.Labels[known.ClusterIDLabel],
 					known.ClusterNameLabel:     cluster.Labels[known.ClusterNameLabel],
-					known.ConfigKindLabel:      subscriptionKind.Kind,
-					known.ConfigNameLabel:      subs.Name,
-					known.ConfigNamespaceLabel: subs.Namespace,
-					known.ConfigUIDLabel:       string(subs.UID),
 					// add subscription info
-					known.ConfigSubscriptionNameLabel:      subs.Name,
-					known.ConfigSubscriptionNamespaceLabel: subs.Namespace,
-					known.ConfigSubscriptionUIDLabel:       string(subs.UID),
+					known.ConfigSubscriptionNameLabel:      sub.Name,
+					known.ConfigSubscriptionNamespaceLabel: sub.Namespace,
+					known.ConfigSubscriptionUIDLabel:       string(sub.UID),
 				},
 				Finalizers: []string{
 					known.AppFinalizer,
 				},
+				// Base and Subscription are in different namespaces
 			},
-			Spec: appsapi.DescriptionSpec{
-				Deployer: appsapi.DescriptionHelmDeployer,
-				Charts:   chartRefs,
+			Spec: appsapi.BaseSpec{
+				Feeds: sub.Spec.Feeds,
 			},
 		}
 
-		err := deployer.syncDescriptions(subs, description)
+		basesToBeDeleted.Delete(fmt.Sprintf("%s/%s", base.Namespace, base.Name))
+
+		err := deployer.syncBase(sub, base)
 		if err != nil {
 			allErrs = append(allErrs, err)
-			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(description), err)
+			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(base), err)
 			klog.ErrorDepth(5, msg)
-			deployer.recorder.Event(subs, corev1.EventTypeWarning, "DescriptionFailure", msg)
+			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingBase", msg)
+		}
+	}
+
+	deletePropagationBackground := metav1.DeletePropagationBackground
+	for key := range basesToBeDeleted {
+		// Convert the namespace/name string into a distinct namespace and name
+		ns, name, err := cache.SplitMetaNamespaceKey(key)
+		if err != nil {
+			allErrs = append(allErrs, err)
+		} else {
+			err = deployer.clusternetclient.AppsV1alpha1().Bases(ns).Delete(context.TODO(), name, metav1.DeleteOptions{
+				PropagationPolicy: &deletePropagationBackground,
+			})
+			if err != nil {
+				allErrs = append(allErrs, err)
+			}
 		}
 	}
 
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) syncDescriptions(subs *appsapi.Subscription, description *appsapi.Description) error {
+func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base) error {
+	curBase, err := deployer.baseLister.Bases(base.Namespace).Get(base.Name)
+	if err == nil {
+		if curBase.DeletionTimestamp != nil {
+			return fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(curBase))
+		}
+
+		// update it
+		if !reflect.DeepEqual(curBase.Spec, base.Spec) {
+			if curBase.Labels == nil {
+				curBase.Labels = make(map[string]string)
+			}
+			for key, value := range base.Labels {
+				curBase.Labels[key] = value
+			}
+
+			curBase.Spec = base.Spec
+			if !utils.ContainsString(curBase.Finalizers, known.AppFinalizer) {
+				curBase.Finalizers = append(curBase.Finalizers, known.AppFinalizer)
+			}
+
+			_, err = deployer.clusternetclient.AppsV1alpha1().Bases(curBase.Namespace).Update(context.TODO(),
+				curBase, metav1.UpdateOptions{})
+			if err == nil {
+				msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(curBase))
+				klog.V(4).Info(msg)
+				deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
+			}
+			return err
+		}
+		return nil
+	}
+
+	_, err = deployer.clusternetclient.AppsV1alpha1().Bases(curBase.Namespace).Create(context.TODO(),
+		base, metav1.CreateOptions{})
+	if err == nil {
+		msg := fmt.Sprintf("Base %s is created successfully", klog.KObj(base))
+		klog.V(4).Info(msg)
+		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseCreated", msg)
+	}
+	return err
+}
+
+func (deployer *Deployer) handleBase(base *appsapi.Base) error {
+	if base.DeletionTimestamp != nil {
+		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
+			known.ConfigKindLabel:      baseKind.Kind,
+			known.ConfigNameLabel:      base.Name,
+			known.ConfigNamespaceLabel: base.Namespace,
+			known.ConfigUIDLabel:       string(base.UID),
+		}))
+		if err != nil {
+			return err
+		}
+
+		// delete all matching Descriptions
+		deletePropagationBackground := metav1.DeletePropagationBackground
+		for _, desc := range descs {
+			if desc.DeletionTimestamp != nil {
+				continue
+			}
+			err = deployer.clusternetclient.AppsV1alpha1().Descriptions(base.Namespace).Delete(context.TODO(), desc.Name, metav1.DeleteOptions{
+				PropagationPolicy: &deletePropagationBackground,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		if descs != nil {
+			return fmt.Errorf("waiting for Descriptions belongs to Base %s getting deleted", klog.KObj(base))
+		}
+
+		base.Finalizers = utils.RemoveString(base.Finalizers, known.AppFinalizer)
+		_, err = deployer.clusternetclient.AppsV1alpha1().Bases(base.Namespace).Update(context.TODO(), base, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Base %s: %v", known.AppFinalizer, klog.KObj(base), err))
+		}
+		return err
+	}
+
+	err := deployer.populateDescriptions(base)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
+	var allChartRefs []appsapi.ChartReference
+	var allManifests []*appsapi.Manifest
+
+	var err error
+	var charts []*appsapi.HelmChart
+	var manifests []*appsapi.Manifest
+	for _, feed := range base.Spec.Feeds {
+		if feed.Kind == helmChartKind.Kind && feed.APIVersion == helmChartKind.GroupVersion().String() {
+			charts, err = deployer.getChartsBySelector(base, feed)
+			if err == nil {
+				// verify HelmChart can be found
+				for _, chart := range charts {
+					if len(chart.Status.Phase) == 0 {
+						msg := fmt.Sprintf("HelmChart %s is in verifying", klog.KObj(chart))
+						klog.Warning(msg)
+						deployer.recorder.Event(base, corev1.EventTypeWarning, "VerifyingHelmChart", msg)
+						return fmt.Errorf(msg)
+					}
+
+					if chart.Status.Phase != appsapi.HelmChartFound {
+						deployer.recorder.Event(base, corev1.EventTypeWarning, "HelmChartNotFound",
+							fmt.Sprintf("helm chart %s is not found", klog.KObj(chart)))
+						return nil
+					} else {
+						allChartRefs = append(allChartRefs, appsapi.ChartReference{
+							Namespace: chart.Namespace,
+							Name:      chart.Name,
+						})
+					}
+				}
+			}
+		} else {
+			manifests, err = deployer.getManifestsBySelector(base, feed)
+			if err == nil {
+				allManifests = append(allManifests, manifests...)
+			}
+		}
+
+		if errors.IsNotFound(err) {
+			msg := fmt.Sprintf("Base %s is using a nonexistent %s", klog.KObj(base), formatFeed(feed))
+			klog.Error(msg)
+			deployer.recorder.Event(base, corev1.EventTypeWarning, fmt.Sprintf("Nonexistent%s", feed.Kind), msg)
+			return nil
+		}
+		if err != nil {
+			msg := fmt.Sprintf("failed to get matched objects %q for Base %s: %v", formatFeed(feed), klog.KObj(base), err)
+			klog.Error(msg)
+			deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedRetrievingObjects", msg)
+			return err
+		}
+	}
+
+	if len(allChartRefs) == 0 && len(allManifests) == 0 {
+		deployer.recorder.Event(base, corev1.EventTypeWarning, "NoResourcesMatched", "No resources get matched")
+		return nil
+	}
+
+	descTemplate := &appsapi.Description{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: base.Namespace,
+			Labels: map[string]string{
+				known.ObjectCreatedByLabel: known.ClusternetHubName,
+				known.ConfigKindLabel:      baseKind.Kind,
+				known.ConfigNameLabel:      base.Name,
+				known.ConfigNamespaceLabel: base.Namespace,
+				known.ConfigUIDLabel:       string(base.UID),
+				known.ClusterIDLabel:       base.Labels[known.ClusterIDLabel],
+				known.ClusterNameLabel:     base.Labels[known.ClusterNameLabel],
+				// add subscription info
+				known.ConfigSubscriptionNameLabel:      base.Labels[known.ConfigSubscriptionNameLabel],
+				known.ConfigSubscriptionNamespaceLabel: base.Labels[known.ConfigSubscriptionNamespaceLabel],
+				known.ConfigSubscriptionUIDLabel:       base.Labels[known.ConfigSubscriptionUIDLabel],
+			},
+			Finalizers: []string{
+				known.AppFinalizer,
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         baseKind.Version,
+					Kind:               baseKind.Kind,
+					Name:               base.Name,
+					UID:                base.UID,
+					Controller:         utilpointer.BoolPtr(true),
+					BlockOwnerDeletion: utilpointer.BoolPtr(true),
+				},
+			},
+		},
+	}
+
+	// TODO: apply overrides
+
+	var allErrs []error
+	if len(allChartRefs) > 0 {
+		desc := descTemplate.DeepCopy()
+		desc.Name = fmt.Sprintf("%s-helm", base.Name)
+		desc.Spec.Deployer = appsapi.DescriptionHelmDeployer
+		desc.Spec.Charts = allChartRefs
+		err := deployer.syncDescriptions(base, desc)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(desc), err)
+			klog.ErrorDepth(5, msg)
+			deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedSyncingDescription", msg)
+		}
+	}
+
+	if len(allManifests) > 0 {
+		var rawObjects []runtime.RawExtension
+		for _, manifest := range allManifests {
+			rawObjects = append(rawObjects, manifest.Template)
+		}
+		desc := descTemplate.DeepCopy()
+		desc.Name = fmt.Sprintf("%s-generic", base.Name)
+		desc.Spec.Deployer = appsapi.DescriptionGenericDeployer
+		desc.Spec.Raw = rawObjects
+		err := deployer.syncDescriptions(base, desc)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(desc), err)
+			klog.ErrorDepth(5, msg)
+			deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedSyncingDescription", msg)
+		}
+	}
+
+	return utilerrors.NewAggregate(allErrs)
+}
+
+func (deployer *Deployer) syncDescriptions(base *appsapi.Base, description *appsapi.Description) error {
 	desc, err := deployer.descLister.Descriptions(description.Namespace).Get(description.Name)
 	if err == nil {
 		if desc.DeletionTimestamp != nil {
@@ -358,7 +590,7 @@ func (deployer *Deployer) syncDescriptions(subs *appsapi.Subscription, descripti
 			if err == nil {
 				msg := fmt.Sprintf("Description %s is updated successfully", klog.KObj(description))
 				klog.V(4).Info(msg)
-				deployer.recorder.Event(subs, corev1.EventTypeNormal, "DescriptionUpdated", msg)
+				deployer.recorder.Event(base, corev1.EventTypeNormal, "DescriptionUpdated", msg)
 			}
 			return err
 		}
@@ -370,7 +602,7 @@ func (deployer *Deployer) syncDescriptions(subs *appsapi.Subscription, descripti
 	if err == nil {
 		msg := fmt.Sprintf("Description %s is created successfully", klog.KObj(description))
 		klog.V(4).Info(msg)
-		deployer.recorder.Event(subs, corev1.EventTypeNormal, "DescriptionCreated", msg)
+		deployer.recorder.Event(base, corev1.EventTypeNormal, "DescriptionCreated", msg)
 	}
 	return err
 }
@@ -418,6 +650,14 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 			return err
 		}
 	}
+
+	// TODO: @dixudx: generic deployer
+
+	return nil
+}
+
+func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
+	// TODO: @dixudx
 
 	return nil
 }

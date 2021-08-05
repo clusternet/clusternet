@@ -22,20 +22,22 @@ import (
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -49,7 +51,7 @@ type SyncHandlerFunc func(subscription *appsapi.Subscription) error
 type Controller struct {
 	ctx context.Context
 
-	clusternetClient clusternetClientSet.Interface
+	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -58,16 +60,18 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	subsLister appListers.SubscriptionLister
+	subsLister applisters.SubscriptionLister
 	subsSynced cache.InformerSynced
-	descSynced cache.InformerSynced
+	baseSynced cache.InformerSynced
+
+	recorder record.EventRecorder
 
 	SyncHandler SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	subsInformer appInformers.SubscriptionInformer, descInformer appInformers.DescriptionInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
+func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+	subsInformer appinformers.SubscriptionInformer, baseInformer appinformers.BaseInformer,
+	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -78,7 +82,8 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "subscription"),
 		subsLister:       subsInformer.Lister(),
 		subsSynced:       subsInformer.Informer().HasSynced,
-		descSynced:       descInformer.Informer().HasSynced,
+		baseSynced:       baseInformer.Informer().HasSynced,
+		recorder:         recorder,
 		SyncHandler:      syncHandler,
 	}
 
@@ -89,8 +94,8 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		DeleteFunc: c.deleteSubscription,
 	})
 
-	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		DeleteFunc: c.deleteDescription,
+	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: c.deleteBase,
 	})
 
 	return c, nil
@@ -109,7 +114,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.subsSynced, c.descSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.subsSynced, c.baseSynced) {
 		return
 	}
 
@@ -136,10 +141,11 @@ func (c *Controller) addSubscription(obj interface{}) {
 		if err == nil {
 			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(subs))
 			klog.V(4).Info(msg)
-			// todo: add recorder
+			c.recorder.Event(subs, corev1.EventTypeNormal, "FinalizerInjected", msg)
 		} else {
-			klog.WarningDepth(4,
-				fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err))
+			msg := fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(subs, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
 			c.addSubscription(obj)
 			return
 		}
@@ -186,48 +192,38 @@ func (c *Controller) deleteSubscription(obj interface{}) {
 	c.enqueue(subs)
 }
 
-func (c *Controller) deleteDescription(obj interface{}) {
-	desc, ok := obj.(*appsapi.Description)
+func (c *Controller) deleteBase(obj interface{}) {
+	base, ok := obj.(*appsapi.Base)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Description)
+		_, ok = tombstone.Obj.(*appsapi.Base)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Base %#v", obj))
 			return
 		}
 	}
 
-	controllerRef := &metav1.OwnerReference{
-		Kind: desc.Labels[known.ConfigKindLabel],
-		Name: desc.Labels[known.ConfigNameLabel],
-		UID:  types.UID(desc.Labels[known.ConfigUIDLabel]),
-	}
-	subs := c.resolveControllerRef(desc.Labels[known.ConfigNamespaceLabel], controllerRef)
-	if subs == nil {
+	sub := c.resolveControllerRef(base.Labels[known.ConfigNameLabel], base.Labels[known.ConfigNamespaceLabel], types.UID(base.Labels[known.ConfigUIDLabel]))
+	if sub == nil {
 		return
 	}
-	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
-	c.enqueue(subs)
+	klog.V(4).Infof("deleting Base %q", klog.KObj(base))
+	c.enqueue(sub)
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
 // or nil if the ControllerRef could not be resolved to a matching controller
 // of the correct Kind.
-func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Subscription {
-	// We can't look up by UID, so look up by Name and then verify UID.
-	// Don't even try to look up by Name if it's the wrong Kind.
-	if controllerRef.Kind != controllerKind.Kind {
-		return nil
-	}
-	subs, err := c.subsLister.Subscriptions(namespace).Get(controllerRef.Name)
+func (c *Controller) resolveControllerRef(name, namespace string, uid types.UID) *appsapi.Subscription {
+	subs, err := c.subsLister.Subscriptions(namespace).Get(name)
 	if err != nil {
 		return nil
 	}
-	if subs.UID != controllerRef.UID {
+	if subs.UID != uid {
 		// The controller we found with this Name is not the same one that the
 		// ControllerRef points to.
 		return nil
