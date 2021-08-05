@@ -22,10 +22,14 @@ import (
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -33,6 +37,8 @@ import (
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
@@ -56,12 +62,14 @@ type Controller struct {
 	baseLister appListers.BaseLister
 	baseSynced cache.InformerSynced
 
+	recorder record.EventRecorder
+
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	baseInformer appInformers.BaseInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
+	baseInformer appInformers.BaseInformer, descInformer appInformers.DescriptionInformer,
+	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -72,6 +80,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "base"),
 		baseLister:       baseInformer.Lister(),
 		baseSynced:       baseInformer.Informer().HasSynced,
+		recorder:         recorder,
 		SyncHandler:      syncHandler,
 	}
 
@@ -80,6 +89,10 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		AddFunc:    c.addBase,
 		UpdateFunc: c.updateBase,
 		DeleteFunc: c.deleteBase,
+	})
+
+	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: c.deleteDescription,
 	})
 
 	return c, nil
@@ -114,6 +127,27 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addBase(obj interface{}) {
 	base := obj.(*appsapi.Base)
 	klog.V(4).Infof("adding Base %q", klog.KObj(base))
+
+	// add finalizer
+	if base.DeletionTimestamp == nil {
+		if !utils.ContainsString(base.Finalizers, known.AppFinalizer) {
+			base.Finalizers = append(base.Finalizers, known.AppFinalizer)
+		}
+		_, err := c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Update(context.TODO(),
+			base, metav1.UpdateOptions{})
+		if err == nil {
+			msg := fmt.Sprintf("successfully inject finalizer %s to Base %s", known.AppFinalizer, klog.KObj(base))
+			klog.V(4).Info(msg)
+			c.recorder.Event(base, corev1.EventTypeNormal, "FinalizerInjected", msg)
+		} else {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Base %s: %v", known.AppFinalizer, klog.KObj(base), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(base, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			c.addBase(obj)
+			return
+		}
+	}
+
 	c.enqueue(base)
 }
 
@@ -152,6 +186,56 @@ func (c *Controller) deleteBase(obj interface{}) {
 	}
 	klog.V(4).Infof("deleting Base %q", klog.KObj(base))
 	c.enqueue(base)
+}
+
+func (c *Controller) deleteDescription(obj interface{}) {
+	desc, ok := obj.(*appsapi.Description)
+	if !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
+			return
+		}
+		_, ok = tombstone.Obj.(*appsapi.Description)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
+			return
+		}
+	}
+
+	controllerRef := &metav1.OwnerReference{
+		Kind: desc.Labels[known.ConfigKindLabel],
+		Name: desc.Labels[known.ConfigNameLabel],
+		UID:  types.UID(desc.Labels[known.ConfigUIDLabel]),
+	}
+	base := c.resolveControllerRef(desc.Labels[known.ConfigNamespaceLabel], controllerRef)
+	if base == nil {
+		return
+	}
+	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
+	c.enqueue(base)
+}
+
+// resolveControllerRef returns the controller referenced by a ControllerRef,
+// or nil if the ControllerRef could not be resolved to a matching controller
+// of the correct Kind.
+func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Base {
+	// We can't look up by UID, so look up by Name and then verify UID.
+	// Don't even try to look up by Name if it's the wrong Kind.
+	if controllerRef.Kind != controllerKind.Kind {
+		return nil
+	}
+
+	base, err := c.baseLister.Bases(namespace).Get(controllerRef.Name)
+	if err != nil {
+		return nil
+	}
+	if base.UID != controllerRef.UID {
+		// The controller we found with this Name is not the same one that the
+		// ControllerRef points to.
+		return nil
+	}
+	return base
 }
 
 // runWorker is a long-running function that will continually call the

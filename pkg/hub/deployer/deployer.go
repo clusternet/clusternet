@@ -124,7 +124,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	subsController, err := subscription.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+		clusternetInformerFactory.Apps().V1alpha1().Bases(),
 		deployer.recorder,
 		deployer.handleSubscription)
 	if err != nil {
@@ -136,6 +136,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
+		deployer.recorder,
 		deployer.handleDescription)
 	if err != nil {
 		return nil, err
@@ -154,6 +155,8 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	baseController, err := base.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Bases(),
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+		deployer.recorder,
 		deployer.handleBase)
 	if err != nil {
 		return nil, err
