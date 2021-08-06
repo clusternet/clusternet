@@ -17,12 +17,23 @@ limitations under the License.
 package utils
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apiserver/pkg/authentication/user"
+	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/klog/v2"
+
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
 // createBasicKubeConfig creates a basic, general KubeConfig object that then can be extended
@@ -121,4 +132,55 @@ func applyDefaultRateLimiter(config *rest.Config, flowRate int) *rest.Config {
 	config.Burst = rest.DefaultBurst * flowRate
 
 	return config
+}
+
+func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister, namespace string, clusterID string) (*clientcmdapi.Config, error) {
+	childClusterSecret, err := secretLister.Secrets(namespace).Get(known.ChildClusterSecretName)
+	if err != nil {
+		return nil, err
+	}
+
+	mcls, err := clusterLister.ManagedClusters(namespace).List(
+		labels.SelectorFromSet(labels.Set{
+			known.ClusterIDLabel: clusterID,
+		}))
+	if err != nil {
+		return nil, err
+	}
+	if mcls == nil {
+		return nil, fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", namespace)
+	}
+
+	var config *clientcmdapi.Config
+	if len(mcls) > 1 {
+		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", namespace)
+	}
+	if mcls[0].Status.UseSocket {
+		childClusterAPIServer, err := getChildAPIServerProxyURL(mcls[0])
+		if err != nil {
+			return nil, err
+		}
+		config = CreateKubeConfigForSocketProxyWithToken(
+			childClusterAPIServer,
+			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
+		)
+	} else {
+		config = CreateKubeConfigWithToken(
+			string(childClusterSecret.Data[known.ClusterAPIServerURLKey]),
+			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
+			childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
+		)
+	}
+	return config, nil
+}
+
+func getChildAPIServerProxyURL(mcls *clusterapi.ManagedCluster) (string, error) {
+	if mcls == nil {
+		return "", errors.New("unable to generate child cluster apiserver proxy url from nil ManagedCluster object")
+	}
+
+	return strings.Join([]string{
+		strings.TrimRight(mcls.Status.ParentAPIServerURL, "/"),
+		"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls.Spec.ClusterID),
+		"proxy/direct"}, "/"), nil
 }

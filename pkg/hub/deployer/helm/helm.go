@@ -18,7 +18,6 @@ package helm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -29,20 +28,19 @@ import (
 	"helm.sh/helm/v3/pkg/repo"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	kubeInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1Lister "k8s.io/client-go/listers/core/v1"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/controllers/apps/description"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmrelease"
 	"github.com/clusternet/clusternet/pkg/controllers/misc/secret"
@@ -58,16 +56,17 @@ var (
 	descriptionKind = appsapi.SchemeGroupVersion.WithKind("Description")
 )
 
-type HelmDeployer struct {
+type Deployer struct {
 	ctx context.Context
 
 	helmChartController   *helmchart.Controller
 	helmReleaseController *helmrelease.Controller
+	descriptionController *description.Controller
 
 	secretController *secret.Controller
 
-	clusternetclient *clusternetClientSet.Clientset
-	kubeclient       *kubernetes.Clientset
+	clusternetClient *clusternetClientSet.Clientset
+	kubeClient       *kubernetes.Clientset
 
 	chartLister   appListers.HelmChartLister
 	hrLister      appListers.HelmReleaseLister
@@ -78,16 +77,16 @@ type HelmDeployer struct {
 	recorder record.EventRecorder
 }
 
-func NewHelmDeployer(ctx context.Context,
-	clusternetclient *clusternetClientSet.Clientset, kubeclient *kubernetes.Clientset,
+func NewDeployer(ctx context.Context,
+	clusternetClient *clusternetClientSet.Clientset, kubeClient *kubernetes.Clientset,
 	clusternetInformerFactory clusternetInformers.SharedInformerFactory,
 	kubeInformerFactory kubeInformers.SharedInformerFactory,
-	recorder record.EventRecorder) (*HelmDeployer, error) {
+	recorder record.EventRecorder) (*Deployer, error) {
 
-	hd := &HelmDeployer{
+	deployer := &Deployer{
 		ctx:              ctx,
-		clusternetclient: clusternetclient,
-		kubeclient:       kubeclient,
+		clusternetClient: clusternetClient,
+		kubeClient:       kubeClient,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
@@ -95,66 +94,146 @@ func NewHelmDeployer(ctx context.Context,
 		recorder:         recorder,
 	}
 
-	helmChartController, err := helmchart.NewController(ctx, clusternetclient,
-		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(), hd.handleHelmChart)
+	helmChartController, err := helmchart.NewController(ctx, clusternetClient,
+		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(), deployer.handleHelmChart)
 	if err != nil {
 		return nil, err
 	}
-	hd.helmChartController = helmChartController
+	deployer.helmChartController = helmChartController
 
 	hrController, err := helmrelease.NewController(ctx,
-		clusternetclient,
+		clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
-		hd.handleHelmRelease)
+		deployer.handleHelmRelease)
 	if err != nil {
 		return nil, err
 	}
-	hd.helmReleaseController = hrController
+	deployer.helmReleaseController = hrController
 
 	secretController, err := secret.NewController(ctx,
-		kubeclient,
+		kubeClient,
 		kubeInformerFactory.Core().V1().Secrets(),
-		hd.handleSecret)
+		deployer.handleSecret)
 	if err != nil {
 		return nil, err
 	}
-	hd.secretController = secretController
+	deployer.secretController = secretController
 
-	return hd, nil
+	descController, err := description.NewController(ctx,
+		clusternetClient,
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
+		deployer.recorder,
+		deployer.handleDescription)
+	if err != nil {
+		return nil, err
+	}
+	deployer.descriptionController = descController
+
+	return deployer, nil
 }
 
-func (hd *HelmDeployer) Run(workers int) {
+func (deployer *Deployer) Run(workers int) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
 
-	go hd.helmChartController.Run(workers, hd.ctx.Done())
-	go hd.helmReleaseController.Run(workers, hd.ctx.Done())
+	go deployer.helmChartController.Run(workers, deployer.ctx.Done())
+	go deployer.helmReleaseController.Run(workers, deployer.ctx.Done())
+	go deployer.descriptionController.Run(workers, deployer.ctx.Done())
 	// 1 worker may get hang up, so we set minimum 2 workers here
-	go hd.secretController.Run(2, hd.ctx.Done())
+	go deployer.secretController.Run(2, deployer.ctx.Done())
 
-	<-hd.ctx.Done()
+	<-deployer.ctx.Done()
 }
 
-func (hd *HelmDeployer) handleHelmChart(chart *appsapi.HelmChart) error {
+func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
+	if desc.Spec.Deployer != appsapi.DescriptionHelmDeployer {
+		return nil
+	}
+
+	// TODO: may ignore checking AppPusher for helm charts?
+	// check whether ManagedCluster will enable deploying Description with Pusher/Dual mode
+	mcls, err := deployer.clusterLister.ManagedClusters(desc.Namespace).List(
+		labels.SelectorFromSet(labels.Set{
+			known.ClusterIDLabel: desc.Labels[known.ClusterIDLabel],
+		}))
+	if err != nil {
+		return err
+	}
+	if mcls == nil {
+		deployer.recorder.Event(desc, corev1.EventTypeWarning, "ManagedClusterNotFound",
+			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", desc.Labels[known.ClusterIDLabel]))
+		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", desc.Namespace)
+	}
+	if !mcls[0].Status.AppPusher {
+		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
+		klog.V(5).Infof("ManagedCluster with uid=%s has disabled AppPusher", mcls[0].UID)
+		return nil
+	}
+
+	if desc.DeletionTimestamp != nil {
+		// make sure all controllees have been deleted
+		hrs, err := deployer.hrLister.HelmReleases(desc.Namespace).List(labels.SelectorFromSet(labels.Set{
+			known.ConfigKindLabel:      descriptionKind.Kind,
+			known.ConfigNameLabel:      desc.Name,
+			known.ConfigNamespaceLabel: desc.Namespace,
+		}))
+		if err != nil {
+			return err
+		}
+
+		deletePropagationBackground := metav1.DeletePropagationBackground
+		for _, hr := range hrs {
+			if metav1.IsControlledBy(hr, desc) {
+				if hr.DeletionTimestamp == nil {
+					return deployer.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Delete(context.TODO(), hr.Name, metav1.DeleteOptions{
+						PropagationPolicy: &deletePropagationBackground,
+					})
+				}
+				return fmt.Errorf("waiting for HelmRelease %s getting deleted", klog.KObj(hr))
+			}
+		}
+
+		if hrs != nil {
+			return fmt.Errorf("waiting for HelmRelease belongs to Description %s getting deleted", klog.KObj(desc))
+		}
+
+		desc.Finalizers = utils.RemoveString(desc.Finalizers, known.AppFinalizer)
+		_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(), desc, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(desc), err))
+		}
+		return err
+	}
+
+	if err := deployer.PopulateHelmRelease(desc); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 	_, err := repo.FindChartInRepoURL(chart.Spec.Repository, chart.Spec.Chart, chart.Spec.ChartVersion,
 		"", "", "",
 		getter.All(settings))
 	if err != nil {
 		// failed to find chart
-		return hd.helmChartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
+		return deployer.helmChartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
 			Phase:  appsapi.HelmChartNotFound,
 			Reason: err.Error(),
 		})
 	}
-	return hd.helmChartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
+	return deployer.helmChartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
 		Phase: appsapi.HelmChartFound,
 	})
 }
 
-func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
+func (deployer *Deployer) PopulateHelmRelease(desc *appsapi.Description) error {
 	var allErrs []error
 	for _, chartRef := range desc.Spec.Charts {
-		chart, err := hd.chartLister.HelmCharts(chartRef.Namespace).Get(chartRef.Name)
+		chart, err := deployer.chartLister.HelmCharts(chartRef.Namespace).Get(chartRef.Name)
 		if err != nil {
 			return err
 		}
@@ -196,20 +275,20 @@ func (hd *HelmDeployer) PopulateHelmRelease(desc *appsapi.Description) error {
 			},
 		}
 
-		err = hd.syncHelmRelease(desc, hr)
+		err = deployer.syncHelmRelease(desc, hr)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync HelmRelease %s: %v", klog.KObj(hr), err)
 			klog.ErrorDepth(5, msg)
-			hd.recorder.Event(desc, corev1.EventTypeWarning, "HelmReleaseFailure", msg)
+			deployer.recorder.Event(desc, corev1.EventTypeWarning, "HelmReleaseFailure", msg)
 		}
 	}
 
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (hd *HelmDeployer) syncHelmRelease(desc *appsapi.Description, helmRelease *appsapi.HelmRelease) error {
-	hr, err := hd.hrLister.HelmReleases(helmRelease.Namespace).Get(helmRelease.Name)
+func (deployer *Deployer) syncHelmRelease(desc *appsapi.Description, helmRelease *appsapi.HelmRelease) error {
+	hr, err := deployer.hrLister.HelmReleases(helmRelease.Namespace).Get(helmRelease.Name)
 	if err == nil {
 		if hr.DeletionTimestamp != nil {
 			return fmt.Errorf("HelmRelease %s is deleting, will resync later", klog.KObj(hr))
@@ -229,66 +308,35 @@ func (hd *HelmDeployer) syncHelmRelease(desc *appsapi.Description, helmRelease *
 				hr.Finalizers = append(hr.Finalizers, known.AppFinalizer)
 			}
 
-			_, err = hd.clusternetclient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(),
+			_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(),
 				hr, metav1.UpdateOptions{})
 			if err == nil {
 				msg := fmt.Sprintf("HelmReleases %s is updated successfully", klog.KObj(hr))
 				klog.V(4).Info(msg)
-				hd.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleaseUpdated", msg)
+				deployer.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleaseUpdated", msg)
 			}
 			return err
 		}
 		return nil
 	}
+	if !errors.IsNotFound(err) {
+		return err
+	}
 
-	_, err = hd.clusternetclient.AppsV1alpha1().HelmReleases(helmRelease.Namespace).Create(context.TODO(),
+	_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(helmRelease.Namespace).Create(context.TODO(),
 		helmRelease, metav1.CreateOptions{})
 	if err == nil {
 		msg := fmt.Sprintf("HelmReleases %s is created successfully", klog.KObj(helmRelease))
 		klog.V(4).Info(msg)
-		hd.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleasesCreated", msg)
+		deployer.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleasesCreated", msg)
 	}
 	return err
 }
 
-func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
-	// TODO add recorder
-
-	childClusterSecret, err := hd.secretLister.Secrets(hr.Namespace).Get(known.ChildClusterSecretName)
+func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
+	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, hr.Namespace, hr.Labels[known.ClusterIDLabel])
 	if err != nil {
 		return err
-	}
-
-	mcls, err := hd.clusterLister.ManagedClusters(hr.Namespace).List(
-		labels.SelectorFromSet(labels.Set{
-			known.ClusterIDLabel: hr.Labels[known.ClusterIDLabel],
-		}))
-	if err != nil {
-		return err
-	}
-	if mcls == nil {
-		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", hr.Namespace)
-	}
-
-	var config *clientcmdapi.Config
-	if len(mcls) > 1 {
-		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", hr.Namespace)
-	}
-	if mcls[0].Status.UseSocket {
-		childClusterAPIServer, err := getChildAPIServerProxyURL(mcls[0])
-		if err != nil {
-			return err
-		}
-		config = utils.CreateKubeConfigForSocketProxyWithToken(
-			childClusterAPIServer,
-			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
-		)
-	} else {
-		config = utils.CreateKubeConfigWithToken(
-			string(childClusterSecret.Data[known.ClusterAPIServerURLKey]),
-			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
-			childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
-		)
 	}
 
 	deployCtx, err := newDeployContext(config)
@@ -310,14 +358,14 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		}
 
 		hr.Finalizers = utils.RemoveString(hr.Finalizers, known.AppFinalizer)
-		_, err = hd.clusternetclient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(), hr, metav1.UpdateOptions{})
+		_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(), hr, metav1.UpdateOptions{})
 		return err
 	}
 
 	// install or upgrade helm release
 	chart, err := LocateHelmChart(hr.Spec.Repository, hr.Spec.Chart, hr.Spec.ChartVersion)
 	if err != nil {
-		hd.recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
+		deployer.recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
 		return err
 	}
 
@@ -345,7 +393,7 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 			return UpdateRepo(hr.Spec.Repository)
 		}
 
-		if err := hd.helmReleaseController.UpdateHelmReleaseStatus(hr, &appsapi.HelmReleaseStatus{
+		if err := deployer.helmReleaseController.UpdateHelmReleaseStatus(hr, &appsapi.HelmReleaseStatus{
 			Phase: release.StatusFailed,
 			Notes: err.Error(),
 		}); err != nil {
@@ -365,10 +413,10 @@ func (hd *HelmDeployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		status.Notes = rel.Info.Notes
 	}
 
-	return hd.helmReleaseController.UpdateHelmReleaseStatus(hr, status)
+	return deployer.helmReleaseController.UpdateHelmReleaseStatus(hr, status)
 }
 
-func (hd *HelmDeployer) handleSecret(secret *corev1.Secret) error {
+func (deployer *Deployer) handleSecret(secret *corev1.Secret) error {
 	if secret.DeletionTimestamp == nil {
 		return nil
 	}
@@ -377,32 +425,21 @@ func (hd *HelmDeployer) handleSecret(secret *corev1.Secret) error {
 		return nil
 	}
 
-	// check wether HelmReleases get cleaned up
-	hrs, err := hd.hrLister.HelmReleases(secret.Namespace).List(labels.SelectorFromSet(labels.Set{}))
+	// check whether HelmReleases get cleaned up
+	hrs, err := deployer.hrLister.HelmReleases(secret.Namespace).List(labels.SelectorFromSet(labels.Set{}))
 	if err != nil {
 		return err
 	}
 
-	if len(hrs) > 0 {
+	if hrs != nil {
 		return fmt.Errorf("waiting all HelmReleases in namespace %s get cleanedup", secret.Namespace)
 	}
 
 	secret.Finalizers = utils.RemoveString(secret.Finalizers, known.AppFinalizer)
-	_, err = hd.kubeclient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+	_, err = deployer.kubeClient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
 	if err != nil {
 		klog.WarningDepth(4,
 			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secret), err))
 	}
 	return err
-}
-
-func getChildAPIServerProxyURL(mcls *clusterapi.ManagedCluster) (string, error) {
-	if mcls == nil {
-		return "", errors.New("unable to generate child cluster apiserver proxy url from nil ManagedCluster object")
-	}
-
-	return strings.Join([]string{
-		strings.TrimRight(mcls.Status.ParentAPIServerURL, "/"),
-		"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls.Spec.ClusterID),
-		"proxy/direct"}, "/"), nil
 }

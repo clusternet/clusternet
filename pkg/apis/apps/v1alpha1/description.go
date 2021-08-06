@@ -18,7 +18,6 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // Important: Run "make generated" to regenerate code after modifying this file
@@ -47,7 +46,7 @@ type DescriptionSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Enum=Helm;Default
+	// +kubebuilder:validation:Enum=Helm;Generic
 	Deployer DescriptionDeployer `json:"deployer"`
 
 	// Charts describe all the helm charts to be installed
@@ -58,7 +57,7 @@ type DescriptionSpec struct {
 	// Raw is the underlying serialization of all objects.
 	//
 	// +optional
-	Raw []runtime.RawExtension `json:"raw,omitempty"`
+	Raw [][]byte `json:"raw,omitempty"`
 }
 
 // DescriptionStatus defines the observed state of Description
