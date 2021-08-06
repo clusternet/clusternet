@@ -194,9 +194,13 @@ func (in *DescriptionSpec) DeepCopyInto(out *DescriptionSpec) {
 	}
 	if in.Raw != nil {
 		in, out := &in.Raw, &out.Raw
-		*out = make([]runtime.RawExtension, len(*in))
+		*out = make([][]byte, len(*in))
 		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = make([]byte, len(*in))
+				copy(*out, *in)
+			}
 		}
 	}
 	return

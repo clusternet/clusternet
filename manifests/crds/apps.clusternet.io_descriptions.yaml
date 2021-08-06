@@ -65,12 +65,13 @@ spec:
                 description: Deployer indicates the deployer for this Description
                 enum:
                 - Helm
-                - Default
+                - Generic
                 type: string
               raw:
                 description: Raw is the underlying serialization of all objects.
                 items:
-                  type: object
+                  format: byte
+                  type: string
                 type: array
             required:
             - deployer
