@@ -128,8 +128,8 @@ github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMn
 github.com/cilium/ebpf v0.0.0-20200110133405-4032b1d8aae3/go.mod h1:MA5e5Lr8slmEg9bt0VpxxWqJlO4iwu3FBdHUzV7wQVg=
 github.com/clbanning/x2j v0.0.0-20191024224557-825249438eec/go.mod h1:jMjuTZXRI4dUb/I5gc9Hdhagfvm9+RyrPryS/auMzxE=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
-github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210730131630-f4caefbd02ac h1:DaZEK1yNS86E+KDpo8ZPeJ24UCOZ8ny5A84MLitlr/8=
-github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210730131630-f4caefbd02ac/go.mod h1:CdTY8fU/BlvAbJ2z/8kBwimGki5Zp8/fbVuLY8gJumM=
+github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210806115202-f78a0a785064 h1:cVv0Dm5kqHCcKQKdGvhipRr6/z9uNeRBmyMs0KMqcZY=
+github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210806115202-f78a0a785064/go.mod h1:CdTY8fU/BlvAbJ2z/8kBwimGki5Zp8/fbVuLY8gJumM=
 github.com/clusternet/apiserver v0.21.2-0.20210722062202-17431d287b5c h1:tkt9c3MpsbjPZDD4xaehaGfrVn7mFT5LFq1JicMPYDw=
 github.com/clusternet/apiserver v0.21.2-0.20210722062202-17431d287b5c/go.mod h1:nLLYZvMWn35glJ4/FZRhzLG/3MPxAaZTgV4FJZdr+tY=
 github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=

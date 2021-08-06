@@ -453,7 +453,7 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 
 func (r *REST) generateNameForManifest(namespace, name string) string {
 	resource, _ := r.getResourceName()
-	if len(namespace) > 0 {
+	if r.namespaced {
 		return fmt.Sprintf("%s-%s-%s", resource, namespace, name)
 	}
 	return fmt.Sprintf("%s-%s", resource, name)
