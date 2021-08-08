@@ -153,10 +153,12 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 
 	// TODO: may ignore checking AppPusher for helm charts?
 	// check whether ManagedCluster will enable deploying Description with Pusher/Dual mode
+	labelSet := labels.Set{}
+	if len(desc.Labels[known.ClusterIDLabel]) > 0 {
+		labelSet[known.ClusterIDLabel] = desc.Labels[known.ClusterIDLabel]
+	}
 	mcls, err := deployer.clusterLister.ManagedClusters(desc.Namespace).List(
-		labels.SelectorFromSet(labels.Set{
-			known.ClusterIDLabel: desc.Labels[known.ClusterIDLabel],
-		}))
+		labels.SelectorFromSet(labelSet))
 	if err != nil {
 		return err
 	}

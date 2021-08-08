@@ -140,10 +140,13 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 		return nil, err
 	}
 
+	labelSet := labels.Set{}
+	if len(clusterID) > 0 {
+		labelSet[known.ClusterIDLabel] = clusterID
+	}
+
 	mcls, err := clusterLister.ManagedClusters(namespace).List(
-		labels.SelectorFromSet(labels.Set{
-			known.ClusterIDLabel: clusterID,
-		}))
+		labels.SelectorFromSet(labelSet))
 	if err != nil {
 		return nil, err
 	}
