@@ -345,6 +345,17 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 		if err != nil {
 			allErrs = append(allErrs, err)
 		} else {
+			base, err := deployer.baseLister.Bases(ns).Get(name)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+			// remove label (baseUID="Base") from referred manifest
+			if err := deployer.removeLabelsFromReferredManifests(base); err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+
 			err = deployer.clusternetClient.AppsV1alpha1().Bases(ns).Delete(context.TODO(), name, metav1.DeleteOptions{
 				PropagationPolicy: &deletePropagationBackground,
 			})
@@ -404,8 +415,8 @@ func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base
 }
 
 func (deployer *Deployer) handleBase(base *appsapi.Base) error {
-	// patch manifest labels
-	if err := deployer.patchLabelsToReferredManifests(base); err != nil {
+	// add label (baseUID="Base") to referred manifest
+	if err := deployer.addLabelsToReferredManifests(base); err != nil {
 		return err
 	}
 
@@ -683,7 +694,7 @@ func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) patchLabelsToReferredManifests(b *appsapi.Base) error {
+func (deployer *Deployer) addLabelsToReferredManifests(b *appsapi.Base) error {
 	var allManifests []*appsapi.Manifest
 	var allErrs []error
 	for _, feed := range b.Spec.Feeds {
@@ -691,15 +702,16 @@ func (deployer *Deployer) patchLabelsToReferredManifests(b *appsapi.Base) error 
 			manifests, err := deployer.getManifestsBySelector(feed)
 			if err == nil {
 				allManifests = append(allManifests, manifests...)
-			}
-
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			if err != nil {
+			} else {
 				allErrs = append(allErrs, err)
 			}
 		}
+	}
+	if len(allErrs) > 0 {
+		return utilerrors.NewAggregate(allErrs)
+	}
+	if allManifests == nil || len(allManifests) == 0 {
+		return nil
 	}
 
 	wg := sync.WaitGroup{}
@@ -709,20 +721,16 @@ func (deployer *Deployer) patchLabelsToReferredManifests(b *appsapi.Base) error 
 		go func(manifest *appsapi.Manifest) {
 			defer wg.Done()
 
-			curVal, ok := manifest.Labels[string(b.UID)]
-			labelsToPatch := map[string]*string{}
 			if b.DeletionTimestamp != nil {
-				if !ok {
-					return
-				}
-				labelsToPatch[string(b.UID)] = nil
-			} else {
-				if curVal == baseKind.Kind {
-					return
-				}
-				labelsToPatch[string(b.UID)] = utilpointer.StringPtr(baseKind.Kind)
+				return
 			}
 
+			curVal, ok := manifest.Labels[string(b.UID)]
+			if ok && curVal == baseKind.Kind {
+				return
+			}
+			labelsToPatch := map[string]*string{}
+			labelsToPatch[string(b.UID)] = utilpointer.StringPtr(baseKind.Kind)
 			if err := deployer.patchManifestLabels(manifest, labelsToPatch); err != nil {
 				errCh <- err
 			}
@@ -733,6 +741,50 @@ func (deployer *Deployer) patchLabelsToReferredManifests(b *appsapi.Base) error 
 
 	// collect errors
 	close(errCh)
+	for err := range errCh {
+		allErrs = append(allErrs, err)
+	}
+	return utilerrors.NewAggregate(allErrs)
+}
+
+func (deployer *Deployer) removeLabelsFromReferredManifests(b *appsapi.Base) error {
+	manifests, err := deployer.mfstLister.List(labels.SelectorFromSet(
+		labels.Set{string(b.UID): baseKind.Kind}))
+	if err != nil {
+		return err
+	}
+	if manifests == nil {
+		return nil
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(manifests))
+	errCh := make(chan error, len(manifests))
+	for _, manifest := range manifests {
+		go func(manifest *appsapi.Manifest) {
+			defer wg.Done()
+
+			if b.DeletionTimestamp != nil {
+				return
+			}
+
+			_, ok := manifest.Labels[string(b.UID)]
+			if !ok {
+				return
+			}
+			labelsToPatch := map[string]*string{}
+			labelsToPatch[string(b.UID)] = nil
+			if err := deployer.patchManifestLabels(manifest, labelsToPatch); err != nil {
+				errCh <- err
+			}
+		}(manifest)
+	}
+
+	wg.Wait()
+
+	// collect errors
+	close(errCh)
+	var allErrs []error
 	for err := range errCh {
 		allErrs = append(allErrs, err)
 	}
@@ -751,5 +803,8 @@ func (deployer *Deployer) patchManifestLabels(manifest *appsapi.Manifest, labels
 		types.MergePatchType,
 		patchData,
 		metav1.PatchOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
 	return err
 }
