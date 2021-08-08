@@ -90,28 +90,31 @@ spec:
                 - apiVersion
                 - kind
                 type: object
-              overrideType:
-                description: OverrideType specifies the override type for this Localization.
+              overridePolicy:
+                default: ApplyLater
+                description: OverridePolicy specifies the override policy for this Localization.
                 type: string
               overrides:
                 description: Overrides holds all the OverrideRule.
                 items:
                   description: OverrideRule holds information that describes a override rule.
                   properties:
-                    ruleName:
-                      description: RuleName indicate the OverrideRule name.
-                      type: string
-                    value:
+                    overrideValue:
                       additionalProperties:
                         type: string
                       description: OverrideValue represents override values.
                       type: object
+                    ruleName:
+                      description: RuleName indicate the OverrideRule name.
+                      type: string
                   type: object
                 type: array
               priority:
-                default: 1000
+                default: 500
                 description: Priority is an integer defining the relative importance of this Localization compared to others. Lower numbers are considered lower priority.
                 format: int32
+                maximum: 1000
+                minimum: 0
                 type: integer
             type: object
         required:
