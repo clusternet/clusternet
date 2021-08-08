@@ -114,7 +114,7 @@ spec:
                     description: Name of the target resource. Either Name or FeedSelector should be set.
                     type: string
                   namespace:
-                    description: Namespace of the target resource. Default to use the same Namespace of Subscription.
+                    description: Namespace of the target resource.
                     type: string
                 required:
                 - apiVersion

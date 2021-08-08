@@ -18,25 +18,35 @@ package localization
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
-var controllerKind = appsapi.SchemeGroupVersion.WithKind("Localization")
+var (
+	controllerKind = appsapi.SchemeGroupVersion.WithKind("Localization")
+	chartKind      = appsapi.SchemeGroupVersion.WithKind("HelmChart")
+)
 
 type SyncHandlerFunc func(loc *appsapi.Localization) error
 
@@ -44,7 +54,7 @@ type SyncHandlerFunc func(loc *appsapi.Localization) error
 type Controller struct {
 	ctx context.Context
 
-	clusternetClient clusternetClientSet.Interface
+	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -53,17 +63,26 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	locLister appListers.LocalizationLister
+	locLister applisters.LocalizationLister
 	locSynced cache.InformerSynced
 
-	SyncHandler SyncHandlerFunc
+	chartLister applisters.HelmChartLister
+	chartSynced cache.InformerSynced
+
+	manifestLister applisters.ManifestLister
+	manifestSynced cache.InformerSynced
+
+	recorder record.EventRecorder
+
+	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	locInformer appInformers.LocalizationInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
+func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+	locInformer appinformers.LocalizationInformer,
+	chartInformer appinformers.HelmChartInformer, manifestInformer appinformers.ManifestInformer,
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	if syncHandlerFunc == nil {
+		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
@@ -72,7 +91,12 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "localization"),
 		locLister:        locInformer.Lister(),
 		locSynced:        locInformer.Informer().HasSynced,
-		SyncHandler:      syncHandler,
+		chartLister:      chartInformer.Lister(),
+		chartSynced:      chartInformer.Informer().HasSynced,
+		manifestLister:   manifestInformer.Lister(),
+		manifestSynced:   manifestInformer.Informer().HasSynced,
+		recorder:         recorder,
+		syncHandlerFunc:  syncHandlerFunc,
 	}
 
 	// Manage the addition/update of Localization
@@ -98,7 +122,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.locSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.locSynced, c.chartSynced, c.manifestSynced) {
 		return
 	}
 
@@ -114,6 +138,39 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addLocalization(obj interface{}) {
 	loc := obj.(*appsapi.Localization)
 	klog.V(4).Infof("adding Localization %q", klog.KObj(loc))
+
+	// add finalizer
+	if !utils.ContainsString(loc.Finalizers, known.AppFinalizer) && loc.DeletionTimestamp == nil {
+		loc.Finalizers = append(loc.Finalizers, known.AppFinalizer)
+		_, err := c.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Update(context.TODO(),
+			loc, metav1.UpdateOptions{})
+		if err == nil {
+			msg := fmt.Sprintf("successfully inject finalizer %s to Localization %s",
+				known.AppFinalizer, klog.KObj(loc))
+			klog.V(4).Info(msg)
+			c.recorder.Event(loc, corev1.EventTypeNormal, "FinalizerInjected", msg)
+		} else {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Localization %s: %v",
+				known.AppFinalizer, klog.KObj(loc), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(loc, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			c.addLocalization(obj)
+			return
+		}
+	}
+
+	// label matching Feeds uid to Localization
+	labelsToPatch, err := c.getLabelsForPatching(loc)
+	if err == nil {
+		err = c.PatchLocalizationLabels(loc, labelsToPatch)
+	}
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
+			klog.KObj(loc), err))
+		c.addLocalization(obj)
+		return
+	}
+
 	c.enqueue(loc)
 }
 
@@ -123,6 +180,18 @@ func (c *Controller) updateLocalization(old, cur interface{}) {
 
 	if newLoc.DeletionTimestamp != nil {
 		c.enqueue(newLoc)
+		return
+	}
+
+	// label matching Feeds uid to Globalization
+	labelsToPatch, err := c.getLabelsForPatching(newLoc)
+	if err == nil {
+		err = c.PatchLocalizationLabels(newLoc, labelsToPatch)
+	}
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
+			klog.KObj(newLoc), err))
+		c.updateLocalization(old, cur)
 		return
 	}
 
@@ -144,7 +213,7 @@ func (c *Controller) deleteLocalization(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Localization)
+		loc, ok = tombstone.Obj.(*appsapi.Localization)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Localization %#v", obj))
 			return
@@ -247,7 +316,7 @@ func (c *Controller) syncHandler(key string) error {
 	loc.Kind = controllerKind.Kind
 	loc.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(loc)
+	return c.syncHandlerFunc(loc)
 }
 
 // enqueue takes a Localization resource and converts it into a namespace/name
@@ -260,4 +329,54 @@ func (c *Controller) enqueue(loc *appsapi.Localization) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+func (c *Controller) getLabelsForPatching(loc *appsapi.Localization) (map[string]*string, error) {
+	labelsToPatch := map[string]*string{}
+	if loc.Spec.Feed.Kind == chartKind.Kind {
+		charts, err := utils.ListChartsBySelector(c.chartLister, loc.Spec.Feed)
+		if err != nil {
+			return nil, err
+		}
+		for _, chart := range charts {
+			val, ok := loc.Labels[string(chart.UID)]
+			if !ok || val != chartKind.Kind {
+				labelsToPatch[string(chart.UID)] = &chartKind.Kind
+			}
+		}
+	} else {
+		manifests, err := utils.ListManifestsBySelector(c.manifestLister, loc.Spec.Feed)
+		if err != nil {
+			return nil, err
+		}
+		for _, manifest := range manifests {
+			kind := manifest.Labels[known.ConfigKindLabel]
+			val, ok := loc.Labels[string(manifest.UID)]
+			if !ok || val != kind {
+				labelsToPatch[string(manifest.UID)] = &kind
+			}
+		}
+	}
+
+	return labelsToPatch, nil
+}
+
+func (c *Controller) PatchLocalizationLabels(loc *appsapi.Localization, labels map[string]*string) error {
+	klog.V(5).Infof("patching Localization labels")
+	if len(labels) == 0 {
+		return nil
+	}
+
+	option := utils.LabelOption{Meta: utils.Meta{Labels: labels}}
+	patchData, err := json.Marshal(option)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Patch(context.TODO(),
+		loc.Name,
+		types.MergePatchType,
+		patchData,
+		metav1.PatchOptions{})
+	return err
 }

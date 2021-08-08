@@ -171,14 +171,6 @@ func (c *Controller) updateBase(old, cur interface{}) {
 		return
 	}
 
-	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldBase.Spec, newBase.Spec) {
-		klog.V(4).Infof("no updates on the spec of Base %q, skipping syncing", oldBase.Name)
-		return
-	}
-
-	klog.V(4).Infof("updating Base %q", klog.KObj(oldBase))
-
 	// label Base self uid
 	if val, ok := newBase.Labels[string(newBase.UID)]; !ok || val != controllerKind.Kind {
 		err := c.patchBaseLabels(newBase, map[string]*string{
@@ -190,6 +182,13 @@ func (c *Controller) updateBase(old, cur interface{}) {
 		}
 	}
 
+	// Decide whether discovery has reported a spec change.
+	if reflect.DeepEqual(oldBase.Spec, newBase.Spec) {
+		klog.V(4).Infof("no updates on the spec of Base %q, skipping syncing", oldBase.Name)
+		return
+	}
+
+	klog.V(4).Infof("updating Base %q", klog.KObj(oldBase))
 	c.enqueue(newBase)
 }
 
@@ -369,17 +368,9 @@ func (c *Controller) enqueue(base *appsapi.Base) {
 	c.workqueue.Add(key)
 }
 
-type LabelOption struct {
-	Meta Meta `json:"metadata"`
-}
-
-type Meta struct {
-	Labels map[string]*string `json:"labels"`
-}
-
 func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*string) error {
 	klog.V(5).Infof("patching Base labels")
-	option := LabelOption{Meta: Meta{Labels: labels}}
+	option := utils.LabelOption{Meta: utils.Meta{Labels: labels}}
 	patchData, err := json.Marshal(option)
 	if err != nil {
 		return err

@@ -106,6 +106,8 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
+		clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer()
+		clusternetInformerFactory.Apps().V1alpha1().Globalizations().Informer()
 
 		d, err = deployer.NewDeployer(ctx, kubeclient, clusternetclient, clusternetInformerFactory, kubeInformerFactory)
 		if err != nil {
