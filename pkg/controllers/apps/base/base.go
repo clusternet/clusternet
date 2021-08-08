@@ -131,10 +131,8 @@ func (c *Controller) addBase(obj interface{}) {
 	klog.V(4).Infof("adding Base %q", klog.KObj(base))
 
 	// add finalizer
-	if base.DeletionTimestamp == nil {
-		if !utils.ContainsString(base.Finalizers, known.AppFinalizer) {
-			base.Finalizers = append(base.Finalizers, known.AppFinalizer)
-		}
+	if !utils.ContainsString(base.Finalizers, known.AppFinalizer) && base.DeletionTimestamp == nil {
+		base.Finalizers = append(base.Finalizers, known.AppFinalizer)
 		_, err := c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Update(context.TODO(),
 			base, metav1.UpdateOptions{})
 		if err == nil {

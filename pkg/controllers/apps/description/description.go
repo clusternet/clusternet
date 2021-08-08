@@ -131,10 +131,8 @@ func (c *Controller) addDescription(obj interface{}) {
 	klog.V(4).Infof("adding Description %q", klog.KObj(desc))
 
 	// add finalizer
-	if desc.DeletionTimestamp == nil {
-		if !utils.ContainsString(desc.Finalizers, known.AppFinalizer) {
-			desc.Finalizers = append(desc.Finalizers, known.AppFinalizer)
-		}
+	if !utils.ContainsString(desc.Finalizers, known.AppFinalizer) && desc.DeletionTimestamp == nil {
+		desc.Finalizers = append(desc.Finalizers, known.AppFinalizer)
 		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(),
 			desc, metav1.UpdateOptions{})
 		if err == nil {

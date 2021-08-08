@@ -128,53 +128,51 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 }
 
 func (c *Controller) addSubscription(obj interface{}) {
-	subs := obj.(*appsapi.Subscription)
-	klog.V(4).Infof("adding Subscription %q", klog.KObj(subs))
+	sub := obj.(*appsapi.Subscription)
+	klog.V(4).Infof("adding Subscription %q", klog.KObj(sub))
 
 	// add finalizer
-	if subs.DeletionTimestamp == nil {
-		if !utils.ContainsString(subs.Finalizers, known.AppFinalizer) {
-			subs.Finalizers = append(subs.Finalizers, known.AppFinalizer)
-		}
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subs.Namespace).Update(context.TODO(),
-			subs, metav1.UpdateOptions{})
+	if !utils.ContainsString(sub.Finalizers, known.AppFinalizer) && sub.DeletionTimestamp == nil {
+		sub.Finalizers = append(sub.Finalizers, known.AppFinalizer)
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).Update(context.TODO(),
+			sub, metav1.UpdateOptions{})
 		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(subs))
+			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(sub))
 			klog.V(4).Info(msg)
-			c.recorder.Event(subs, corev1.EventTypeNormal, "FinalizerInjected", msg)
+			c.recorder.Event(sub, corev1.EventTypeNormal, "FinalizerInjected", msg)
 		} else {
-			msg := fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(subs), err)
+			msg := fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(sub), err)
 			klog.WarningDepth(4, msg)
-			c.recorder.Event(subs, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			c.recorder.Event(sub, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
 			c.addSubscription(obj)
 			return
 		}
 	}
 
-	c.enqueue(subs)
+	c.enqueue(sub)
 }
 
 func (c *Controller) updateSubscription(old, cur interface{}) {
-	oldSubs := old.(*appsapi.Subscription)
-	newSubs := cur.(*appsapi.Subscription)
+	oldSub := old.(*appsapi.Subscription)
+	newSub := cur.(*appsapi.Subscription)
 
-	if newSubs.DeletionTimestamp != nil {
-		c.enqueue(newSubs)
+	if newSub.DeletionTimestamp != nil {
+		c.enqueue(newSub)
 		return
 	}
 
 	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldSubs.Spec, newSubs.Spec) {
-		klog.V(4).Infof("no updates on the spec of Subscription %q, skipping syncing", oldSubs.Name)
+	if reflect.DeepEqual(oldSub.Spec, newSub.Spec) {
+		klog.V(4).Infof("no updates on the spec of Subscription %q, skipping syncing", oldSub.Name)
 		return
 	}
 
-	klog.V(4).Infof("updating Subscription %q", klog.KObj(oldSubs))
-	c.enqueue(newSubs)
+	klog.V(4).Infof("updating Subscription %q", klog.KObj(oldSub))
+	c.enqueue(newSub)
 }
 
 func (c *Controller) deleteSubscription(obj interface{}) {
-	subs, ok := obj.(*appsapi.Subscription)
+	sub, ok := obj.(*appsapi.Subscription)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -188,8 +186,8 @@ func (c *Controller) deleteSubscription(obj interface{}) {
 		}
 	}
 
-	klog.V(4).Infof("deleting Subscription %q", klog.KObj(subs))
-	c.enqueue(subs)
+	klog.V(4).Infof("deleting Subscription %q", klog.KObj(sub))
+	c.enqueue(sub)
 }
 
 func (c *Controller) deleteBase(obj interface{}) {
@@ -219,16 +217,16 @@ func (c *Controller) deleteBase(obj interface{}) {
 // or nil if the ControllerRef could not be resolved to a matching controller
 // of the correct Kind.
 func (c *Controller) resolveControllerRef(name, namespace string, uid types.UID) *appsapi.Subscription {
-	subs, err := c.subsLister.Subscriptions(namespace).Get(name)
+	sub, err := c.subsLister.Subscriptions(namespace).Get(name)
 	if err != nil {
 		return nil
 	}
-	if subs.UID != uid {
+	if sub.UID != uid {
 		// The controller we found with this Name is not the same one that the
 		// ControllerRef points to.
 		return nil
 	}
-	return subs
+	return sub
 }
 
 // runWorker is a long-running function that will continually call the
@@ -311,7 +309,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing Subscription %q", key)
 	// Get the Subscription resource with this name
-	subs, err := c.subsLister.Subscriptions(ns).Get(name)
+	sub, err := c.subsLister.Subscriptions(ns).Get(name)
 	// The Subscription resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Subscription %q has been deleted", key)
@@ -321,32 +319,32 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	subs.Kind = controllerKind.Kind
-	subs.APIVersion = controllerKind.Version
+	sub.Kind = controllerKind.Kind
+	sub.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(subs)
+	return c.SyncHandler(sub)
 }
 
-func (c *Controller) UpdateSubscriptionStatus(subs *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
+func (c *Controller) UpdateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
 
-	klog.V(5).Infof("try to update Subscription %q status", subs.Name)
+	klog.V(5).Infof("try to update Subscription %q status", sub.Name)
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		subs.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subs.Namespace).UpdateStatus(c.ctx, subs, metav1.UpdateOptions{})
+		sub.Status = *status
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(c.ctx, sub, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
 		}
 
-		if updated, err := c.subsLister.Subscriptions(subs.Namespace).Get(subs.Name); err == nil {
+		if updated, err := c.subsLister.Subscriptions(sub.Namespace).Get(sub.Name); err == nil {
 			// make a copy so we don't mutate the shared cache
-			subs = updated.DeepCopy()
+			sub = updated.DeepCopy()
 		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", subs.Name, err))
+			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", sub.Name, err))
 		}
 		return err
 	})
@@ -355,8 +353,8 @@ func (c *Controller) UpdateSubscriptionStatus(subs *appsapi.Subscription, status
 // enqueue takes a Subscription resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
 // passed resources of any type other than Subscription.
-func (c *Controller) enqueue(subs *appsapi.Subscription) {
-	key, err := cache.MetaNamespaceKeyFunc(subs)
+func (c *Controller) enqueue(sub *appsapi.Subscription) {
+	key, err := cache.MetaNamespaceKeyFunc(sub)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
