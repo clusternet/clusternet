@@ -124,10 +124,8 @@ func (c *Controller) addManifest(obj interface{}) {
 	klog.V(4).Infof("adding Manifest %q", klog.KObj(manifest))
 
 	// add finalizer
-	if manifest.DeletionTimestamp == nil {
-		if !utils.ContainsString(manifest.Finalizers, known.AppFinalizer) {
-			manifest.Finalizers = append(manifest.Finalizers, known.AppFinalizer)
-		}
+	if !utils.ContainsString(manifest.Finalizers, known.AppFinalizer) && manifest.DeletionTimestamp == nil {
+		manifest.Finalizers = append(manifest.Finalizers, known.AppFinalizer)
 		_, err := c.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(),
 			manifest, metav1.UpdateOptions{})
 		if err == nil {
