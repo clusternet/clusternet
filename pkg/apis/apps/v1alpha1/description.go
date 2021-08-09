@@ -81,7 +81,6 @@ const (
 type DescriptionPhase string
 
 const (
-	DescriptionPhasePending DescriptionPhase = "Pending"
 	DescriptionPhaseSuccess DescriptionPhase = "Success"
 	DescriptionPhaseFailure DescriptionPhase = "Failure"
 )

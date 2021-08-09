@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"time"
 
+	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -55,14 +56,16 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	hrLister appListers.HelmReleaseLister
-	hrSynced cache.InformerSynced
+	descLister appListers.DescriptionLister
+	hrLister   appListers.HelmReleaseLister
+	hrSynced   cache.InformerSynced
 
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	hrInformer appInformers.HelmReleaseInformer, syncHandler SyncHandlerFunc) (*Controller, error) {
+	descLister appListers.DescriptionLister, hrInformer appInformers.HelmReleaseInformer,
+	syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -71,6 +74,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmRelease"),
+		descLister:       descLister,
 		hrLister:         hrInformer.Lister(),
 		hrSynced:         hrInformer.Informer().HasSynced,
 		SyncHandler:      syncHandler,
@@ -258,11 +262,10 @@ func (c *Controller) UpdateHelmReleaseStatus(hr *appsapi.HelmRelease, status *ap
 
 	klog.V(5).Infof("try to update HelmRelease %q status", hr.Name)
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		hr.Status = *status
 		_, err := c.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).UpdateStatus(c.ctx, hr, metav1.UpdateOptions{})
 		if err == nil {
-			//TODO
 			return nil
 		}
 
@@ -274,6 +277,58 @@ func (c *Controller) UpdateHelmReleaseStatus(hr *appsapi.HelmRelease, status *ap
 		}
 		return err
 	})
+
+	if err != nil {
+		return err
+	}
+
+	klog.V(5).Infof("try to update HelmRelease %q owner Description status", hr.Name)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		controllerRef := metav1.GetControllerOf(hr)
+		if controllerRef == nil {
+			// No controller should care about orphans being deleted.
+			return nil
+		}
+		desc := c.resolveControllerRef(hr.Namespace, controllerRef)
+		if desc == nil {
+			return nil
+		}
+		if status.Phase == release.StatusDeployed {
+			desc.Status.Phase = appsapi.DescriptionPhaseSuccess
+			desc.Status.Reason = ""
+		} else {
+			desc.Status.Phase = appsapi.DescriptionPhaseFailure
+			desc.Status.Reason = status.Notes
+		}
+		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(c.ctx, desc, metav1.UpdateOptions{})
+		if err == nil {
+			return nil
+		}
+
+		utilruntime.HandleError(fmt.Errorf("error updating status for Description %q: %v", klog.KObj(desc), err))
+		return err
+	})
+}
+
+// resolveControllerRef returns the controller referenced by a ControllerRef,
+// or nil if the ControllerRef could not be resolved to a matching controller
+// of the correct Kind.
+func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Description {
+	// We can't look up by UID, so look up by Name and then verify UID.
+	// Don't even try to look up by Name if it's the wrong Kind.
+	if controllerRef.Kind != "Description" {
+		return nil
+	}
+	desc, err := c.descLister.Descriptions(namespace).Get(controllerRef.Name)
+	if err != nil {
+		return nil
+	}
+	if desc.UID != controllerRef.UID {
+		// The controller we found with this Name is not the same one that the
+		// ControllerRef points to.
+		return nil
+	}
+	return desc
 }
 
 // enqueue takes a HelmReleases resource and converts it into a namespace/name

@@ -19,6 +19,7 @@ package generic
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -180,15 +181,30 @@ func (deployer *Deployer) createOrUpdateDescription(desc *appsapi.Description) e
 		allErrs = append(allErrs, err)
 	}
 
+	var statusPhase appsapi.DescriptionPhase
+	var reason string
 	err = utilerrors.NewAggregate(allErrs)
 	if err != nil {
+		statusPhase = appsapi.DescriptionPhaseFailure
+		reason = err.Error()
+
 		msg := fmt.Sprintf("failed to deploying Description %s: %v", klog.KObj(desc), err)
 		klog.ErrorDepth(5, msg)
-		deployer.recorder.Event(desc, corev1.EventTypeWarning, "FailedDeployingDescription", msg)
+		deployer.recorder.Event(desc, corev1.EventTypeWarning, "UnSuccessfullyDeployed", msg)
 	} else {
-		klog.V(5).Infof("Description %s is deployed successfully", klog.KObj(desc))
-		deployer.recorder.Event(desc, corev1.EventTypeNormal, "SuccessfullyDeployedDescription", "")
+		statusPhase = appsapi.DescriptionPhaseSuccess
+		reason = ""
+
+		msg := fmt.Sprintf("Description %s is deployed successfully", klog.KObj(desc))
+		klog.V(5).Info(msg)
+		deployer.recorder.Event(desc, corev1.EventTypeNormal, "SuccessfullyDeployed", msg)
 	}
+
+	// update status
+	desc.Status.Phase = statusPhase
+	desc.Status.Reason = reason
+	_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+
 	return err
 }
 
@@ -242,6 +258,9 @@ func (deployer *Deployer) deleteDescription(desc *appsapi.Description) error {
 }
 
 func (deployer *Deployer) applyResourceWithRetry(dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured, retries int) error {
+	// set UID as empty
+	resource.SetUID("")
+
 	backoff := retry.DefaultBackoff
 	backoff.Steps = retries
 	return wait.ExponentialBackoffWithContext(deployer.ctx, backoff, func() (done bool, err error) {
@@ -250,13 +269,41 @@ func (deployer *Deployer) applyResourceWithRetry(dynamicClient dynamic.Interface
 			return false, nil
 		}
 
-		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).Create(context.TODO(), resource, metav1.CreateOptions{})
+		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+			Create(context.TODO(), resource, metav1.CreateOptions{})
 		if err != nil {
 			if apierrors.IsAlreadyExists(err) {
-				_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).Update(context.TODO(), resource, metav1.UpdateOptions{})
+				curObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+					Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
 				if err != nil {
 					return false, nil
 				}
+
+				resourceCopy := resource.DeepCopy()
+				_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+					Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
+				if err != nil {
+					statusCauses, ok := getStatusCause(err)
+					if ok {
+						for _, cause := range statusCauses {
+							if cause.Type != metav1.CauseTypeFieldValueInvalid {
+								continue
+							}
+							// apply immutable value
+							fields := strings.Split(cause.Field, ".")
+							setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
+						}
+						// update with immutable values applied
+						if _, err = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
+							Update(context.TODO(), resourceCopy, metav1.UpdateOptions{}); err != nil {
+							return false, nil
+						} else {
+							return true, nil
+						}
+					}
+					return false, nil
+				}
+				return true, nil
 			}
 			return false, nil
 		}
