@@ -103,6 +103,7 @@ func NewDeployer(ctx context.Context,
 
 	hrController, err := helmrelease.NewController(ctx,
 		clusternetClient,
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.handleHelmRelease)
 	if err != nil {
