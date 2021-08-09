@@ -569,11 +569,24 @@ commands,
 $ kubectl clusternet get mcls -A
 NAMESPACE          NAME                       CLUSTER ID                             SYNC MODE   KUBERNETES   READYZ   AGE
 clusternet-5l82l   clusternet-cluster-hx455   dc91021d-2361-4f6d-a404-7c33b9e01118   Dual        v1.21.0      true     5d22h
+$ # list Descriptions
+$ kubectl clusternet get desc -A
+NAMESPACE          NAME               DEPLOYER   STATUS    AGE
+clusternet-5l82l   app-demo-generic   Generic    Success   2m55s
+clusternet-5l82l   app-demo-helm      Helm       Success   2m55s
+$ kubectl describe desc -n clusternet-5l82l   app-demo-generic
+...
+Status:
+  Phase:  Success
+Events:
+  Type    Reason                Age    From            Message
+  ----    ------                ----   ----            -------
+  Normal  SuccessfullyDeployed  2m55s  clusternet-hub  Description clusternet-5l82l/app-demo-generic is deployed successfully
 $ # list Helm Release
 $ # hr is an alias for HelmRelease
 $ kubectl clusternet get hr -n clusternet-5l82l
 NAME                  CHART       VERSION   REPO                                 STATUS     AGE
-helm-demo-mysql       mysql       8.6.2     https://charts.bitnami.com/bitnami   deployed   3m38s
+helm-demo-mysql       mysql       8.6.2     https://charts.bitnami.com/bitnami   deployed   2m55s
 ```
 
 You can also verify the installation with Helm command line in your child cluster,
