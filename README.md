@@ -44,13 +44,14 @@ Clusternet is multiple platforms supported now, including
     - [Check Cluster Registrations](#check-cluster-registrations)
     - [Check ManagedCluster Status](#check-managedcluster-status)
     - [Visit ManagedCluster With RBAC](#visit-managedcluster-with-rbac)
-    - [Deploying Helm Charts to Multiple Clusters](#deploying-helm-charts-to-multiple-clusters)
+    - [How to Interact with Clusternet](#how-to-interact-with-clusternet)
+    - [Deploying Applications to Multiple Clusters](#deploying-applications-to-multiple-clusters)
 
 ----
 
 # Architecture
 
-![](./docs/images/clusternet-arch.png)
+<img src="./docs/images/clusternet-arch.png" style="width:1000px;"/>
 
 Clusternet is light-weighted that consists of two components, `clusternet-agent` and `clusternet-hub`.
 
@@ -88,7 +89,14 @@ are registerring to, we call it **parent cluster**.
 - `ManagedCluster` is an object that `clusternet-hub` creates in parent cluster after
   approving `ClusterRegistrationRequest`.
 - `HelmChart` is an object contains a [helm chart](https://helm.sh/docs/topics/charts/) configuration.
-- `Subscription` defines the resources that subscribers want to install into clusters.
+- `Subscription` defines the resources that subscribers want to install into clusters. For every matched cluster, a
+  corresponding `Base` object will be created in its dedicated namespace.
+- `Localization` and `Globalization` will define the overrides with priority, where lower numbers are considered lower
+  priority. `Localization` is namespace-scoped resource, while `Globalization` is cluster-scoped.
+- `Base` objects will be rendered to `Description` objects with `Globalization` and `Localization` settings applied.
+  `Descritpion` is the final resources to be deployed into target child clusters.
+
+<img src="./docs/images/clusternet-apps-concepts.png" style="width:1000px;"/>
 
 # Contributing & Developing
 
@@ -121,7 +129,32 @@ $ kubectl apply -f manifests/samples/cluster_bootstrap_token.yaml
 
 ### Deploying `clusternet-agent` in child cluster
 
-First we need to create a secret, which contains token for cluster registration,
+`clusternet-agent` runs in child cluster and helps register self-cluster to parent cluster.
+
+`clusternet-agent` could be configured with below three kinds of `SyncMode` (configured by flag `--cluster-sync-mode`),
+
+- `Push` means that all the resource changes in the parent cluster will be synchronized, pushed and applied to child
+  clusters by `clusternet-hub` automatically.
+- `Pull` means `clusternet-agent` will watch, synchronize and apply all the resource changes from the parent cluster to
+  child cluster.
+- `Dual` combines both `Push` and `Pull` mode. This mode is strongly recommended, which is usually used together with
+  feature gate `AppPusher`.
+
+Feature gate `AppPusher` works on agent side, which is introduced mainly for below two reasons,
+
+- `SyncMode` is not suggested getting changed after registration, which may bring in inconsistent settings and
+  behaviors. That's why `Dual` mode is strong recommended. When `Dual` mode is set, feature gate `AppPusher` provides a
+  way to help switch `Push` mode to `Pull` mode without really changing flag `--cluster-sync-mode`, and vice versa.
+
+- For security concerns, such as child cluster security risks, etc.
+
+  When a child cluster has disabled feature gate `AppPusher`, the parent cluster won't deploy any applications to it,
+  even if SyncMode `Push` or `Dual` is set. At this time, this child cluster is working like `Pull` mode.
+
+  Resources to be deployed are represented as `Description`, you can run your own controllers as well to watch changes
+  of `Description` objects, then distribute and deploy resources.
+
+Upon deploying `clusternet-agent`, a secret that contains token for cluster registration should be created firstly.
 
 ```bash
 $ # create namespace clusternet-system if not created
@@ -133,6 +166,7 @@ $ PARENTURL=https://192.168.10.10 REGTOKEN=07401b.f395accd246ae52d envsubst < ./
 The `PARENTURL` above is the apiserver address of the parent cluster that you want to register to.
 
 ```bash
+$ # before deploying, you could update the SyncMode if needed
 $ kubectl apply -f deploy/agent
 ```
 
@@ -267,8 +301,8 @@ explicitly.
 Actually what you need is to
 
 1. Append `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/https/<SERVER-URL>`
-   or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/direct` at the end of original **parent cluster** server
-   address
+   or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/direct` at the end of original **parent cluster**
+   server address
 
    > - `CLUSTER-ID` is a UUID for your child cluster, which is auto-populated by `clusternet-agent`, such as dc91021d-2361-4f6d-a404-7c33b9e01118. You could get this UUID from objects `ClusterRegistrationRequest`,
        `ManagedCluster`, etc. Also this UUID is labeled with key `clusters.clusternet.io/cluster-id`.
@@ -440,102 +474,106 @@ Actually what you need is to
       with certficate and private key from child cluster. **Please notice the tokens replaced here should be base64
       encoded.**
 
-## Deploying Helm Charts to Multiple Clusters
+## How to Interact with Clusternet
 
-Currently you can deploy Helm Chart to multiple clusters.
+Clusternet has provided two ways to help interact with Clusternet.
+
+- kubectl plugin [kubectl-clusternet](https://github.com/clusternet/kubectl-clusternet)
+- [use client-go to interact with Clusternet](https://github.com/clusternet/clusternet/blob/main/examples/clientgo/READEME.md)
+
+## Deploying Applications to Multiple Clusters
+
+Clusternet supports deploying applications to multiple clusters from a single set of APIs in a hosting cluster.
 
 > :pushpin: :pushpin: Note:
 >
-> Feature gate `Deployer` should be enabled by `clusternet-hub`. Also the child cluster should be registered with syncMode
-> `Push` or `Dual` by flag `--cluster-sync-mode` when starting `clusternet-agent`.
+> Feature gate `Deployer` should be enabled by `clusternet-hub`.
 
-```bash
-$ # first we need to define a helm chart
-$ cat manifests/samples/helm_chart.yaml
-apiVersion: apps.clusternet.io/v1alpha1
-kind: HelmChart
-metadata:
-  name: mysql
-  namespace: default
-spec:
-  repo: https://charts.bitnami.com/bitnami
-  chart: mysql
-  version: 8.6.2
-  targetNamespace: abc
+First, let's see an exmaple application. Below `Subscription` "app-demo" defines the target child clusters to be
+distributed to, and the resources to be deployed with.
 
----
-apiVersion: apps.clusternet.io/v1alpha1
-kind: HelmChart
-metadata:
-  name: wordpress
-  namespace: default
-  labels:
-    app: wordpress
-spec:
-  repo: https://charts.bitnami.com/bitnami
-  chart: wordpress
-  version: 11.0.17
-  targetNamespace: abc
-$ kubectl apply -f manifests/samples/helm_chart.yaml
-helmchart.apps.clusternet.io/mysql created
-helmchart.apps.clusternet.io/wordpress created
-```
-
-Then you can verify the status of those defined `HelmChart`,
-
-```bash
-$ kubectl get chart -n default
-NAME        CHART       VERSION   REPO                                 STATUS   AGE
-mysql       mysql       8.6.2     https://charts.bitnami.com/bitnami   Found    62s
-wordpress   wordpress   11.0.17   https://charts.bitnami.com/bitnami   Found    62s
-```
-
-Next, we only need to define a `Subscription` objects to specify the clusters and charts we want to deploy to,
-
-```bash
-$ cat manifests/samples/subscription.yaml
+```yaml
+# examples/applications/subscription.yaml
 apiVersion: apps.clusternet.io/v1alpha1
 kind: Subscription
 metadata:
-  name: helm-demo
+  name: app-demo
   namespace: default
 spec:
-  subscribers:
+  subscribers: # defines the clusters to be distributed to
     - clusterAffinity:
         matchLabels:
-          clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118 # PLEASE UPDATE THIS CLUSTER-ID!!!
-  feeds:
+          clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118 # PLEASE UPDATE THIS CLUSTER-ID TO YOURS!!!
+  feeds: # defines all the resources to be deployed with
     - apiVersion: apps.clusternet.io/v1alpha1
       kind: HelmChart
       name: mysql
       namespace: default
-    - apiVersion: apps.clusternet.io/v1alpha1
-      kind: HelmChart
-      namespace: default
-      feedSelector:
+    - apiVersion: v1
+      kind: Namespace
+      name: foo
+    - apiVersion: apps/v1
+      kind: Service
+      name: my-nginx-svc
+      namespace: foo
+    - apiVersion: apps/v1
+      kind: Deployment
+      feedSelector: # we could also use feedSelector to select resources
         matchLabels:
-          app: wordpress
-$ kubectl apply -f manifests/samples/subscription.yaml
-subscription.apps.clusternet.io/helm-demo created
+          clusternet-app: multi-cluster-nginx
 ```
 
-`Clusternet` will handle the rest installations of Helm charts. You can check the status by following commands,
+Before applying this `Subscription`, please
+modify [examples/applications/subscription.yaml](https://github.com/clusternet/clusternet/blob/main/examples/applications/subscription.yaml)
+with your clusterID.
+
+After installing kubectl plugin [kubectl-clusternet](https://github.com/clusternet/kubectl-clusternet), you could run
+below commands to distribute this application to child clusters.
+
+```bash
+$ kubectl clusternet apply -f examples/applications/
+helmchart.apps.clusternet.io/mysql created
+namespace/foo created
+deployment.apps/my-nginx created
+service/my-nginx-svc created
+subscription.apps.clusternet.io/app-demo created
+$ # or
+$ # kubectl-clusternet apply -f examples/applications/
+```
+
+Then you can view the resources just created,
 
 ```bash
 $ # list Subscription
-$ # subs is an alias for Subscription
-$ kubectl get subs -n default
-NAME        AGE
-helm-demo   33m
-$ kubectl get mcls -A
+$ kubectl clusternet get subs -A
+NAMESPACE   NAME       AGE
+default     app-demo   6m4s
+$ kubectl clusternet get chart
+NAME             CHART   VERSION   REPO                                 STATUS   AGE
+mysql            mysql   8.6.2     https://charts.bitnami.com/bitnami   Found    71s
+$ kubectl clusternet get ns
+NAME   CREATED AT
+foo    2021-08-07T08:50:55Z
+$ kubectl clusternet get svc -n foo
+NAME           CREATED AT
+my-nginx-svc   2021-08-07T08:50:57Z
+$ kubectl clusternet get deploy -n foo
+NAME       CREATED AT
+my-nginx   2021-08-07T08:50:56Z
+```
+
+`Clusternet` will help deploy and coordinate applications to multiple clusters. You can check the status by following
+commands,
+
+```bash
+$ kubectl clusternet get mcls -A
 NAMESPACE          NAME                       CLUSTER ID                             SYNC MODE   KUBERNETES   READYZ   AGE
 clusternet-5l82l   clusternet-cluster-hx455   dc91021d-2361-4f6d-a404-7c33b9e01118   Dual        v1.21.0      true     5d22h
 $ # list Helm Release
 $ # hr is an alias for HelmRelease
-$ kubectl get hr -n clusternet-5l82l
+$ kubectl clusternet get hr -n clusternet-5l82l
 NAME                  CHART       VERSION   REPO                                 STATUS     AGE
 helm-demo-mysql       mysql       8.6.2     https://charts.bitnami.com/bitnami   deployed   3m38s
-helm-demo-wordpress   wordpress   11.0.17   https://charts.bitnami.com/bitnami   deployed   3m38s
 ```
 
 You can also verify the installation with Helm command line in your child cluster,
@@ -544,5 +582,4 @@ You can also verify the installation with Helm command line in your child cluste
 $ helm ls -n abc
 NAME               	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART            	APP VERSION
 helm-demo-mysql    	abc      	1       	2021-07-06 14:34:44.188938 +0800 CST	deployed	mysql-8.6.2      	8.0.25
-helm-demo-wordpress	abc      	1       	2021-07-06 14:34:45.698345 +0800 CST	deployed	wordpress-11.0.17	5.7.2
 ```

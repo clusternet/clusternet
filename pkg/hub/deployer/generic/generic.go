@@ -41,6 +41,7 @@ import (
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/description"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
@@ -124,9 +125,13 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", desc.Labels[known.ClusterIDLabel]))
 		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", desc.Namespace)
 	}
-	if !mcls[0].Status.AppPusher {
-		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
-		klog.V(5).Infof("ManagedCluster with uid=%s has disabled AppPusher", mcls[0].UID)
+	if mcls[0].Spec.SyncMode == clusterapi.Pull || !mcls[0].Status.AppPusher {
+		msg := "set SyncMode as Pull"
+		if !mcls[0].Status.AppPusher {
+			msg = "disabled AppPusher"
+		}
+		deployer.recorder.Event(desc, corev1.EventTypeWarning, "", fmt.Sprintf("target cluster has %s", msg))
+		klog.V(5).Infof("ManagedCluster with uid=%s has %s", mcls[0].UID, msg)
 		return nil
 	}
 
