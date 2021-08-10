@@ -27,7 +27,7 @@ import (
 // +kubebuilder:resource:scope="Namespaced",shortName=loc;local,categories=clusternet
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
-// Localization represents the override rule for a group of resources.
+// Localization represents the override config for a group of resources.
 type Localization struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -44,10 +44,10 @@ type LocalizationSpec struct {
 	// +kubebuilder:default=ApplyLater
 	OverridePolicy OverridePolicy `json:"overridePolicy,omitempty"`
 
-	// Overrides holds all the OverrideRule.
+	// Overrides holds all the OverrideConfig.
 	//
 	// +optional
-	Overrides []OverrideRule `json:"overrides,omitempty"`
+	Overrides []OverrideConfig `json:"overrides,omitempty"`
 
 	// Priority is an integer defining the relative importance of this Localization compared to others. Lower
 	// numbers are considered lower priority.
@@ -75,17 +75,38 @@ const (
 	ApplyLater OverridePolicy = "ApplyLater"
 )
 
-// OverrideRule holds information that describes a override rule.
-type OverrideRule struct {
-	// RuleName indicate the OverrideRule name.
-	//
-	// +optional
-	RuleName string `json:"ruleName,omitempty"`
+type OverrideType string
 
-	// OverrideValue represents override values.
+// Available values for OverrideType are: JSONPatch, StrategicMergePatch and HelmValues.
+const (
+	// JsonPatchOverride apply JSONPatch for all matched objects (excluding HelmChart).
+	JSONPatchOverride OverrideType = "JSONPatch"
+
+	// StrategicMergePatchOverride apply Strategic MergePatch for all matched objects (excluding HelmChart).
+	StrategicMergePatchOverride OverrideType = "StrategicMergePatch"
+
+	// HelmOverride apply Helm values for all matched HelmCharts.
+	HelmOverride OverrideType = "Helm"
+)
+
+// OverrideConfig holds information that describes a override config.
+type OverrideConfig struct {
+	// Name indicate the OverrideConfig name.
 	//
 	// +optional
-	OverrideValue map[string]string `json:"overrideValue,omitempty"`
+	Name string `json:"name,omitempty"`
+
+	// Value represents override value.
+	//
+	// +optional
+	Value string `json:"value,omitempty"`
+
+	// Type specifies the override type for override value.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:default=Helm
+	Type OverrideType `json:"type,omitempty"`
 }
 
 // +kubebuilder:object:root=true

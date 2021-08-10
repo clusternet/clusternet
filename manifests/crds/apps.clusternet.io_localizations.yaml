@@ -28,7 +28,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Localization represents the override rule for a group of resources.
+        description: Localization represents the override config for a group of resources.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
@@ -95,17 +95,19 @@ spec:
                 description: OverridePolicy specifies the override policy for this Localization.
                 type: string
               overrides:
-                description: Overrides holds all the OverrideRule.
+                description: Overrides holds all the OverrideConfig.
                 items:
-                  description: OverrideRule holds information that describes a override rule.
+                  description: OverrideConfig holds information that describes a override config.
                   properties:
-                    overrideValue:
-                      additionalProperties:
-                        type: string
-                      description: OverrideValue represents override values.
-                      type: object
-                    ruleName:
-                      description: RuleName indicate the OverrideRule name.
+                    name:
+                      description: Name indicate the OverrideConfig name.
+                      type: string
+                    type:
+                      default: Helm
+                      description: Type specifies the override type for override value.
+                      type: string
+                    value:
+                      description: Value represents override value.
                       type: string
                   type: object
                 type: array
