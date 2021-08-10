@@ -304,10 +304,9 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 	agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
 
 	// once the request gets approved
-	// run in goroutine to store auto-populated credentials to Secret "parent-cluster" in "clusternet-system" namespace
-	go func() {
-		agent.storeParentClusterCredentials(agent.AgentContext, crr)
-	}()
+	// store auto-populated credentials to Secret "parent-cluster" in "clusternet-system" namespace
+	agent.storeParentClusterCredentials(agent.AgentContext, crr)
+
 	return nil
 }
 
@@ -348,6 +347,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 					return
 				}
 			}
+			klog.ErrorDepth(5, fmt.Sprintf("failed to store parent cluster credentials: %v", err))
 		}
 	}, DefaultRetryPeriod, 0.4, true, secretCtx.Done())
 }
