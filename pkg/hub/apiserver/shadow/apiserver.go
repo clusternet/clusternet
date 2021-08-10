@@ -40,7 +40,6 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/klog/v2"
 
-	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
@@ -56,6 +55,10 @@ var (
 	Codecs = serializer.NewCodecFactory(Scheme)
 	// ParameterCodec handles versioning of objects that are converted to query parameters.
 	ParameterCodec = runtime.NewParameterCodec(Scheme)
+)
+
+const (
+	clusternetGroupSuffix = ".clusternet.io"
 )
 
 func init() {
@@ -120,8 +123,8 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(cl discovery.DiscoveryInterfac
 
 	shadowv1alpha1storage := map[string]rest.Storage{}
 	for _, apiGroupResource := range apiGroupResources {
-		// no need to duplicate proxies.clusternet.io
-		if apiGroupResource.Group.Name == proxiesapi.GroupName {
+		// no need to duplicate xxx.clusternet.io
+		if strings.HasSuffix(apiGroupResource.Group.Name, clusternetGroupSuffix) {
 			continue
 		}
 
