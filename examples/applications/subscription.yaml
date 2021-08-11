@@ -11,7 +11,7 @@ spec:
   feeds: # defines all the resources to be deployed with
     - apiVersion: apps.clusternet.io/v1alpha1
       kind: HelmChart
-      name: mysql
+      name: nginx
       namespace: default
     - apiVersion: v1
       kind: Namespace

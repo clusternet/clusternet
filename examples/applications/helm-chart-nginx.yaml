@@ -1,10 +1,10 @@
 apiVersion: apps.clusternet.io/v1alpha1
 kind: HelmChart
 metadata:
-  name: mysql
+  name: nginx
   namespace: default
 spec:
   repo: https://charts.bitnami.com/bitnami
-  chart: mysql
-  version: 8.6.2
+  chart: nginx
+  version: 8.5.4
   targetNamespace: abc

@@ -507,7 +507,7 @@ spec:
   feeds: # defines all the resources to be deployed with
     - apiVersion: apps.clusternet.io/v1alpha1
       kind: HelmChart
-      name: mysql
+      name: nginx
       namespace: default
     - apiVersion: v1
       kind: Namespace
@@ -532,7 +532,7 @@ below commands to distribute this application to child clusters.
 
 ```bash
 $ kubectl clusternet apply -f examples/applications/
-helmchart.apps.clusternet.io/mysql created
+helmchart.apps.clusternet.io/nginx created
 namespace/foo created
 deployment.apps/my-nginx created
 service/my-nginx-svc created
@@ -550,7 +550,7 @@ NAMESPACE   NAME       AGE
 default     app-demo   6m4s
 $ kubectl clusternet get chart
 NAME             CHART   VERSION   REPO                                 STATUS   AGE
-mysql            mysql   8.6.2     https://charts.bitnami.com/bitnami   Found    71s
+nginx            nginx   8.5.4     https://charts.bitnami.com/bitnami   Found    71s
 $ kubectl clusternet get ns
 NAME   CREATED AT
 foo    2021-08-07T08:50:55Z
@@ -586,7 +586,7 @@ $ # list Helm Release
 $ # hr is an alias for HelmRelease
 $ kubectl clusternet get hr -n clusternet-5l82l
 NAME                  CHART       VERSION   REPO                                 STATUS     AGE
-helm-demo-mysql       mysql       8.6.2     https://charts.bitnami.com/bitnami   deployed   2m55s
+helm-demo-nginx       nginx       8.5.4     https://charts.bitnami.com/bitnami   deployed   2m55s
 ```
 
 You can also verify the installation with Helm command line in your child cluster,
@@ -594,5 +594,5 @@ You can also verify the installation with Helm command line in your child cluste
 ```bash
 $ helm ls -n abc
 NAME               	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART            	APP VERSION
-helm-demo-mysql    	abc      	1       	2021-07-06 14:34:44.188938 +0800 CST	deployed	mysql-8.6.2      	8.0.25
+helm-demo-nginx    	abc      	1       	2021-07-06 14:34:44.188938 +0800 CST	deployed	nginx-8.5.4      	1.19.7
 ```
