@@ -157,6 +157,18 @@ func TestNormalizeLocation(t *testing.T) {
 			requestURL:    "https://my.k8s.io/apis/far.clusternet.io/v1bar/namespaces/boo/foos/abc?fieldSelector=metadata.name%3Dabc&resourceVersion=0&watch=true",
 			normalizedURL: "https://my.k8s.io/apis/far.clusternet.io/v1bar/namespaces/boo/foos/abc?fieldSelector=metadata.name%3Dabc&resourceVersion=0&watch=true",
 		},
+		{
+			name:          "clusternet - support crd with group samplecontroller.k8s.io",
+			host:          "https://my.k8s.io",
+			requestURL:    "https://my.k8s.io/apis/samplecontroller.k8s.io/v1alpha1/namespaces/default/foos",
+			normalizedURL: "https://my.k8s.io/apis/shadow/v1alpha1/namespaces/default/foos",
+		},
+		{
+			name:          "clusternet - support crd with group a.foo",
+			host:          "https://my.k8s.io",
+			requestURL:    "https://my.k8s.io/apis/a.foo/v1alpha1/namespaces/default/foos?fieldSelector=metadata.name%3Dabc&resourceVersion=0&watch=true",
+			normalizedURL: "https://my.k8s.io/apis/shadow/v1alpha1/namespaces/default/foos?fieldSelector=metadata.name%3Dabc&resourceVersion=0&watch=true",
+		},
 
 		{
 			name:          "apiv1 - host with trailing slash",

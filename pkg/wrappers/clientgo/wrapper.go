@@ -31,7 +31,7 @@ var (
 	// regex matches '/api/v1/{path}'
 	apiv1Regex = regexp.MustCompile(`^(/api/v1)/(.*)`)
 	// regex matches "/apis/{group}/{version}/{path}"
-	apisRegex = regexp.MustCompile(`^(/apis/\w*/v\w*.)/(.*)`)
+	apisRegex = regexp.MustCompile(`^(/apis/.*/v\w*.)/(.*)`)
 	// regex matches "/apis/xxx.clusternet.io/{version}/{path}"
 	clusternetAPIsRegex = regexp.MustCompile(`^(/apis/\w*\.clusternet\.io/v\w*.)/(.*)`)
 
