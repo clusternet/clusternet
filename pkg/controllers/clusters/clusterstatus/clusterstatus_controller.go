@@ -68,6 +68,18 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 		return
 	}
 
+	clusterCIDR, err := c.discoverClusterCIDR()
+	if err != nil {
+		klog.Warningf("failed to discover cluster CIDR: %v", err)
+		return
+	}
+
+	serviceCIDR, err := c.discoverServiceCIDR()
+	if err != nil {
+		klog.Warningf("failed to discover service CIDR: %v", err)
+		return
+	}
+
 	var status clusterapi.ManagedClusterStatus
 	status.KubernetesVersion = clusterVersion.GitVersion
 	status.Platform = clusterVersion.Platform
@@ -78,7 +90,8 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.AppPusher = c.appPusherEnabled
 	status.UseSocket = c.useSocket
 	status.ParentAPIServerURL = c.parentAPIServer
-
+	status.ClusterCIDR = clusterCIDR
+	status.ServiceCIDR = serviceCIDR
 	c.setClusterStatus(status)
 }
 
@@ -114,4 +127,14 @@ func (c *Controller) getHealthStatus(ctx context.Context, path string) bool {
 	var statusCode int
 	c.kubeClient.Discovery().RESTClient().Get().AbsPath(path).Do(ctx).StatusCode(&statusCode)
 	return statusCode == http.StatusOK
+}
+
+// discoverServiceCIDR returns the service CIDR for the cluster.
+func (c *Controller)discoverServiceCIDR() (string, error) {
+	return findPodIPRange(c.nodeLister, c.podLister)
+}
+
+// discoverClusterCIDR returns the cluster CIDR for the cluster.
+func (c *Controller)discoverClusterCIDR() (string, error) {
+	return findClusterIPRange(c.podLister)
 }
