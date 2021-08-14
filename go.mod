@@ -39,6 +39,6 @@ require (
 )
 
 replace (
-	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210806115202-f78a0a785064
+	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210814084831-4aafc1ec60f6
 	k8s.io/apiserver => github.com/clusternet/apiserver v0.21.2-0.20210722062202-17431d287b5c
 )
