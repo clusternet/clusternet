@@ -293,7 +293,7 @@ func (r *REST) DeleteCollection(ctx context.Context, deleteValidation rest.Valid
 
 // Watch makes a matcher for the given label and field.
 func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) (watch.Interface, error) {
-	label, err := r.convertListOptionsToLabels(options)
+	label, err := r.convertListOptionsToLabels(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 
 // List returns a list of items matching labels.
 func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
-	label, err := r.convertListOptionsToLabels(options)
+	label, err := r.convertListOptionsToLabels(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +517,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValid
 	return result, nil
 }
 
-func (r *REST) convertListOptionsToLabels(options *internalversion.ListOptions) (labels.Selector, error) {
+func (r *REST) convertListOptionsToLabels(ctx context.Context, options *internalversion.ListOptions) (labels.Selector, error) {
 	label := labels.Everything()
 	if options != nil && options.LabelSelector != nil {
 		label = options.LabelSelector
@@ -540,12 +540,19 @@ func (r *REST) convertListOptionsToLabels(options *internalversion.ListOptions) 
 		}
 	}
 
-	// apply default labels
-	requirement, err := labels.NewRequirement(known.ConfigKindLabel, selection.Equals, []string{r.kind})
+	// apply default kind label
+	kindRequirement, err := labels.NewRequirement(known.ConfigKindLabel, selection.Equals, []string{r.kind})
 	if err != nil {
 		return nil, err
 	}
-	label = label.Add(*requirement)
+	label = label.Add(*kindRequirement)
+
+	// apply default namespace label
+	nsRequirement, err := labels.NewRequirement(known.ConfigNamespaceLabel, selection.Equals, []string{request.NamespaceValue(ctx)})
+	if err != nil {
+		return nil, err
+	}
+	label = label.Add(*nsRequirement)
 
 	return label, nil
 }
