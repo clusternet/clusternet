@@ -36,7 +36,7 @@ Clusternet is multiple platforms supported now, including
 
 - [Architecture](#architecture)
 - [Concepts](#concepts)
-- [Contributing & Developing](#contributing-developing)
+- [Contributing & Developing](#contributing--developing)
 - [Getting Started](#getting-started)
     - [Deploying Clusternet](#deploying-clusternet)
         - [Deploying `clusternet-hub` in parent cluster](#deploying-clusternet-hub-in-parent-cluster)
