@@ -65,14 +65,14 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	SyncHandler SyncHandlerFunc
+	syncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
 	descInformer appInformers.DescriptionInformer, hrInformer appInformers.HelmReleaseInformer,
-	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	if syncHandlerFunc == nil {
+		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
@@ -83,7 +83,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		descSynced:       descInformer.Informer().HasSynced,
 		hrSynced:         hrInformer.Informer().HasSynced,
 		recorder:         recorder,
-		SyncHandler:      syncHandler,
+		syncHandlerFunc:  syncHandlerFunc,
 	}
 
 	// Manage the addition/update of Description
@@ -330,7 +330,7 @@ func (c *Controller) syncHandler(key string) error {
 	desc.Kind = controllerKind.Kind
 	desc.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(desc)
+	return c.syncHandlerFunc(desc)
 }
 
 func (c *Controller) UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus) error {

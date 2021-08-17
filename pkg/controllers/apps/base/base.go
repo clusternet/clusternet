@@ -66,14 +66,14 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	SyncHandler SyncHandlerFunc
+	syncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
 	baseInformer appinformers.BaseInformer, descInformer appinformers.DescriptionInformer,
-	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	if syncHandlerFunc == nil {
+		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
@@ -83,7 +83,7 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 		baseLister:       baseInformer.Lister(),
 		baseSynced:       baseInformer.Informer().HasSynced,
 		recorder:         recorder,
-		SyncHandler:      syncHandler,
+		syncHandlerFunc:  syncHandlerFunc,
 	}
 
 	// Manage the addition/update of Base
@@ -156,6 +156,7 @@ func (c *Controller) addBase(obj interface{}) {
 		if err != nil {
 			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
 			c.addBase(obj)
+			return
 		}
 	}
 
@@ -179,6 +180,7 @@ func (c *Controller) updateBase(old, cur interface{}) {
 		if err != nil {
 			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
 			c.updateBase(old, cur)
+			return
 		}
 	}
 
@@ -353,7 +355,7 @@ func (c *Controller) syncHandler(key string) error {
 	base.Kind = controllerKind.Kind
 	base.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(base)
+	return c.syncHandlerFunc(base)
 }
 
 // enqueue takes a Base resource and converts it into a namespace/name
