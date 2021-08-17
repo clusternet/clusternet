@@ -37,6 +37,7 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -71,11 +72,16 @@ type Deployer struct {
 	kubeClient       *kubernetes.Clientset
 
 	chartLister   applisters.HelmChartLister
+	chartSynced   cache.InformerSynced
 	hrLister      applisters.HelmReleaseLister
+	hrSynced      cache.InformerSynced
 	descLister    applisters.DescriptionLister
+	descSynced    cache.InformerSynced
 	clusterLister clusterlisters.ManagedClusterLister
+	clusterSynced cache.InformerSynced
 
 	secretLister corev1lister.SecretLister
+	secretSynced cache.InformerSynced
 
 	recorder record.EventRecorder
 }
@@ -91,10 +97,15 @@ func NewDeployer(ctx context.Context,
 		clusternetClient: clusternetClient,
 		kubeClient:       kubeClient,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
+		hrSynced:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer().HasSynced,
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		descSynced:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
+		secretSynced:     kubeInformerFactory.Core().V1().Secrets().Informer().HasSynced,
 		recorder:         recorder,
 	}
 
@@ -107,7 +118,7 @@ func NewDeployer(ctx context.Context,
 
 	hrController, err := helmrelease.NewController(ctx,
 		clusternetClient,
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.handleHelmRelease)
 	if err != nil {
@@ -141,6 +152,17 @@ func NewDeployer(ctx context.Context,
 func (deployer *Deployer) Run(workers int) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
+
+	// Wait for the caches to be synced before starting workers
+	klog.V(5).Info("waiting for informer caches to sync")
+	if !cache.WaitForCacheSync(deployer.ctx.Done(),
+		deployer.chartSynced,
+		deployer.hrSynced,
+		deployer.descSynced,
+		deployer.clusterSynced,
+		deployer.secretSynced) {
+		return
+	}
 
 	go deployer.helmChartController.Run(workers, deployer.ctx.Done())
 	go deployer.helmReleaseController.Run(workers, deployer.ctx.Done())

@@ -57,6 +57,7 @@ type Controller struct {
 	workqueue workqueue.RateLimitingInterface
 
 	descLister applisters.DescriptionLister
+	descSynced cache.InformerSynced
 	hrLister   applisters.HelmReleaseLister
 	hrSynced   cache.InformerSynced
 
@@ -64,7 +65,7 @@ type Controller struct {
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
-	descLister applisters.DescriptionLister, hrInformer appinformers.HelmReleaseInformer,
+	descInformer appinformers.DescriptionInformer, hrInformer appinformers.HelmReleaseInformer,
 	syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
@@ -74,7 +75,8 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmRelease"),
-		descLister:       descLister,
+		descLister:       descInformer.Lister(),
+		descSynced:       descInformer.Informer().HasSynced,
 		hrLister:         hrInformer.Lister(),
 		hrSynced:         hrInformer.Informer().HasSynced,
 		syncHandlerFunc:  syncHandlerFunc,
@@ -103,7 +105,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.hrSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.hrSynced, c.descSynced) {
 		return
 	}
 
