@@ -18,6 +18,8 @@ package helm
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -28,13 +30,14 @@ import (
 	"helm.sh/helm/v3/pkg/repo"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	kubeInformers "k8s.io/client-go/informers"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	corev1Lister "k8s.io/client-go/listers/core/v1"
+	corev1lister "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -44,10 +47,10 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmrelease"
 	"github.com/clusternet/clusternet/pkg/controllers/misc/secret"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
-	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -65,22 +68,28 @@ type Deployer struct {
 
 	secretController *secret.Controller
 
-	clusternetClient *clusternetClientSet.Clientset
+	clusternetClient *clusternetclientset.Clientset
 	kubeClient       *kubernetes.Clientset
 
-	chartLister   appListers.HelmChartLister
-	hrLister      appListers.HelmReleaseLister
-	clusterLister clusterListers.ManagedClusterLister
+	chartLister   applisters.HelmChartLister
+	chartSynced   cache.InformerSynced
+	hrLister      applisters.HelmReleaseLister
+	hrSynced      cache.InformerSynced
+	descLister    applisters.DescriptionLister
+	descSynced    cache.InformerSynced
+	clusterLister clusterlisters.ManagedClusterLister
+	clusterSynced cache.InformerSynced
 
-	secretLister corev1Lister.SecretLister
+	secretLister corev1lister.SecretLister
+	secretSynced cache.InformerSynced
 
 	recorder record.EventRecorder
 }
 
 func NewDeployer(ctx context.Context,
-	clusternetClient *clusternetClientSet.Clientset, kubeClient *kubernetes.Clientset,
-	clusternetInformerFactory clusternetInformers.SharedInformerFactory,
-	kubeInformerFactory kubeInformers.SharedInformerFactory,
+	clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
+	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
+	kubeInformerFactory kubeinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
@@ -88,9 +97,15 @@ func NewDeployer(ctx context.Context,
 		clusternetClient: clusternetClient,
 		kubeClient:       kubeClient,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
+		hrSynced:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer().HasSynced,
+		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		descSynced:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
+		secretSynced:     kubeInformerFactory.Core().V1().Secrets().Informer().HasSynced,
 		recorder:         recorder,
 	}
 
@@ -103,7 +118,7 @@ func NewDeployer(ctx context.Context,
 
 	hrController, err := helmrelease.NewController(ctx,
 		clusternetClient,
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.handleHelmRelease)
 	if err != nil {
@@ -137,6 +152,17 @@ func NewDeployer(ctx context.Context,
 func (deployer *Deployer) Run(workers int) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
+
+	// Wait for the caches to be synced before starting workers
+	klog.V(5).Info("waiting for informer caches to sync")
+	if !cache.WaitForCacheSync(deployer.ctx.Done(),
+		deployer.chartSynced,
+		deployer.hrSynced,
+		deployer.descSynced,
+		deployer.clusterSynced,
+		deployer.secretSynced) {
+		return
+	}
 
 	go deployer.helmChartController.Run(workers, deployer.ctx.Done())
 	go deployer.helmReleaseController.Run(workers, deployer.ctx.Done())
@@ -322,7 +348,7 @@ func (deployer *Deployer) syncHelmRelease(desc *appsapi.Description, helmRelease
 		}
 		return nil
 	}
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return err
 	}
 
@@ -372,19 +398,22 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return err
 	}
 
-	var rel *release.Release
-	var vals map[string]interface{}
+	overrideValues, err := deployer.getOverrides(hr)
+	if err != nil {
+		return err
+	}
 
+	var rel *release.Release
 	// check whether the release is deployed
 	rel, err = cfg.Releases.Deployed(hr.Name)
 	if err != nil {
 		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
-			rel, err = InstallRelease(cfg, hr, chart, vals)
+			rel, err = InstallRelease(cfg, hr, chart, overrideValues)
 		}
 	} else {
 		// verify the release is changed or not
-		if ReleaseNeedsUpgrade(rel, hr, chart, vals) {
-			rel, err = UpgradeRelease(cfg, hr, chart, vals)
+		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
+			rel, err = UpgradeRelease(cfg, hr, chart, overrideValues)
 		} else {
 			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
 		}
@@ -445,4 +474,62 @@ func (deployer *Deployer) handleSecret(secret *corev1.Secret) error {
 			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secret), err))
 	}
 	return err
+}
+
+func (deployer *Deployer) getOverrides(hr *appsapi.HelmRelease) (map[string]interface{}, error) {
+	var overrideValues map[string]interface{}
+	// get overrides
+	controllerRef := metav1.GetControllerOf(hr)
+	if controllerRef != nil {
+		desc := deployer.resolveControllerRef(hr.Namespace, controllerRef)
+		if desc == nil {
+			return overrideValues, nil
+		}
+
+		var found bool
+		var index int
+		for idx, chart := range desc.Spec.Charts {
+			if chart.Namespace == hr.Namespace && chart.Name == hr.Name {
+				found = true
+				index = idx
+				break
+			}
+		}
+		if !found {
+			msg := fmt.Sprintf("Description %s has no connection with HelmRelease %s", klog.KObj(desc), klog.KObj(hr))
+			klog.WarningDepth(5, msg)
+			deployer.recorder.Event(desc, corev1.EventTypeWarning, "DescriptionNotRelated", msg)
+			return overrideValues, nil
+		}
+		if len(desc.Spec.Raw) < index {
+			msg := fmt.Sprintf("unequal lengths of Spec.Raw and Spec.Charts in Description %s", klog.KObj(desc))
+			klog.ErrorDepth(5, msg)
+			deployer.recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
+			return nil, errors.New(msg)
+		}
+		err := json.Unmarshal(desc.Spec.Raw[index], &overrideValues)
+		return overrideValues, err
+	}
+	return overrideValues, nil
+}
+
+// resolveControllerRef returns the controller referenced by a ControllerRef,
+// or nil if the ControllerRef could not be resolved to a matching controller
+// of the correct Kind.
+func (deployer *Deployer) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Description {
+	// We can't look up by UID, so look up by Name and then verify UID.
+	// Don't even try to look up by Name if it's the wrong Kind.
+	if controllerRef.Kind != descriptionKind.Kind {
+		return nil
+	}
+	desc, err := deployer.descLister.Descriptions(namespace).Get(controllerRef.Name)
+	if err != nil {
+		return nil
+	}
+	if desc.UID != controllerRef.UID {
+		// The controller we found with this Name is not the same one that the
+		// ControllerRef points to.
+		return nil
+	}
+	return desc
 }

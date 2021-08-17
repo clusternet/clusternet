@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
@@ -46,7 +47,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/apps/description"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
@@ -60,8 +60,9 @@ type Deployer struct {
 	ctx context.Context
 
 	clusterLister clusterlisters.ManagedClusterLister
-	descLister    applisters.DescriptionLister
+	clusterSynced cache.InformerSynced
 	secretLister  corev1lister.SecretLister
+	secretSynced  cache.InformerSynced
 
 	clusternetClient *clusternetclientset.Clientset
 
@@ -77,8 +78,9 @@ func NewDeployer(ctx context.Context, clusternetClient *clusternetclientset.Clie
 	deployer := &Deployer{
 		ctx:              ctx,
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
-		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
+		secretSynced:     kubeInformerFactory.Core().V1().Secrets().Informer().HasSynced,
 		clusternetClient: clusternetClient,
 		recorder:         recorder,
 	}
@@ -100,6 +102,14 @@ func NewDeployer(ctx context.Context, clusternetClient *clusternetclientset.Clie
 func (deployer *Deployer) Run(workers int) {
 	klog.Info("starting generic deployer...")
 	defer klog.Info("shutting generic deployer")
+
+	// Wait for the caches to be synced before starting workers
+	klog.V(5).Info("waiting for informer caches to sync")
+	if !cache.WaitForCacheSync(deployer.ctx.Done(),
+		deployer.clusterSynced,
+		deployer.secretSynced) {
+		return
+	}
 
 	go deployer.descController.Run(workers, deployer.ctx.Done())
 

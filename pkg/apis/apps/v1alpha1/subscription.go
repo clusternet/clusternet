@@ -97,7 +97,6 @@ type Feed struct {
 	APIVersion string `json:"apiVersion"`
 
 	// Namespace of the target resource.
-	// Default to use the same Namespace of Subscription.
 	//
 	// +optional
 	Namespace string `json:"namespace,omitempty"`

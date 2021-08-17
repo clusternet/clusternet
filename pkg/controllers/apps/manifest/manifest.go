@@ -33,9 +33,9 @@ import (
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -49,7 +49,7 @@ type SyncHandlerFunc func(orig *appsapi.Manifest) error
 type Controller struct {
 	ctx context.Context
 
-	clusternetClient clusternetClientSet.Interface
+	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -58,19 +58,19 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	manifestLister appListers.ManifestLister
+	manifestLister applisters.ManifestLister
 	manifestSynced cache.InformerSynced
 
 	recorder record.EventRecorder
 
-	SyncHandler SyncHandlerFunc
+	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	manifestInformer appInformers.ManifestInformer,
-	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
+func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+	manifestInformer appinformers.ManifestInformer,
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	if syncHandlerFunc == nil {
+		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
@@ -80,7 +80,7 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		manifestLister:   manifestInformer.Lister(),
 		manifestSynced:   manifestInformer.Informer().HasSynced,
 		recorder:         recorder,
-		SyncHandler:      syncHandler,
+		syncHandlerFunc:  syncHandlerFunc,
 	}
 
 	// Manage the addition/update of Manifest
@@ -274,7 +274,7 @@ func (c *Controller) syncHandler(key string) error {
 	manifest.Kind = controllerKind.Kind
 	manifest.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(manifest)
+	return c.syncHandlerFunc(manifest)
 }
 
 // enqueue takes a Manifest resource and converts it into a namespace/name

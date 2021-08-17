@@ -52,6 +52,7 @@ import (
 	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/hub/deployer/generic"
 	"github.com/clusternet/clusternet/pkg/hub/deployer/helm"
+	"github.com/clusternet/clusternet/pkg/hub/localizer"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -72,8 +73,6 @@ type Deployer struct {
 
 	chartLister   applisters.HelmChartLister
 	descLister    applisters.DescriptionLister
-	subsLister    applisters.SubscriptionLister
-	hrLister      applisters.HelmReleaseLister
 	baseLister    applisters.BaseLister
 	mfstLister    applisters.ManifestLister
 	clusterLister clusterlisters.ManagedClusterLister
@@ -88,6 +87,8 @@ type Deployer struct {
 	helmDeployer    *helm.Deployer
 	genericDeployer *generic.Deployer
 
+	localizer *localizer.Localizer
+
 	broadcaster record.EventBroadcaster
 	recorder    record.EventRecorder
 }
@@ -99,8 +100,6 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 		ctx:              ctx,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
-		subsLister:       clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
-		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
 		baseLister:       clusternetInformerFactory.Apps().V1alpha1().Bases().Lister(),
 		mfstLister:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
@@ -162,6 +161,12 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	}
 	deployer.baseController = baseController
 
+	l, err := localizer.NewLocalizer(ctx, clusternetclient, clusternetInformerFactory, deployer.recorder)
+	if err != nil {
+		return nil, err
+	}
+	deployer.localizer = l
+
 	return deployer, nil
 }
 
@@ -173,6 +178,7 @@ func (deployer *Deployer) Run(workers int) {
 	go deployer.subsController.Run(workers, deployer.ctx.Done())
 	go deployer.mfstController.Run(workers, deployer.ctx.Done())
 	go deployer.baseController.Run(workers, deployer.ctx.Done())
+	go deployer.localizer.Run(workers)
 
 	<-deployer.ctx.Done()
 }
@@ -228,39 +234,6 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 	}
 
 	return nil
-}
-
-func (deployer *Deployer) getChartsBySelector(base *appsapi.Base, feed appsapi.Feed) ([]*appsapi.HelmChart, error) {
-	namespace := base.Labels[known.ConfigSubscriptionNamespaceLabel]
-	if len(feed.Namespace) > 0 {
-		namespace = feed.Namespace
-	}
-
-	if len(feed.Name) > 0 {
-		chart, err := deployer.chartLister.HelmCharts(namespace).Get(feed.Name)
-		if err != nil {
-			return nil, err
-		}
-		return []*appsapi.HelmChart{chart}, nil
-	}
-
-	if feed.FeedSelector != nil {
-		feedSelector, err := metav1.LabelSelectorAsSelector(feed.FeedSelector)
-		if err != nil {
-			return nil, err
-		}
-		return deployer.chartLister.HelmCharts(namespace).List(feedSelector)
-	}
-
-	return nil, fmt.Errorf("failed to find matched %s", formatFeed(feed))
-}
-
-func (deployer *Deployer) getManifestsBySelector(feed appsapi.Feed) ([]*appsapi.Manifest, error) {
-	selector, err := getLabelsSelectorFromFeed(feed)
-	if err != nil {
-		return nil, err
-	}
-	return deployer.mfstLister.Manifests(appsapi.ReservedNamespace).List(selector)
 }
 
 func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
@@ -474,7 +447,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	var manifests []*appsapi.Manifest
 	for _, feed := range base.Spec.Feeds {
 		if feed.Kind == helmChartKind.Kind && feed.APIVersion == helmChartKind.GroupVersion().String() {
-			charts, err = deployer.getChartsBySelector(base, feed)
+			charts, err = utils.ListChartsBySelector(deployer.chartLister, feed)
 			if err == nil {
 				// verify HelmChart can be found
 				for _, chart := range charts {
@@ -501,7 +474,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 				err = apierrors.NewNotFound(schema.GroupResource{}, "")
 			}
 		} else {
-			manifests, err = deployer.getManifestsBySelector(feed)
+			manifests, err = utils.ListManifestsBySelector(deployer.mfstLister, feed)
 			if err == nil {
 				allManifests = append(allManifests, manifests...)
 			}
@@ -511,13 +484,13 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		}
 
 		if apierrors.IsNotFound(err) {
-			msg := fmt.Sprintf("Base %s is using a nonexistent %s", klog.KObj(base), formatFeed(feed))
+			msg := fmt.Sprintf("Base %s is using a nonexistent %s", klog.KObj(base), utils.FormatFeed(feed))
 			klog.Error(msg)
 			deployer.recorder.Event(base, corev1.EventTypeWarning, fmt.Sprintf("Nonexistent%s", feed.Kind), msg)
 			return errors.New(msg)
 		}
 		if err != nil {
-			msg := fmt.Sprintf("failed to get matched objects %q for Base %s: %v", formatFeed(feed), klog.KObj(base), err)
+			msg := fmt.Sprintf("failed to get matched objects %q for Base %s: %v", utils.FormatFeed(feed), klog.KObj(base), err)
 			klog.Error(msg)
 			deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedRetrievingObjects", msg)
 			return err
@@ -556,8 +529,6 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		},
 	}
 
-	// TODO: apply overrides
-
 	var allErrs []error
 	if len(allChartRefs) > 0 {
 		desc := descTemplate.DeepCopy()
@@ -595,6 +566,14 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 }
 
 func (deployer *Deployer) syncDescriptions(base *appsapi.Base, description *appsapi.Description) error {
+	// apply overrides
+	if err := deployer.localizer.ApplyOverridesToDescription(description); err != nil {
+		msg := fmt.Sprintf("Failed to apply overrides for Description %s: %v", klog.KObj(description), err)
+		klog.ErrorDepth(5, msg)
+		deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedApplyingOverrides", msg)
+		return err
+	}
+
 	desc, err := deployer.descLister.Descriptions(description.Namespace).Get(description.Name)
 	if err == nil {
 		if desc.DeletionTimestamp != nil {
@@ -699,7 +678,7 @@ func (deployer *Deployer) addLabelsToReferredManifests(b *appsapi.Base) error {
 	var allErrs []error
 	for _, feed := range b.Spec.Feeds {
 		if feed.Kind != helmChartKind.Kind {
-			manifests, err := deployer.getManifestsBySelector(feed)
+			manifests, err := utils.ListManifestsBySelector(deployer.mfstLister, feed)
 			if err == nil {
 				allManifests = append(allManifests, manifests...)
 			} else {
@@ -792,7 +771,7 @@ func (deployer *Deployer) removeLabelsFromReferredManifests(b *appsapi.Base) err
 }
 
 func (deployer *Deployer) patchManifestLabels(manifest *appsapi.Manifest, labels map[string]*string) error {
-	labelOption := base.LabelOption{Meta: base.Meta{Labels: labels}}
+	labelOption := utils.LabelOption{Meta: utils.Meta{Labels: labels}}
 	patchData, err := json.Marshal(labelOption)
 	if err != nil {
 		return err

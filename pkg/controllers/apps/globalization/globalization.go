@@ -18,25 +18,35 @@ package globalization
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
-var controllerKind = appsapi.SchemeGroupVersion.WithKind("Globalization")
+var (
+	controllerKind = appsapi.SchemeGroupVersion.WithKind("Globalization")
+	chartKind      = appsapi.SchemeGroupVersion.WithKind("HelmChart")
+)
 
 type SyncHandlerFunc func(glob *appsapi.Globalization) error
 
@@ -44,7 +54,7 @@ type SyncHandlerFunc func(glob *appsapi.Globalization) error
 type Controller struct {
 	ctx context.Context
 
-	clusternetClient clusternetClientSet.Interface
+	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -53,17 +63,26 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	globLister appListers.GlobalizationLister
+	globLister applisters.GlobalizationLister
 	globSynced cache.InformerSynced
 
-	SyncHandler SyncHandlerFunc
+	chartLister applisters.HelmChartLister
+	chartSynced cache.InformerSynced
+
+	manifestLister applisters.ManifestLister
+	manifestSynced cache.InformerSynced
+
+	recorder record.EventRecorder
+
+	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	globInformer appInformers.GlobalizationInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
+func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+	globInformer appinformers.GlobalizationInformer,
+	chartInformer appinformers.HelmChartInformer, manifestInformer appinformers.ManifestInformer,
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	if syncHandlerFunc == nil {
+		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
@@ -72,7 +91,12 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "globalization"),
 		globLister:       globInformer.Lister(),
 		globSynced:       globInformer.Informer().HasSynced,
-		SyncHandler:      syncHandler,
+		chartLister:      chartInformer.Lister(),
+		chartSynced:      chartInformer.Informer().HasSynced,
+		manifestLister:   manifestInformer.Lister(),
+		manifestSynced:   manifestInformer.Informer().HasSynced,
+		recorder:         recorder,
+		syncHandlerFunc:  syncHandlerFunc,
 	}
 
 	// Manage the addition/update of Globalization
@@ -98,7 +122,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.globSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.globSynced, c.chartSynced, c.manifestSynced) {
 		return
 	}
 
@@ -114,6 +138,39 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addGlobalization(obj interface{}) {
 	glob := obj.(*appsapi.Globalization)
 	klog.V(4).Infof("adding Globalization %q", klog.KObj(glob))
+
+	// add finalizer
+	if !utils.ContainsString(glob.Finalizers, known.AppFinalizer) && glob.DeletionTimestamp == nil {
+		glob.Finalizers = append(glob.Finalizers, known.AppFinalizer)
+		_, err := c.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(),
+			glob, metav1.UpdateOptions{})
+		if err == nil {
+			msg := fmt.Sprintf("successfully inject finalizer %s to Globalization %s",
+				known.AppFinalizer, klog.KObj(glob))
+			klog.V(4).Info(msg)
+			c.recorder.Event(glob, corev1.EventTypeNormal, "FinalizerInjected", msg)
+		} else {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Globalization %s: %v",
+				known.AppFinalizer, klog.KObj(glob), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(glob, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			c.addGlobalization(obj)
+			return
+		}
+	}
+
+	// label matching Feeds uid to Globalization
+	labelsToPatch, err := c.getLabelsForPatching(glob)
+	if err == nil {
+		err = c.PatchGlobalizationLabels(glob, labelsToPatch)
+	}
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
+			klog.KObj(glob), err))
+		c.addGlobalization(obj)
+		return
+	}
+
 	c.enqueue(glob)
 }
 
@@ -123,6 +180,18 @@ func (c *Controller) updateGlobalization(old, cur interface{}) {
 
 	if newGlob.DeletionTimestamp != nil {
 		c.enqueue(newGlob)
+		return
+	}
+
+	// label matching Feeds uid to Globalization
+	labelsToPatch, err := c.getLabelsForPatching(newGlob)
+	if err == nil {
+		err = c.PatchGlobalizationLabels(newGlob, labelsToPatch)
+	}
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
+			klog.KObj(newGlob), err))
+		c.updateGlobalization(old, cur)
 		return
 	}
 
@@ -144,7 +213,7 @@ func (c *Controller) deleteGlobalization(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Globalization)
+		glob, ok = tombstone.Obj.(*appsapi.Globalization)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Globalization %#v", obj))
 			return
@@ -247,7 +316,7 @@ func (c *Controller) syncHandler(key string) error {
 	glob.Kind = controllerKind.Kind
 	glob.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(glob)
+	return c.syncHandlerFunc(glob)
 }
 
 // enqueue takes a Globalization resource and converts it into a namespace/name
@@ -260,4 +329,54 @@ func (c *Controller) enqueue(glob *appsapi.Globalization) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+func (c *Controller) getLabelsForPatching(glob *appsapi.Globalization) (map[string]*string, error) {
+	labelsToPatch := map[string]*string{}
+	if glob.Spec.Feed.Kind == chartKind.Kind {
+		charts, err := utils.ListChartsBySelector(c.chartLister, glob.Spec.Feed)
+		if err != nil {
+			return nil, err
+		}
+		for _, chart := range charts {
+			val, ok := glob.Labels[string(chart.UID)]
+			if !ok || val != chartKind.Kind {
+				labelsToPatch[string(chart.UID)] = &chartKind.Kind
+			}
+		}
+	} else {
+		manifests, err := utils.ListManifestsBySelector(c.manifestLister, glob.Spec.Feed)
+		if err != nil {
+			return nil, err
+		}
+		for _, manifest := range manifests {
+			kind := manifest.Labels[known.ConfigKindLabel]
+			val, ok := glob.Labels[string(manifest.UID)]
+			if !ok || val != kind {
+				labelsToPatch[string(manifest.UID)] = &kind
+			}
+		}
+	}
+
+	return labelsToPatch, nil
+}
+
+func (c *Controller) PatchGlobalizationLabels(glob *appsapi.Globalization, labels map[string]*string) error {
+	klog.V(5).Infof("patching Globalization labels")
+	if len(labels) == 0 {
+		return nil
+	}
+
+	option := utils.LabelOption{Meta: utils.Meta{Labels: labels}}
+	patchData, err := json.Marshal(option)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.clusternetClient.AppsV1alpha1().Globalizations().Patch(context.TODO(),
+		glob.Name,
+		types.MergePatchType,
+		patchData,
+		metav1.PatchOptions{})
+	return err
 }

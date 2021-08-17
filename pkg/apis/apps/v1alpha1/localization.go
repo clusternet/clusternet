@@ -37,10 +37,12 @@ type Localization struct {
 
 // LocalizationSpec defines the desired state of Localization
 type LocalizationSpec struct {
-	// OverrideType specifies the override type for this Localization.
+	// OverridePolicy specifies the override policy for this Localization.
 	//
 	// +optional
-	OverrideType OverrideType `json:"overrideType,omitempty"`
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:default=ApplyLater
+	OverridePolicy OverridePolicy `json:"overridePolicy,omitempty"`
 
 	// Overrides holds all the OverrideRule.
 	//
@@ -51,7 +53,9 @@ type LocalizationSpec struct {
 	// numbers are considered lower priority.
 	//
 	// +optional
-	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Maximum=1000
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=500
 	Priority int32 `json:"priority,omitempty"`
 
 	// Feed holds references to the objects the Localization applies to.
@@ -60,11 +64,15 @@ type LocalizationSpec struct {
 	Feed `json:"feed,omitempty"`
 }
 
-type OverrideType string
+type OverridePolicy string
 
 const (
-	HelmOverride    OverrideType = "Helm"
-	DefaultOverride OverrideType = "Default"
+	// Apply overrides for all matched objects immediately, including those already populated
+	ApplyNow OverridePolicy = "ApplyNow"
+
+	// Apply overrides for all matched objects on next updates (including updates on Subscription,
+	// Manifest, HelmChart, etc) or new created objects.
+	ApplyLater OverridePolicy = "ApplyLater"
 )
 
 // OverrideRule holds information that describes a override rule.
@@ -77,7 +85,7 @@ type OverrideRule struct {
 	// OverrideValue represents override values.
 	//
 	// +optional
-	OverrideValue map[string]string `json:"value,omitempty"`
+	OverrideValue map[string]string `json:"overrideValue,omitempty"`
 }
 
 // +kubebuilder:object:root=true

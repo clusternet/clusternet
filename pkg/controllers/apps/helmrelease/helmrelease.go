@@ -33,9 +33,9 @@ import (
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	appInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
-	appListers "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
@@ -47,7 +47,7 @@ type SyncHandlerFunc func(helmrelease *appsapi.HelmRelease) error
 type Controller struct {
 	ctx context.Context
 
-	clusternetClient clusternetClientSet.Interface
+	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -56,28 +56,30 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	descLister appListers.DescriptionLister
-	hrLister   appListers.HelmReleaseLister
+	descLister applisters.DescriptionLister
+	descSynced cache.InformerSynced
+	hrLister   applisters.HelmReleaseLister
 	hrSynced   cache.InformerSynced
 
-	SyncHandler SyncHandlerFunc
+	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	descLister appListers.DescriptionLister, hrInformer appInformers.HelmReleaseInformer,
-	syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
+func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+	descInformer appinformers.DescriptionInformer, hrInformer appinformers.HelmReleaseInformer,
+	syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	if syncHandlerFunc == nil {
+		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
 		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmRelease"),
-		descLister:       descLister,
+		descLister:       descInformer.Lister(),
+		descSynced:       descInformer.Informer().HasSynced,
 		hrLister:         hrInformer.Lister(),
 		hrSynced:         hrInformer.Informer().HasSynced,
-		SyncHandler:      syncHandler,
+		syncHandlerFunc:  syncHandlerFunc,
 	}
 
 	// Manage the addition/update of HelmRelease
@@ -103,7 +105,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 	// Wait for the caches to be synced before starting workers
 	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.hrSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.hrSynced, c.descSynced) {
 		return
 	}
 
@@ -252,7 +254,7 @@ func (c *Controller) syncHandler(key string) error {
 	hr.Kind = controllerKind.Kind
 	hr.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(hr)
+	return c.syncHandlerFunc(hr)
 }
 
 func (c *Controller) UpdateHelmReleaseStatus(hr *appsapi.HelmRelease, status *appsapi.HelmReleaseStatus) error {

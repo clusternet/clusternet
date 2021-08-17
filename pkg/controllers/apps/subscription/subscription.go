@@ -66,14 +66,14 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	SyncHandler SyncHandlerFunc
+	syncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
 	subsInformer appinformers.SubscriptionInformer, baseInformer appinformers.BaseInformer,
-	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	if syncHandlerFunc == nil {
+		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
@@ -84,7 +84,7 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 		subsSynced:       subsInformer.Informer().HasSynced,
 		baseSynced:       baseInformer.Informer().HasSynced,
 		recorder:         recorder,
-		SyncHandler:      syncHandler,
+		syncHandlerFunc:  syncHandlerFunc,
 	}
 
 	// Manage the addition/update of Subscription
@@ -322,7 +322,7 @@ func (c *Controller) syncHandler(key string) error {
 	sub.Kind = controllerKind.Kind
 	sub.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(sub)
+	return c.syncHandlerFunc(sub)
 }
 
 func (c *Controller) UpdateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {

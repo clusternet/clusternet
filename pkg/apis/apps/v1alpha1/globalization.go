@@ -25,7 +25,7 @@ import (
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Cluster",shortName=cloc;clocal,categories=clusternet
+// +kubebuilder:resource:scope="Cluster",shortName=glob;global,categories=clusternet
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Globalization represents the cluster-scoped override rule for a group of resources.
@@ -38,12 +38,21 @@ type Globalization struct {
 
 // GlobalizationSpec defines the desired state of Globalization
 type GlobalizationSpec struct {
-	// OverrideType specifies the override type for this Globalization.
+	// OverridePolicy specifies the override policy for this Globalization.
 	//
 	// +optional
-	OverrideType OverrideType `json:"overrideType,omitempty"`
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:default=ApplyLater
+	OverridePolicy OverridePolicy `json:"overridePolicy,omitempty"`
+
+	// ClusterAffinity is a label query over managed clusters by labels.
+	// If no labels are specified, all clusters will be selected.
+	//
+	// +optional
+	ClusterAffinity *metav1.LabelSelector `json:"clusterAffinity,omitempty"`
 
 	// Overrides holds all the OverrideRule.
+	//
 	// +optional
 	Overrides []OverrideRule `json:"overrides,omitempty"`
 
@@ -51,7 +60,9 @@ type GlobalizationSpec struct {
 	// numbers are considered lower priority.
 	//
 	// +optional
-	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Maximum=1000
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=500
 	Priority int32 `json:"priority,omitempty"`
 
 	// Feed holds references to the objects the Globalization applies to.
