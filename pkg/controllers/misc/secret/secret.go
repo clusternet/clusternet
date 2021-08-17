@@ -163,7 +163,7 @@ func (c *Controller) deleteSecret(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*coreapi.Secret)
+		secret, ok = tombstone.Obj.(*coreapi.Secret)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Secret %#v", obj))
 			return

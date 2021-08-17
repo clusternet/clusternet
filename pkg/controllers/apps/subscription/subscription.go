@@ -179,7 +179,7 @@ func (c *Controller) deleteSubscription(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Subscription)
+		sub, ok = tombstone.Obj.(*appsapi.Subscription)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Subscription %#v", obj))
 			return

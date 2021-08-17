@@ -171,7 +171,7 @@ func (c *Controller) deleteManifest(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Manifest)
+		manifest, ok = tombstone.Obj.(*appsapi.Manifest)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Manifest %#v", obj))
 			return
