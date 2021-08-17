@@ -150,7 +150,7 @@ func (c *Controller) deleteCRR(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*clusterapi.ClusterRegistrationRequest)
+		crr, ok = tombstone.Obj.(*clusterapi.ClusterRegistrationRequest)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ClusterRegistrationRequest %#v", obj))
 			return
@@ -254,7 +254,7 @@ func (c *Controller) syncHandler(key string) error {
 		crr.Kind = controllerKind.Kind
 	}
 	if len(crr.APIVersion) == 0 {
-		crr.Kind = controllerKind.Version
+		crr.APIVersion = controllerKind.Version
 	}
 
 	return c.SyncHandler(crr)

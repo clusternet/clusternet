@@ -178,7 +178,7 @@ func (c *Controller) deleteDescription(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Description)
+		desc, ok = tombstone.Obj.(*appsapi.Description)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
 			return
@@ -196,7 +196,7 @@ func (c *Controller) deleteHelmRelease(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.HelmRelease)
+		hr, ok = tombstone.Obj.(*appsapi.HelmRelease)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a HelmRelease %#v", obj))
 			return

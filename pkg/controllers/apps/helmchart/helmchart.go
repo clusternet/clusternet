@@ -140,7 +140,7 @@ func (c *Controller) deleteHelmChart(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.HelmChart)
+		chart, ok = tombstone.Obj.(*appsapi.HelmChart)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a HelmChart %#v", obj))
 			return
