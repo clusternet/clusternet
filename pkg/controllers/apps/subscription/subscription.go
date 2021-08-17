@@ -198,7 +198,7 @@ func (c *Controller) deleteBase(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		_, ok = tombstone.Obj.(*appsapi.Base)
+		base, ok = tombstone.Obj.(*appsapi.Base)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Base %#v", obj))
 			return
