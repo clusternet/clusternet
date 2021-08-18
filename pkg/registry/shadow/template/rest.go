@@ -548,11 +548,14 @@ func (r *REST) convertListOptionsToLabels(ctx context.Context, options *internal
 	label = label.Add(*kindRequirement)
 
 	// apply default namespace label
-	nsRequirement, err := labels.NewRequirement(known.ConfigNamespaceLabel, selection.Equals, []string{request.NamespaceValue(ctx)})
-	if err != nil {
-		return nil, err
+	namespace := request.NamespaceValue(ctx)
+	if len(namespace) > 0 {
+		nsRequirement, err := labels.NewRequirement(known.ConfigNamespaceLabel, selection.Equals, []string{namespace})
+		if err != nil {
+			return nil, err
+		}
+		label = label.Add(*nsRequirement)
 	}
-	label = label.Add(*nsRequirement)
 
 	return label, nil
 }
