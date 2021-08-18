@@ -196,19 +196,18 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 		}
 
 		// delete all matching Base
-		deletePropagationBackground := metav1.DeletePropagationBackground
+		var allErrs []error
 		for _, base := range bases {
 			if base.DeletionTimestamp != nil {
 				continue
 			}
-			err = deployer.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Delete(context.TODO(), base.Name, metav1.DeleteOptions{
-				PropagationPolicy: &deletePropagationBackground,
-			})
-			if err != nil {
-				return err
+			if err := deployer.deleteBase(context.TODO(), klog.KObj(base).String()); err != nil {
+				klog.ErrorDepth(5, err)
+				allErrs = append(allErrs, err)
+				continue
 			}
 		}
-		if bases != nil {
+		if bases != nil || len(allErrs) > 0 {
 			return fmt.Errorf("waiting for Bases belongs to Subscription %s getting deleted", klog.KObj(sub))
 		}
 
@@ -268,7 +267,7 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 	// Bases to be deleted
 	basesToBeDeleted := sets.String{}
 	for _, base := range allExistingBases {
-		basesToBeDeleted.Insert(fmt.Sprintf("%s/%s", base.Namespace, base.Name))
+		basesToBeDeleted.Insert(klog.KObj(base).String())
 	}
 
 	var allErrs []error
@@ -300,8 +299,6 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 			},
 		}
 
-		basesToBeDeleted.Delete(fmt.Sprintf("%s/%s", base.Namespace, base.Name))
-
 		err := deployer.syncBase(sub, base)
 		if err != nil {
 			allErrs = append(allErrs, err)
@@ -309,32 +306,13 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingBase", msg)
 		}
+		basesToBeDeleted.Delete(klog.KObj(base).String())
 	}
 
-	deletePropagationBackground := metav1.DeletePropagationBackground
 	for key := range basesToBeDeleted {
-		// Convert the namespace/name string into a distinct namespace and name
-		ns, name, err := cache.SplitMetaNamespaceKey(key)
+		err := deployer.deleteBase(context.TODO(), key)
 		if err != nil {
 			allErrs = append(allErrs, err)
-		} else {
-			base, err := deployer.baseLister.Bases(ns).Get(name)
-			if err != nil {
-				allErrs = append(allErrs, err)
-				continue
-			}
-			// remove label (baseUID="Base") from referred manifest
-			if err := deployer.removeLabelsFromReferredManifests(base); err != nil {
-				allErrs = append(allErrs, err)
-				continue
-			}
-
-			err = deployer.clusternetClient.AppsV1alpha1().Bases(ns).Delete(context.TODO(), name, metav1.DeleteOptions{
-				PropagationPolicy: &deletePropagationBackground,
-			})
-			if err != nil {
-				allErrs = append(allErrs, err)
-			}
 		}
 	}
 
@@ -387,6 +365,32 @@ func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base
 	return err
 }
 
+func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) error {
+	// Convert the namespace/name string into a distinct namespace and name
+	ns, name, err := cache.SplitMetaNamespaceKey(namespacedKey)
+	if err != nil {
+		return err
+	}
+
+	base, err := deployer.baseLister.Bases(ns).Get(name)
+	if err != nil {
+		return err
+	}
+	// remove label (baseUID="Base") from referred manifest
+	if err := deployer.removeLabelsFromReferredManifests(base); err != nil {
+		return err
+	}
+
+	deletePropagationBackground := metav1.DeletePropagationBackground
+	err = deployer.clusternetClient.AppsV1alpha1().Bases(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &deletePropagationBackground,
+	})
+	if err != nil && apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 func (deployer *Deployer) handleBase(base *appsapi.Base) error {
 	// add label (baseUID="Base") to referred manifest
 	if err := deployer.addLabelsToReferredManifests(base); err != nil {
@@ -405,19 +409,19 @@ func (deployer *Deployer) handleBase(base *appsapi.Base) error {
 		}
 
 		// delete all matching Descriptions
-		deletePropagationBackground := metav1.DeletePropagationBackground
+		var allErrs []error
 		for _, desc := range descs {
 			if desc.DeletionTimestamp != nil {
 				continue
 			}
-			err = deployer.clusternetClient.AppsV1alpha1().Descriptions(base.Namespace).Delete(context.TODO(), desc.Name, metav1.DeleteOptions{
-				PropagationPolicy: &deletePropagationBackground,
-			})
-			if err != nil {
-				return err
+
+			if err := deployer.deleteDescription(context.TODO(), klog.KObj(desc).String()); err != nil {
+				klog.ErrorDepth(5, err)
+				allErrs = append(allErrs, err)
+				continue
 			}
 		}
-		if descs != nil {
+		if descs != nil || len(allErrs) > 0 {
 			return fmt.Errorf("waiting for Descriptions belongs to Base %s getting deleted", klog.KObj(base))
 		}
 
@@ -497,6 +501,21 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		}
 	}
 
+	allExistingDescriptions, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
+		known.ConfigKindLabel:      baseKind.Kind,
+		known.ConfigNameLabel:      base.Name,
+		known.ConfigNamespaceLabel: base.Namespace,
+		known.ConfigUIDLabel:       string(base.UID),
+	}))
+	if err != nil {
+		return err
+	}
+	// Descriptions to be deleted
+	descsToBeDeleted := sets.String{}
+	for _, desc := range allExistingDescriptions {
+		descsToBeDeleted.Insert(klog.KObj(desc).String())
+	}
+
 	descTemplate := &appsapi.Description{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: base.Namespace,
@@ -542,6 +561,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedSyncingDescription", msg)
 		}
+		descsToBeDeleted.Delete(klog.KObj(desc).String())
 	}
 
 	if len(allManifests) > 0 {
@@ -559,6 +579,14 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(desc), err)
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedSyncingDescription", msg)
+		}
+		descsToBeDeleted.Delete(klog.KObj(desc).String())
+	}
+
+	for key := range descsToBeDeleted {
+		if err := deployer.deleteDescription(context.TODO(), key); err != nil {
+			allErrs = append(allErrs, err)
+			continue
 		}
 	}
 
@@ -612,6 +640,23 @@ func (deployer *Deployer) syncDescriptions(base *appsapi.Base, description *apps
 		msg := fmt.Sprintf("Description %s is created successfully", klog.KObj(description))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(base, corev1.EventTypeNormal, "DescriptionCreated", msg)
+	}
+	return err
+}
+
+func (deployer *Deployer) deleteDescription(ctx context.Context, namespacedKey string) error {
+	// Convert the namespace/name string into a distinct namespace and name
+	ns, name, err := cache.SplitMetaNamespaceKey(namespacedKey)
+	if err != nil {
+		return err
+	}
+
+	deletePropagationBackground := metav1.DeletePropagationBackground
+	err = deployer.clusternetClient.AppsV1alpha1().Descriptions(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &deletePropagationBackground,
+	})
+	if err != nil && apierrors.IsNotFound(err) {
+		return nil
 	}
 	return err
 }

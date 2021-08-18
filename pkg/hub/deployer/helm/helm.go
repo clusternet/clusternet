@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
@@ -206,24 +207,26 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 			known.ConfigKindLabel:      descriptionKind.Kind,
 			known.ConfigNameLabel:      desc.Name,
 			known.ConfigNamespaceLabel: desc.Namespace,
+			known.ConfigUIDLabel:       string(desc.UID),
 		}))
 		if err != nil {
 			return err
 		}
 
-		deletePropagationBackground := metav1.DeletePropagationBackground
+		var allErrs []error
 		for _, hr := range hrs {
-			if metav1.IsControlledBy(hr, desc) {
-				if hr.DeletionTimestamp == nil {
-					return deployer.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Delete(context.TODO(), hr.Name, metav1.DeleteOptions{
-						PropagationPolicy: &deletePropagationBackground,
-					})
-				}
-				return fmt.Errorf("waiting for HelmRelease %s getting deleted", klog.KObj(hr))
+			if hr.DeletionTimestamp != nil {
+				continue
+			}
+
+			if err := deployer.deleteHelmRelease(context.TODO(), klog.KObj(hr).String()); err != nil {
+				klog.ErrorDepth(5, err)
+				allErrs = append(allErrs, err)
+				continue
 			}
 		}
 
-		if hrs != nil {
+		if hrs != nil || len(allErrs) > 0 {
 			return fmt.Errorf("waiting for HelmRelease belongs to Description %s getting deleted", klog.KObj(desc))
 		}
 
@@ -260,6 +263,21 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 }
 
 func (deployer *Deployer) PopulateHelmRelease(desc *appsapi.Description) error {
+	allExistingHelmReleases, err := deployer.hrLister.List(labels.SelectorFromSet(labels.Set{
+		known.ConfigKindLabel:      desc.Kind,
+		known.ConfigNameLabel:      desc.Name,
+		known.ConfigNamespaceLabel: desc.Namespace,
+		known.ConfigUIDLabel:       string(desc.UID),
+	}))
+	if err != nil {
+		return err
+	}
+	// HelmReleases to be deleted
+	hrsToBeDeleted := sets.String{}
+	for _, hr := range allExistingHelmReleases {
+		hrsToBeDeleted.Insert(klog.KObj(hr).String())
+	}
+
 	var allErrs []error
 	for _, chartRef := range desc.Spec.Charts {
 		chart, err := deployer.chartLister.HelmCharts(chartRef.Namespace).Get(chartRef.Name)
@@ -303,6 +321,7 @@ func (deployer *Deployer) PopulateHelmRelease(desc *appsapi.Description) error {
 				HelmOptions:     chart.Spec.HelmOptions,
 			},
 		}
+		hrsToBeDeleted.Delete(klog.KObj(hr).String())
 
 		err = deployer.syncHelmRelease(desc, hr)
 		if err != nil {
@@ -310,6 +329,13 @@ func (deployer *Deployer) PopulateHelmRelease(desc *appsapi.Description) error {
 			msg := fmt.Sprintf("Failed to sync HelmRelease %s: %v", klog.KObj(hr), err)
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(desc, corev1.EventTypeWarning, "HelmReleaseFailure", msg)
+		}
+	}
+
+	for key := range hrsToBeDeleted {
+		err := deployer.deleteHelmRelease(context.TODO(), key)
+		if err != nil {
+			allErrs = append(allErrs, err)
 		}
 	}
 
@@ -358,6 +384,23 @@ func (deployer *Deployer) syncHelmRelease(desc *appsapi.Description, helmRelease
 		msg := fmt.Sprintf("HelmReleases %s is created successfully", klog.KObj(helmRelease))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleasesCreated", msg)
+	}
+	return err
+}
+
+func (deployer *Deployer) deleteHelmRelease(ctx context.Context, namespacedKey string) error {
+	// Convert the namespace/name string into a distinct namespace and name
+	ns, name, err := cache.SplitMetaNamespaceKey(namespacedKey)
+	if err != nil {
+		return err
+	}
+
+	deletePropagationBackground := metav1.DeletePropagationBackground
+	err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &deletePropagationBackground,
+	})
+	if err != nil && apierrors.IsNotFound(err) {
+		return nil
 	}
 	return err
 }
