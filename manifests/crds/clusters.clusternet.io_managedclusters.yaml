@@ -80,12 +80,30 @@ spec:
           status:
             description: ManagedClusterStatus defines the observed state of ManagedCluster
             properties:
+              allocatable:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: Allocatable is the sum of allocatable resources for nodes in the cluster
+                type: object
               apiserverURL:
                 description: APIServerURL indicates the advertising url/address of managed Kubernetes cluster
                 type: string
               appPusher:
                 description: AppPusher indicates whether to allow parent cluster deploying applications in Push or Dual Mode. Mainly for security concerns.
                 type: boolean
+              capacity:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: Capacity is the sum of capacity resources for nodes in the cluster
+                type: object
               clusterCIDR:
                 description: ClusterCIDR is the CIDR range of the cluster
                 type: string
@@ -102,6 +120,26 @@ spec:
               livez:
                 description: Livez indicates the livez status of the cluster
                 type: boolean
+              nodeStatistics:
+                description: NodeStatistics is the info summary of nodes in the cluster
+                properties:
+                  lostNodes:
+                    description: LostNodes is the number of states lost nodes in the cluster
+                    format: int32
+                    type: integer
+                  notReadyNodes:
+                    description: NotReadyNodes is the number of not ready nodes in the cluster
+                    format: int32
+                    type: integer
+                  readyNodes:
+                    description: ReadyNodes is the number of ready nodes in the cluster
+                    format: int32
+                    type: integer
+                  unknownNodes:
+                    description: UnknownNodes is the number of unknown nodes in the cluster
+                    format: int32
+                    type: integer
+                type: object
               parentAPIServerURL:
                 description: ParentAPIServerURL is the advertising url/address of managed Kubernetes cluster registering to
                 type: string
