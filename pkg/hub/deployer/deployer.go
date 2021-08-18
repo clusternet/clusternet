@@ -72,10 +72,15 @@ type Deployer struct {
 	ctx context.Context
 
 	chartLister   applisters.HelmChartLister
+	chartSynced   cache.InformerSynced
 	descLister    applisters.DescriptionLister
+	descSynced    cache.InformerSynced
 	baseLister    applisters.BaseLister
+	baseSynced    cache.InformerSynced
 	mfstLister    applisters.ManifestLister
+	mfstSynced    cache.InformerSynced
 	clusterLister clusterlisters.ManagedClusterLister
+	clusterSynced cache.InformerSynced
 
 	kubeClient       *kubernetes.Clientset
 	clusternetClient *clusternetclientset.Clientset
@@ -99,10 +104,15 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	deployer := &Deployer{
 		ctx:              ctx,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		descSynced:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		baseLister:       clusternetInformerFactory.Apps().V1alpha1().Bases().Lister(),
+		baseSynced:       clusternetInformerFactory.Apps().V1alpha1().Bases().Informer().HasSynced,
 		mfstLister:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
+		mfstSynced:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
 		kubeClient:       kubeclient,
 		clusternetClient: clusternetclient,
 		broadcaster:      record.NewBroadcaster(),
@@ -172,6 +182,17 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 
 func (deployer *Deployer) Run(workers int) {
 	klog.Infof("starting Clusternet deployer ...")
+
+	// Wait for the caches to be synced before starting workers
+	klog.V(5).Info("waiting for informer caches to sync")
+	if !cache.WaitForCacheSync(deployer.ctx.Done(),
+		deployer.chartSynced,
+		deployer.descSynced,
+		deployer.baseSynced,
+		deployer.mfstSynced,
+		deployer.clusterSynced) {
+		return
+	}
 
 	go deployer.helmDeployer.Run(workers)
 	go deployer.genericDeployer.Run(workers)
