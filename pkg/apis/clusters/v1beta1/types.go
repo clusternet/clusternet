@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -234,6 +235,14 @@ type ManagedClusterStatus struct {
 	// +optional
 	ParentAPIServerURL string `json:"parentAPIServerURL,omitempty"`
 
+	// Allocatable is the sum of allocatable resources for nodes in the cluster
+	// +optional
+	Allocatable corev1.ResourceList `json:"allocatable,omitempty"`
+
+	// Capacity is the sum of capacity resources for nodes in the cluster
+	// +optional
+	Capacity corev1.ResourceList `json:"capacity,omitempty"`
+
 	// ClusterCIDR is the CIDR range of the cluster
 	// +optional
 	ClusterCIDR string `json:"clusterCIDR,omitempty"`
@@ -241,6 +250,10 @@ type ManagedClusterStatus struct {
 	// ServcieCIDR is the CIDR range of the services
 	// +optional
 	ServiceCIDR string `json:"serviceCIDR,omitempty"`
+
+	// NodeStatistics is the info summary of nodes in the cluster
+	// +optional
+	NodeStatistics NodeStatistics `json:"nodeStatistics,omitempty"`
 }
 
 // +genclient
@@ -271,4 +284,22 @@ type ManagedClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ManagedCluster `json:"items"`
+}
+
+type NodeStatistics struct {
+	// ReadyNodes is the number of ready nodes in the cluster
+	// +optional
+	ReadyNodes int32 `json:"readyNodes,omitempty"`
+
+	// NotReadyNodes is the number of not ready nodes in the cluster
+	// +optional
+	NotReadyNodes int32 `json:"notReadyNodes,omitempty"`
+
+	// UnknownNodes is the number of unknown nodes in the cluster
+	// +optional
+	UnknownNodes int32 `json:"unknownNodes,omitempty"`
+
+	// LostNodes is the number of states lost nodes in the cluster
+	// +optional
+	LostNodes int32 `json:"lostNodes,omitempty"`
 }

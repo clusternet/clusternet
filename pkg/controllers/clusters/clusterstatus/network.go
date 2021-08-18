@@ -31,7 +31,6 @@ import (
 func findClusterIPRange(podLister corev1Lister.PodLister) (string, error) {
 	clusterIPRange, err := findPodCommandParameter(podLister, "component", "kube-apiserver", "--service-cluster-ip-range")
 	if err != nil || clusterIPRange != "" {
-		klog.Errorf("Failed to find cluster IP range from kube-apiserver: %v", err)
 		return clusterIPRange, err
 	}
 	return "", nil
@@ -43,21 +42,18 @@ func findPodIPRange(nodeLister corev1Lister.NodeLister, podLister corev1Lister.P
 	// Try to find the pod IP range from the kube-controller-manager.
 	podIPRange, err := findPodIPRangeKubeController(podLister)
 	if err != nil || podIPRange != "" {
-		klog.Errorf("Failed to find pod IP range from kube-controller-manager: %v", err)
 		return podIPRange, err
 	}
 
 	// Try to find the pod IP range from the kube-proxy.
 	podIPRange, err = findPodIPRangeKubeProxy(podLister)
 	if err != nil || podIPRange != "" {
-		klog.Errorf("Failed to find pod IP range from kube-proxy: %v", err)
 		return podIPRange, err
 	}
 
 	// Try to find the pod IP range from the node spec.
 	podIPRange, err = findPodIPRangeFromNodeSpec(nodeLister)
 	if err != nil || podIPRange != "" {
-		klog.Errorf("Failed to find pod IP range from node spec: %v", err)
 		return podIPRange, err
 	}
 
