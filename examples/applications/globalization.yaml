@@ -1,0 +1,47 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Globalization
+metadata:
+  name: mysql-glob
+spec:
+  feed:
+    apiVersion: apps.clusternet.io/v1alpha1
+    kind: HelmChart
+    name: mysql
+    namespace: default
+  overrides: # defines all the overrides to be process with
+    - name: overrideCommonLabels
+      type: Helm
+      # Value is a YAML format patch that override values to Helm chart.
+      # This patch overrides parameter commonLabels on Mysql chart.
+      value: |-
+        commonLabels:
+          clusternet.io/override-by: clusternet-hub
+---
+
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Globalization
+metadata:
+  name: nginx-glob
+spec:
+  feed:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-nginx
+    namespace: foo
+  overrides: # defines all the overrides to be process with
+    - name: addLabel
+      type: MergePatch
+      # Value is a YAML format patch that provide MergePatch to Kubernetes resources
+      # This patch ensure the label "clusternet.io/override-by: clusternet-hub" exists
+      value: |-
+        metadata:
+          labels:
+            clusternet.io/override-by: clusternet-hub
+    - name: removeLabel
+      type: MergePatch
+      # Value is a YAML format patch that provide MergePatch to Kubernetes resources
+      # This patch ensure an label with key xyz does not exists
+      value: |-
+        metadata:
+          labels:
+            xyz: null
