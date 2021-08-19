@@ -111,7 +111,8 @@ func NewDeployer(ctx context.Context,
 	}
 
 	helmChartController, err := helmchart.NewController(ctx, clusternetClient,
-		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(), deployer.handleHelmChart)
+		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
+		deployer.recorder, deployer.handleHelmChart)
 	if err != nil {
 		return nil, err
 	}
@@ -247,6 +248,21 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 }
 
 func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
+	if chart.DeletionTimestamp != nil {
+		// remove finalizers
+		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.AppFinalizer)
+		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.FeedProtectionFinalizer)
+		_, err := deployer.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(), chart, metav1.UpdateOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizers from HelmChart %s: %v", klog.KObj(chart), err))
+		}
+		return err
+	}
+
 	_, err := repo.FindChartInRepoURL(chart.Spec.Repository, chart.Spec.Chart, chart.Spec.ChartVersion,
 		"", "", "",
 		getter.All(settings))

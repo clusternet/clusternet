@@ -123,21 +123,30 @@ func (c *Controller) addManifest(obj interface{}) {
 	manifest := obj.(*appsapi.Manifest)
 	klog.V(4).Infof("adding Manifest %q", klog.KObj(manifest))
 
-	// add finalizer
-	if !utils.ContainsString(manifest.Finalizers, known.AppFinalizer) && manifest.DeletionTimestamp == nil {
-		manifest.Finalizers = append(manifest.Finalizers, known.AppFinalizer)
-		_, err := c.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(),
-			manifest, metav1.UpdateOptions{})
-		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Manifest %s", known.AppFinalizer, klog.KObj(manifest))
-			klog.V(4).Info(msg)
-			c.recorder.Event(manifest, corev1.EventTypeNormal, "FinalizerInjected", msg)
-		} else {
-			msg := fmt.Sprintf("failed to inject finalizer %s to Manifest %s: %v", known.AppFinalizer, klog.KObj(manifest), err)
-			klog.WarningDepth(4, msg)
-			c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-			c.addManifest(obj)
-			return
+	// add finalizers
+	if manifest.DeletionTimestamp == nil {
+		updatedManifest := manifest.DeepCopy()
+		if !utils.ContainsString(updatedManifest.Finalizers, known.AppFinalizer) {
+			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.AppFinalizer)
+		}
+		if !utils.ContainsString(updatedManifest.Finalizers, known.FeedProtectionFinalizer) {
+			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.FeedProtectionFinalizer)
+		}
+
+		// only update on changed
+		if !reflect.DeepEqual(manifest, updatedManifest) {
+			if _, err := c.clusternetClient.AppsV1alpha1().Manifests(updatedManifest.Namespace).Update(context.TODO(),
+				manifest, metav1.UpdateOptions{}); err == nil {
+				msg := fmt.Sprintf("successfully inject finalizers to Manifest %s", klog.KObj(manifest))
+				klog.V(4).Info(msg)
+				c.recorder.Event(manifest, corev1.EventTypeNormal, "FinalizerInjected", msg)
+			} else {
+				msg := fmt.Sprintf("failed to inject finalizers to Manifest %s: %v", klog.KObj(manifest), err)
+				klog.WarningDepth(4, msg)
+				c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+				c.addManifest(obj)
+				return
+			}
 		}
 	}
 

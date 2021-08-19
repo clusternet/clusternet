@@ -36,5 +36,6 @@ func transformManifest(manifest *appsapi.Manifest) (*unstructured.Unstructured, 
 	result.SetUID(manifest.UID)
 	result.SetDeletionGracePeriodSeconds(manifest.DeletionGracePeriodSeconds)
 	result.SetDeletionTimestamp(manifest.DeletionTimestamp)
+	result.SetFinalizers(manifest.Finalizers)
 	return result, nil
 }

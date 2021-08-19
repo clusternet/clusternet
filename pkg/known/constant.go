@@ -31,5 +31,6 @@ const (
 
 // These are internal finalizer values to Clusternet, must be qualified name.
 const (
-	AppFinalizer string = "apps.clusternet.io/finalizer"
+	AppFinalizer            string = "apps.clusternet.io/finalizer"
+	FeedProtectionFinalizer string = "apps.clusternet.io/feed-protection"
 )
