@@ -33,6 +33,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -47,6 +48,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/manifest"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/subscription"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
@@ -101,6 +103,7 @@ type Deployer struct {
 
 func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory) (*Deployer, error) {
+	feedInUseProtection := utilfeature.DefaultFeatureGate.Enabled(features.FeedInUseProtection)
 
 	deployer := &Deployer{
 		ctx:              ctx,
@@ -132,7 +135,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	deployer.recorder = deployer.broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-hub"})
 
 	helmDeployer, err := helm.NewDeployer(ctx, clusternetclient, kubeclient, clusternetInformerFactory,
-		kubeInformerFactory, deployer.recorder)
+		kubeInformerFactory, feedInUseProtection, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +162,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	mfstController, err := manifest.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
+		feedInUseProtection,
 		deployer.recorder,
 		deployer.handleManifest)
 	if err != nil {

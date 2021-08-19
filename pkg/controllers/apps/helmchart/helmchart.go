@@ -62,25 +62,28 @@ type Controller struct {
 	helmChartLister applisters.HelmChartLister
 	helmChartSynced cache.InformerSynced
 
+	feedInUseProtection bool
+
 	recorder        record.EventRecorder
 	syncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
-	helmChartInformer appinformers.HelmChartInformer,
+	helmChartInformer appinformers.HelmChartInformer, feedInUseProtection bool,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
-		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmChart"),
-		helmChartLister:  helmChartInformer.Lister(),
-		helmChartSynced:  helmChartInformer.Informer().HasSynced,
-		recorder:         recorder,
-		syncHandlerFunc:  syncHandlerFunc,
+		ctx:                 ctx,
+		clusternetClient:    clusternetClient,
+		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmChart"),
+		helmChartLister:     helmChartInformer.Lister(),
+		helmChartSynced:     helmChartInformer.Informer().HasSynced,
+		feedInUseProtection: feedInUseProtection,
+		recorder:            recorder,
+		syncHandlerFunc:     syncHandlerFunc,
 	}
 
 	// Manage the addition/update of HelmChart
@@ -129,7 +132,7 @@ func (c *Controller) addHelmChart(obj interface{}) {
 		if !utils.ContainsString(updatedChart.Finalizers, known.AppFinalizer) {
 			updatedChart.Finalizers = append(updatedChart.Finalizers, known.AppFinalizer)
 		}
-		if !utils.ContainsString(updatedChart.Finalizers, known.FeedProtectionFinalizer) {
+		if !utils.ContainsString(updatedChart.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
 			updatedChart.Finalizers = append(updatedChart.Finalizers, known.FeedProtectionFinalizer)
 		}
 		// only update on changed

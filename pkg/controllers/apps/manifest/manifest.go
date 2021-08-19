@@ -61,26 +61,28 @@ type Controller struct {
 	manifestLister applisters.ManifestLister
 	manifestSynced cache.InformerSynced
 
-	recorder record.EventRecorder
+	feedInUseProtection bool
 
+	recorder        record.EventRecorder
 	syncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
-	manifestInformer appinformers.ManifestInformer,
+	manifestInformer appinformers.ManifestInformer, feedInUseProtection bool,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
-		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "manifest"),
-		manifestLister:   manifestInformer.Lister(),
-		manifestSynced:   manifestInformer.Informer().HasSynced,
-		recorder:         recorder,
-		syncHandlerFunc:  syncHandlerFunc,
+		ctx:                 ctx,
+		clusternetClient:    clusternetClient,
+		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "manifest"),
+		manifestLister:      manifestInformer.Lister(),
+		manifestSynced:      manifestInformer.Informer().HasSynced,
+		feedInUseProtection: feedInUseProtection,
+		recorder:            recorder,
+		syncHandlerFunc:     syncHandlerFunc,
 	}
 
 	// Manage the addition/update of Manifest
@@ -129,7 +131,7 @@ func (c *Controller) addManifest(obj interface{}) {
 		if !utils.ContainsString(updatedManifest.Finalizers, known.AppFinalizer) {
 			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.AppFinalizer)
 		}
-		if !utils.ContainsString(updatedManifest.Finalizers, known.FeedProtectionFinalizer) {
+		if !utils.ContainsString(updatedManifest.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
 			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.FeedProtectionFinalizer)
 		}
 

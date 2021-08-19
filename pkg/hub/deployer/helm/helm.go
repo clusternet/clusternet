@@ -91,7 +91,7 @@ func NewDeployer(ctx context.Context,
 	clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	kubeInformerFactory kubeinformers.SharedInformerFactory,
-	recorder record.EventRecorder) (*Deployer, error) {
+	feedInUseProtection bool, recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
 		ctx:              ctx,
@@ -112,6 +112,7 @@ func NewDeployer(ctx context.Context,
 
 	helmChartController, err := helmchart.NewController(ctx, clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
+		feedInUseProtection,
 		deployer.recorder, deployer.handleHelmChart)
 	if err != nil {
 		return nil, err

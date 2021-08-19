@@ -23,11 +23,13 @@ import (
 )
 
 const (
+	// owner: @dixudx
 	// alpha: v0.1.0
 	//
 	// Setup/Serve a WebSocket connection.
 	SocketConnection featuregate.Feature = "SocketConnection"
 
+	// owner: @dixudx
 	// alpha: v0.2.0
 	//
 	// Allow to deploy applications from parent cluster.
@@ -35,17 +37,23 @@ const (
 	// If a child cluster has disabled AppPusher, the parent cluster won't deploy applications with Push or Dual mode.
 	AppPusher featuregate.Feature = "AppPusher"
 
+	// owner: @dixudx
 	// alpha: v0.2.0
 	//
 	// Works as a deployer that help distribute kinds of resources to a group of clusters
 	Deployer featuregate.Feature = "Deployer"
 
+	// owner: @dixudx
 	// alpha: v0.3.0
 	//
 	// Shadow all the Kubernetes objects, including CRDs.
 	ShadowAPI featuregate.Feature = "ShadowAPI"
 
-	// TODO
+	// owner: @dixudx
+	// alpha: v0.4.0
+	//
+	// Postpone deletion of an object that is being referred as a feed in several Subscriptions.
+	FeedInUseProtection featuregate.Feature = "FeedInUseProtection"
 )
 
 func init() {
@@ -56,8 +64,9 @@ func init() {
 // To add a new feature, define a key for it above and add it here. The features will be
 // available throughout Clusternet binaries.
 var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	SocketConnection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	AppPusher:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	Deployer:         {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	ShadowAPI:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	SocketConnection:    {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	AppPusher:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Deployer:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	ShadowAPI:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FeedInUseProtection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }
