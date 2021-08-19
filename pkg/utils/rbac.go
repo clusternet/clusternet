@@ -50,7 +50,7 @@ func EnsureClusterRole(ctx context.Context, clusterrole v1.ClusterRole, client *
 			klog.Errorf("failed to get ClusterRole %s: %v, will retry", clusterrole.Name, err)
 			return false, nil
 		}
-		if autoUpdate, ok := cr.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := cr.Annotations[known.AutoUpdateAnnotation]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().ClusterRoles().Update(ctx, &clusterrole, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the updating
@@ -83,7 +83,7 @@ func EnsureClusterRoleBinding(ctx context.Context, clusterrolebinding v1.Cluster
 			klog.Errorf("failed to get ClusterRoleBinding %s: %v, will retry", clusterrolebinding.Name, err)
 			return false, nil
 		}
-		if autoUpdate, ok := crb.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := crb.Annotations[known.AutoUpdateAnnotation]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().ClusterRoleBindings().Update(ctx, &clusterrolebinding, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the updating
@@ -116,7 +116,7 @@ func EnsureRole(ctx context.Context, role v1.Role, client *kubernetes.Clientset,
 			klog.ErrorDepth(4, fmt.Errorf("failed to get Role %s/%s: %v, will retry", role.Namespace, role.Name, err))
 			return false, nil
 		}
-		if autoUpdate, ok := r.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := r.Annotations[known.AutoUpdateAnnotation]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().Roles(role.Namespace).Update(ctx, &role, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the updating
@@ -149,7 +149,7 @@ func EnsureRoleBinding(ctx context.Context, rolebinding v1.RoleBinding, client *
 			klog.Errorf("failed to get RoleBinding %s/%s: %v, will retry", rolebinding.Namespace, rolebinding.Name, err)
 			return false, nil
 		}
-		if autoUpdate, ok := rb.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+		if autoUpdate, ok := rb.Annotations[known.AutoUpdateAnnotation]; ok && autoUpdate == "true" {
 			_, err = client.RbacV1().RoleBindings(rolebinding.Namespace).Update(ctx, &rolebinding, metav1.UpdateOptions{})
 			if err == nil {
 				// success on the updating

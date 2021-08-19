@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
 func transformManifest(manifest *appsapi.Manifest) (*unstructured.Unstructured, error) {
@@ -37,5 +38,12 @@ func transformManifest(manifest *appsapi.Manifest) (*unstructured.Unstructured, 
 	result.SetDeletionGracePeriodSeconds(manifest.DeletionGracePeriodSeconds)
 	result.SetDeletionTimestamp(manifest.DeletionTimestamp)
 	result.SetFinalizers(manifest.Finalizers)
+
+	annotations := result.GetAnnotations()
+	if val, ok := manifest.Annotations[known.FeedProtectionAnnotation]; ok {
+		annotations[known.FeedProtectionAnnotation] = val
+	}
+	result.SetAnnotations(annotations)
+
 	return result, nil
 }

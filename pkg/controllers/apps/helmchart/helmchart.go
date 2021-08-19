@@ -126,7 +126,7 @@ func (c *Controller) addHelmChart(obj interface{}) {
 	chart := obj.(*appsapi.HelmChart)
 	klog.V(4).Infof("adding HelmChart %q", klog.KObj(chart))
 
-	// add finalizers
+	// add finalizers and append Clusternet labels
 	if chart.DeletionTimestamp == nil {
 		updatedChart := chart.DeepCopy()
 		if !utils.ContainsString(updatedChart.Finalizers, known.AppFinalizer) {
@@ -135,6 +135,16 @@ func (c *Controller) addHelmChart(obj interface{}) {
 		if !utils.ContainsString(updatedChart.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
 			updatedChart.Finalizers = append(updatedChart.Finalizers, known.FeedProtectionFinalizer)
 		}
+		// append Clusternet labels
+		if updatedChart.Labels == nil {
+			updatedChart.Labels = map[string]string{}
+		}
+		updatedChart.Labels[known.ConfigGroupLabel] = controllerKind.Group
+		updatedChart.Labels[known.ConfigVersionLabel] = controllerKind.Version
+		updatedChart.Labels[known.ConfigKindLabel] = controllerKind.Kind
+		updatedChart.Labels[known.ConfigNameLabel] = chart.Name
+		updatedChart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
+
 		// only update on changed
 		if !reflect.DeepEqual(chart, updatedChart) {
 			if _, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(),

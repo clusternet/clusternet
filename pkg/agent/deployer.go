@@ -128,7 +128,7 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 				known.ClusterBootstrappingLabel: known.CredentialsAuto,
 			},
 			Annotations: map[string]string{
-				known.AutoUpdateAnnotationKey: "true",
+				known.AutoUpdateAnnotation: "true",
 			},
 			Finalizers: []string{
 				known.AppFinalizer,
@@ -161,7 +161,7 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 						klog.KObj(secret), err))
 					return
 				}
-				if autoUpdate, ok := sct.Annotations[known.AutoUpdateAnnotationKey]; ok && autoUpdate == "true" {
+				if autoUpdate, ok := sct.Annotations[known.AutoUpdateAnnotation]; ok && autoUpdate == "true" {
 					_, err = parentClientSet.CoreV1().Secrets(dedicatedNamespace).Update(ctx, secret, metav1.UpdateOptions{})
 					if err == nil {
 						// success on the updating
