@@ -91,10 +91,12 @@ are registerring to, we call it **parent cluster**.
 - `HelmChart` is an object contains a [helm chart](https://helm.sh/docs/topics/charts/) configuration.
 - `Subscription` defines the resources that subscribers want to install into clusters. For every matched cluster, a
   corresponding `Base` object will be created in its dedicated namespace.
-- `Localization` and `Globalization` will define the overrides with priority, where lower numbers are considered lower
-  priority. `Localization` is namespace-scoped resource, while `Globalization` is cluster-scoped.
+- `Clusternet` provides a ***two-stage priority based*** override strategy. `Localization` and `Globalization` will
+  define the overrides with priority, where lower numbers are considered lower priority. `Localization` is
+  namespace-scoped resource, while `Globalization` is cluster-scoped. Refer to
+  [Deploying Applications to Multiple Clusters](#deploying-applications-to-multiple-clusters) on how to use these.
 - `Base` objects will be rendered to `Description` objects with `Globalization` and `Localization` settings applied.
-  `Descritpion` is the final resources to be deployed into target child clusters.
+  `Description` is the final resources to be deployed into target child clusters.
 
 <img src="./docs/images/clusternet-apps-concepts.png" style="width:1000px;"/>
 
@@ -528,6 +530,20 @@ spec:
 Before applying this `Subscription`, please
 modify [examples/applications/subscription.yaml](https://github.com/clusternet/clusternet/blob/main/examples/applications/subscription.yaml)
 with your clusterID.
+
+`Clusternet` also provides a ***two-stage priority based*** override strategy. You can define
+namespace-scoped `Localization` and cluster-scoped `Globalization` with priorities (ranging from 0 to 1000, default to
+be 500), where lower numbers are considered lower priority. These Globalization(s) and Localization(s) will be applied
+by order from lower priority to higher. That means override values in lower `Globalization` will be overridden by those
+in higher `Globalization`. Globalization(s) come first and then Localization(s).
+
+> :dizzy: :dizzy: For example,
+>
+> Globalization (priority: 100) -> Globalization (priority: 600) -> Localization (priority: 100) -> Localization (priority 500)
+
+Before applying these Localization(s), please
+modify [examples/applications/localization.yaml](https://github.com/clusternet/clusternet/blob/main/examples/applications/localization.yaml)
+with your `ManagedCluster` namespace, such as `clusternet-5l82l`.
 
 After installing kubectl plugin [kubectl-clusternet](https://github.com/clusternet/kubectl-clusternet), you could run
 below commands to distribute this application to child clusters.

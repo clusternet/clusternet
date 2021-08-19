@@ -1,49 +1,63 @@
 apiVersion: apps.clusternet.io/v1alpha1
 kind: Localization
 metadata:
-  name: mysql-loc
-  namespace: clusternet-px5n9 # MUST BE THE SAME AS YOUR MANAGED CLUSTER's NAMESPACE!!!
+  name: mysql-local-overrides-demo
+  namespace: clusternet-5l82l # PLEASE UPDATE THIS TO YOUR ManagedCluster NAMESPACE!!!
 spec:
+  # Priority is an integer defining the relative importance of this Localization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Localization will be overridden by those in higher Localization.
+  # (Optional) Default priority is 500.
+  priority: 500
   feed:
     apiVersion: apps.clusternet.io/v1alpha1
     kind: HelmChart
     name: mysql
     namespace: default
-  overrides: # defines all the overrides to be process with
-    - name: disablePersistenceAndChangeImage
-      type: Helm
-      # Value is a YAML format patch that override values to Helm chart.
-      # This patch overrides parameter primary.persistence.enabled and image.tag on Mysql chart.
+  overrides: # defines all the overrides to be processed with
+    - name: update-image
+      type: Helm # This can only be "Helm" for HelmChart.
+      # Value is a YAML/JSON format patch that overrides values to current Helm chart defined by feed.
+      # And the value here is exactly the same as file "values.yaml".
+      # This patch overrides "image.tag" for this Mysql chart.
       value: |-
-        primary:
-          persistence:
-            enabled: false
         image:
           tag: 8.0.26-debian-10-r39
-
+    - name: update-image
+      type: Helm # This can only be "Helm" for HelmChart.
+      # Value is a YAML/JSON format patch that overrides values to current Helm chart defined by feed.
+      # And the value here is exactly the same as file "values.yaml".
+      # This patch overrides "auth.database" Name for this Mysql chart.
+      # The value here can also be in json format.
+      value: '{"auth":{"database":"database_for_clusternet-5l82l"}}'
 ---
 
 apiVersion: apps.clusternet.io/v1alpha1
 kind: Localization
 metadata:
-  name: nginx-loc
-  namespace: clusternet-px5n9 # MUST BE THE SAME AS YOUR MANAGED CLUSTER's NAMESPACE!!!
+  name: nginx-local-overrides-demo-higher-priority
+  namespace: clusternet-5l82l # PLEASE UPDATE THIS TO YOUR ManagedCluster NAMESPACE!!!
 spec:
+  # Priority is an integer defining the relative importance of this Localization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Localization will be overridden by those in higher Localization.
+  # (Optional) Default priority is 500.
+  priority: 600
   feed:
     apiVersion: apps/v1
     kind: Deployment
     name: my-nginx
     namespace: foo
-  overrides: # defines all the overrides to be process with
-    - name: scaleAndAddAnno
+  overrides: # defines all the overrides to be processed with
+    - name: scale-and-add-annotations
       type: JSONPatch
-      # Value is a JSON format patch that provide JSONPatch to Kubernetes resources
-      # This patch set the replicas field to 2 and add annotation foo=bar
+      # Value is a YAML/JSON format patch that provides JSONPatch to current resource defined by feed.
+      # This patch sets replicas to 3 and adds a new annotation "foo=bar".
       value: |-
         [
           {
             "path": "/spec/replicas",
-            "value": "2",
+            "value": "3",
             "op": "replace"
           },
           {
@@ -54,10 +68,11 @@ spec:
             "op": "add"
           }
         ]
-    - name: changeImageAndContainerName
+    - name: change-container-image-and-name
       type: JSONPatch
-      # Value is a YAML format patch that provide JSONPatch to Kubernetes resources
-      # This patch set the image and name of the first container
+      # Value is a YAML/JSON format patch that provides JSONPatch to current resource defined by feed
+      # This patch changes container name and image.
+      # The value here can also be in yaml format.
       value: |-
         - path: "/spec/template/spec/containers/0/image"
           value: "nginx:1.14.0-alpine"
@@ -65,28 +80,46 @@ spec:
         - path: "/spec/template/spec/containers/0/name"
           value: "nginx-container"
           op: replace
-
+    - name: inject-new-container
+      type: JSONPatch
+      # Value is a YAML/JSON format patch that provide JSONPatch to current resource defined by feed
+      # This patch injects a sidecar container.
+      # The value here can also be in yaml format.
+      value: |-
+        - op: add
+          path: "/spec/containers/1"
+          value:
+            name: "redis-container"
+            image: "redis:6.2.5"
 ---
 
 apiVersion: apps.clusternet.io/v1alpha1
 kind: Localization
 metadata:
-  name: nginx-loc-lower-priority
-  namespace: clusternet-px5n9 # MUST BE THE SAME AS YOUR MANAGED CLUSTER's NAMESPACE!!!
+  name: nginx-local-overrides-demo-lower-priority
+  namespace: clusternet-5l82l # PLEASE UPDATE THIS TO YOUR ManagedCluster NAMESPACE!!!
 spec:
-  # Priority is an integer defining the relative importance of this Localization compared to others. Lower numbers are considered lower priority. Optional.
-  # Default priority is 500.
+  # Priority is an integer defining the relative importance of this Localization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Localization will be overridden by those in higher Localization.
+  # (Optional) Default priority is 500.
   priority: 300
   feed:
     apiVersion: apps/v1
     kind: Deployment
     name: my-nginx
     namespace: foo
-  overrides: # defines all the overrides to be process with
-    - name: scale
+  overrides: # defines all the overrides to be processed with
+    - name: add-update-labels
+      type: MergePatch
+      # Value is a YAML/JSON format patch that provides MergePatch to current resource defined by feed.
+      # This override adds or updates some labels.
+      value: '{"metadata":{"labels":{"deployed-in-cluster":"clusternet-5l82l"}}}'
+    - name: scale-replicas
       type: JSONPatch
-      # This patch want to set replicas field to 1.
-      # But due to lower priority, the nginx-deployment's replicas will be override by nginx-loc above eventually.
+      # Value is a YAML/JSON format patch that provides JSONPatch to current resource defined by feed.
+      # This patch sets replicas to 1.
+      # But due to lower priority, this value will be overridden by above "nginx-local-overrides-demo-higher-priority" eventually.
       value: |-
         [
           {
