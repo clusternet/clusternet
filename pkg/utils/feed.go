@@ -59,7 +59,7 @@ func GetLabelsSelectorFromFeed(feed appsapi.Feed) (labels.Selector, error) {
 
 		reqs, _ := feedSelector.Requirements()
 		for _, r := range reqs {
-			selector.Add(r)
+			selector = selector.Add(r)
 		}
 	}
 
