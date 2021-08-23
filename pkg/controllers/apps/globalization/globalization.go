@@ -367,7 +367,7 @@ func (c *Controller) PatchGlobalizationLabels(glob *appsapi.Globalization, label
 		return nil
 	}
 
-	option := utils.LabelOption{Meta: utils.Meta{Labels: labels}}
+	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
 	patchData, err := json.Marshal(option)
 	if err != nil {
 		return err

@@ -96,18 +96,21 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.generateNameForManifest(result.GetNamespace(), result.GetName()),
 			Namespace: appsapi.ReservedNamespace,
-			Labels: map[string]string{
-				known.ConfigGroupLabel:     r.group,
-				known.ConfigVersionLabel:   r.version,
-				known.ConfigKindLabel:      r.kind,
-				known.ConfigNameLabel:      result.GetName(),
-				known.ConfigNamespaceLabel: result.GetNamespace(),
-			},
+			Labels:    result.GetLabels(), // reuse labels from original object, which is useful for label selector
 		},
 		Template: runtime.RawExtension{
 			Object: result,
 		},
 	}
+	// append Clusternet labels
+	if manifest.Labels == nil {
+		manifest.Labels = map[string]string{}
+	}
+	manifest.Labels[known.ConfigGroupLabel] = r.group
+	manifest.Labels[known.ConfigVersionLabel] = r.version
+	manifest.Labels[known.ConfigKindLabel] = r.kind
+	manifest.Labels[known.ConfigNameLabel] = result.GetName()
+	manifest.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
 	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Create(ctx, manifest, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {

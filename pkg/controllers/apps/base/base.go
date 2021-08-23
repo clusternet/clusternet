@@ -372,7 +372,7 @@ func (c *Controller) enqueue(base *appsapi.Base) {
 
 func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*string) error {
 	klog.V(5).Infof("patching Base labels")
-	option := utils.LabelOption{Meta: utils.Meta{Labels: labels}}
+	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
 	patchData, err := json.Marshal(option)
 	if err != nil {
 		return err

@@ -25,20 +25,20 @@ import (
 
 func TestMarshalLabelOption(t *testing.T) {
 	tests := []struct {
-		name        string
-		labelOption LabelOption
-		want        string
+		name       string
+		metaOption MetaOption
+		want       string
 	}{
 		{
 			name: "add/update label",
-			labelOption: LabelOption{Meta: Meta{Labels: map[string]*string{
+			metaOption: MetaOption{MetaData: MetaData{Labels: map[string]*string{
 				"key": utilpointer.StringPtr("val"),
 			}}},
 			want: `{"metadata":{"labels":{"key":"val"}}}`,
 		},
 		{
 			name: "remove label",
-			labelOption: LabelOption{Meta: Meta{Labels: map[string]*string{
+			metaOption: MetaOption{MetaData: MetaData{Labels: map[string]*string{
 				"key": nil,
 			}}},
 			want: `{"metadata":{"labels":{"key":null}}}`,
@@ -46,9 +46,9 @@ func TestMarshalLabelOption(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := json.Marshal(tt.labelOption)
+			got, err := json.Marshal(tt.metaOption)
 			if err != nil {
-				t.Errorf("failed to marshal LabelOption: error = %v", err)
+				t.Errorf("failed to marshal MetaOption: error = %v", err)
 				return
 			}
 			if string(got) != tt.want {

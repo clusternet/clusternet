@@ -18,10 +18,10 @@ package deployer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +33,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -47,6 +48,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/manifest"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/subscription"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
@@ -80,6 +82,8 @@ type Deployer struct {
 	baseSynced    cache.InformerSynced
 	mfstLister    applisters.ManifestLister
 	mfstSynced    cache.InformerSynced
+	subLister     applisters.SubscriptionLister
+	subSynced     cache.InformerSynced
 	clusterLister clusterlisters.ManagedClusterLister
 	clusterSynced cache.InformerSynced
 
@@ -101,6 +105,7 @@ type Deployer struct {
 
 func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory) (*Deployer, error) {
+	feedInUseProtection := utilfeature.DefaultFeatureGate.Enabled(features.FeedInUseProtection)
 
 	deployer := &Deployer{
 		ctx:              ctx,
@@ -114,6 +119,8 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 		baseSynced:       clusternetInformerFactory.Apps().V1alpha1().Bases().Informer().HasSynced,
 		mfstLister:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
 		mfstSynced:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
+		subLister:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
+		subSynced:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
 		kubeClient:       kubeclient,
 		clusternetClient: clusternetclient,
 		broadcaster:      record.NewBroadcaster(),
@@ -122,20 +129,24 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	//deployer.broadcaster.StartStructuredLogging(5)
 	if deployer.kubeClient != nil {
 		klog.Infof("sending events to api server")
-		deployer.broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: deployer.kubeClient.CoreV1().Events("")})
+		deployer.broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
+			Interface: deployer.kubeClient.CoreV1().Events(""),
+		})
 	} else {
 		klog.Warningf("no api server defined - no events will be sent to API server.")
 	}
 	utilruntime.Must(appsapi.AddToScheme(scheme.Scheme))
 	deployer.recorder = deployer.broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-hub"})
 
-	helmDeployer, err := helm.NewDeployer(ctx, clusternetclient, kubeclient, clusternetInformerFactory, kubeInformerFactory, deployer.recorder)
+	helmDeployer, err := helm.NewDeployer(ctx, clusternetclient, kubeclient, clusternetInformerFactory,
+		kubeInformerFactory, feedInUseProtection, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
 	deployer.helmDeployer = helmDeployer
 
-	genericDeployer, err := generic.NewDeployer(ctx, clusternetclient, clusternetInformerFactory, kubeInformerFactory, deployer.recorder)
+	genericDeployer, err := generic.NewDeployer(ctx, clusternetclient, clusternetInformerFactory,
+		kubeInformerFactory, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +166,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	mfstController, err := manifest.NewController(ctx,
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
+		feedInUseProtection,
 		deployer.recorder,
 		deployer.handleManifest)
 	if err != nil {
@@ -192,7 +204,9 @@ func (deployer *Deployer) Run(workers int) {
 		deployer.descSynced,
 		deployer.baseSynced,
 		deployer.mfstSynced,
-		deployer.clusterSynced) {
+		deployer.clusterSynced,
+		deployer.subSynced,
+	) {
 		return
 	}
 
@@ -232,6 +246,11 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 		}
 		if bases != nil || len(allErrs) > 0 {
 			return fmt.Errorf("waiting for Bases belongs to Subscription %s getting deleted", klog.KObj(sub))
+		}
+
+		// remove label (subUID="Subscription") from referred Manifest/HelmChart
+		if err := deployer.removeLabelsFromReferredFeeds(sub.UID, subscriptionKind.Kind); err != nil {
+			return err
 		}
 
 		sub.Finalizers = utils.RemoveString(sub.Finalizers, known.AppFinalizer)
@@ -399,8 +418,8 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 	if err != nil {
 		return err
 	}
-	// remove label (baseUID="Base") from referred manifest
-	if err := deployer.removeLabelsFromReferredManifests(base); err != nil {
+	// remove label (baseUID="Base") from referred Manifest/HelmChart
+	if err := deployer.removeLabelsFromReferredFeeds(base.UID, baseKind.Kind); err != nil {
 		return err
 	}
 
@@ -415,11 +434,6 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 }
 
 func (deployer *Deployer) handleBase(base *appsapi.Base) error {
-	// add label (baseUID="Base") to referred manifest
-	if err := deployer.addLabelsToReferredManifests(base); err != nil {
-		return err
-	}
-
 	if base.DeletionTimestamp != nil {
 		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      baseKind.Kind,
@@ -457,6 +471,11 @@ func (deployer *Deployer) handleBase(base *appsapi.Base) error {
 		return err
 	}
 
+	// add label (baseUID="Base") to referred Manifest/HelmChart
+	if err := deployer.addLabelsToReferredFeeds(base); err != nil {
+		return err
+	}
+
 	err := deployer.populateDescriptions(base)
 	if err != nil {
 		return err
@@ -473,7 +492,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	var charts []*appsapi.HelmChart
 	var manifests []*appsapi.Manifest
 	for _, feed := range base.Spec.Feeds {
-		if feed.Kind == helmChartKind.Kind && feed.APIVersion == helmChartKind.GroupVersion().String() {
+		if feed.Kind == helmChartKind.Kind {
 			charts, err = utils.ListChartsBySelector(deployer.chartLister, feed)
 			if err == nil {
 				// verify HelmChart can be found
@@ -686,14 +705,20 @@ func (deployer *Deployer) deleteDescription(ctx context.Context, namespacedKey s
 
 func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 	if manifest.DeletionTimestamp != nil {
-		// TODO: other strategies
+		if err := deployer.protectManifestFeed(manifest); err != nil {
+			return err
+		}
 
-		// remove finalizer
+		// remove finalizers
 		manifest.Finalizers = utils.RemoveString(manifest.Finalizers, known.AppFinalizer)
+		manifest.Finalizers = utils.RemoveString(manifest.Finalizers, known.FeedProtectionFinalizer)
 		_, err := deployer.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(), manifest, metav1.UpdateOptions{})
 		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Manifest %s: %v", known.AppFinalizer, klog.KObj(manifest), err))
+				fmt.Sprintf("failed to remove finalizers from Manifest %s: %v", klog.KObj(manifest), err))
 		}
 		return err
 	}
@@ -741,11 +766,19 @@ func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) addLabelsToReferredManifests(b *appsapi.Base) error {
+func (deployer *Deployer) addLabelsToReferredFeeds(b *appsapi.Base) error {
+	var allHelmCharts []*appsapi.HelmChart
 	var allManifests []*appsapi.Manifest
 	var allErrs []error
 	for _, feed := range b.Spec.Feeds {
-		if feed.Kind != helmChartKind.Kind {
+		if feed.Kind == helmChartKind.Kind {
+			charts, err := utils.ListChartsBySelector(deployer.chartLister, feed)
+			if err == nil {
+				allHelmCharts = append(allHelmCharts, charts...)
+			} else {
+				allErrs = append(allErrs, err)
+			}
+		} else {
 			manifests, err := utils.ListManifestsBySelector(deployer.mfstLister, feed)
 			if err == nil {
 				allManifests = append(allManifests, manifests...)
@@ -757,28 +790,40 @@ func (deployer *Deployer) addLabelsToReferredManifests(b *appsapi.Base) error {
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
 	}
-	if allManifests == nil || len(allManifests) == 0 {
+	if (allHelmCharts == nil || len(allHelmCharts) == 0) && (allManifests == nil || len(allManifests) == 0) {
 		return nil
 	}
 
+	labelsToPatch := map[string]*string{
+		string(b.UID): utilpointer.StringPtr(baseKind.Kind),
+	}
+	if len(b.Labels[known.ConfigSubscriptionUIDLabel]) > 0 {
+		labelsToPatch[b.Labels[known.ConfigSubscriptionUIDLabel]] = utilpointer.StringPtr(subscriptionKind.Kind)
+	}
+
 	wg := sync.WaitGroup{}
-	wg.Add(len(allManifests))
-	errCh := make(chan error, len(allManifests))
+	wg.Add(len(allHelmCharts) + len(allManifests))
+	errCh := make(chan error, len(allHelmCharts)+len(allManifests))
+	for _, chart := range allHelmCharts {
+		go func(chart *appsapi.HelmChart) {
+			defer wg.Done()
+
+			if chart.DeletionTimestamp != nil {
+				return
+			}
+			if err := utils.PatchHelmChartLabelsAndAnnotations(deployer.clusternetClient, chart, labelsToPatch, nil); err != nil {
+				errCh <- err
+			}
+		}(chart)
+	}
 	for _, manifest := range allManifests {
 		go func(manifest *appsapi.Manifest) {
 			defer wg.Done()
 
-			if b.DeletionTimestamp != nil {
+			if manifest.DeletionTimestamp != nil {
 				return
 			}
-
-			curVal, ok := manifest.Labels[string(b.UID)]
-			if ok && curVal == baseKind.Kind {
-				return
-			}
-			labelsToPatch := map[string]*string{}
-			labelsToPatch[string(b.UID)] = utilpointer.StringPtr(baseKind.Kind)
-			if err := deployer.patchManifestLabels(manifest, labelsToPatch); err != nil {
+			if err := utils.PatchManifestLabelsAndAnnotations(deployer.clusternetClient, manifest, labelsToPatch, nil); err != nil {
 				errCh <- err
 			}
 		}(manifest)
@@ -794,34 +839,48 @@ func (deployer *Deployer) addLabelsToReferredManifests(b *appsapi.Base) error {
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) removeLabelsFromReferredManifests(b *appsapi.Base) error {
-	manifests, err := deployer.mfstLister.List(labels.SelectorFromSet(
-		labels.Set{string(b.UID): baseKind.Kind}))
+func (deployer *Deployer) removeLabelsFromReferredFeeds(uid types.UID, kind string) error {
+	allHelmCharts, err := deployer.chartLister.List(labels.SelectorFromSet(
+		labels.Set{string(uid): kind}))
 	if err != nil {
 		return err
 	}
-	if manifests == nil {
+	allManifests, err := deployer.mfstLister.List(labels.SelectorFromSet(
+		labels.Set{string(uid): kind}))
+	if err != nil {
+		return err
+	}
+	if allHelmCharts == nil && allManifests == nil {
 		return nil
 	}
 
+	labelsToPatch := map[string]*string{
+		string(uid): nil,
+	}
+
 	wg := sync.WaitGroup{}
-	wg.Add(len(manifests))
-	errCh := make(chan error, len(manifests))
-	for _, manifest := range manifests {
+	wg.Add(len(allHelmCharts) + len(allManifests))
+	errCh := make(chan error, len(allHelmCharts)+len(allManifests))
+	for _, chart := range allHelmCharts {
+		go func(chart *appsapi.HelmChart) {
+			defer wg.Done()
+
+			if chart.DeletionTimestamp != nil {
+				return
+			}
+			if err := utils.PatchHelmChartLabelsAndAnnotations(deployer.clusternetClient, chart, labelsToPatch, nil); err != nil {
+				errCh <- err
+			}
+		}(chart)
+	}
+	for _, manifest := range allManifests {
 		go func(manifest *appsapi.Manifest) {
 			defer wg.Done()
 
-			if b.DeletionTimestamp != nil {
+			if manifest.DeletionTimestamp != nil {
 				return
 			}
-
-			_, ok := manifest.Labels[string(b.UID)]
-			if !ok {
-				return
-			}
-			labelsToPatch := map[string]*string{}
-			labelsToPatch[string(b.UID)] = nil
-			if err := deployer.patchManifestLabels(manifest, labelsToPatch); err != nil {
+			if err := utils.PatchManifestLabelsAndAnnotations(deployer.clusternetClient, manifest, labelsToPatch, nil); err != nil {
 				errCh <- err
 			}
 		}(manifest)
@@ -838,20 +897,81 @@ func (deployer *Deployer) removeLabelsFromReferredManifests(b *appsapi.Base) err
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) patchManifestLabels(manifest *appsapi.Manifest, labels map[string]*string) error {
-	labelOption := utils.LabelOption{Meta: utils.Meta{Labels: labels}}
-	patchData, err := json.Marshal(labelOption)
+func (deployer *Deployer) protectManifestFeed(manifest *appsapi.Manifest) error {
+	// search all Subscriptions UID that referring this manifest
+	subUIDs := sets.String{}
+	for key, val := range manifest.Labels {
+		// normally the length of a uuid is 36
+		if len(key) != 36 || strings.Contains(key, "/") {
+			continue
+		}
+		if val == subscriptionKind.Kind {
+			subUIDs.Insert(key)
+		}
+	}
+
+	var allRelatedSubscriptions []*appsapi.Subscription
+	var allSubInfos []string
+	// we just list all Subscriptions and filter them with matching UID,
+	// since using label selector one by one does not improve too much performance
+	subscriptions, err := deployer.subLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
-
-	_, err = deployer.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Patch(context.TODO(),
-		manifest.Name,
-		types.MergePatchType,
-		patchData,
-		metav1.PatchOptions{})
-	if apierrors.IsNotFound(err) {
-		return nil
+	for _, sub := range subscriptions {
+		// in case some subscriptions do not exist any more, while labels still persist
+		if subUIDs.Has(string(sub.UID)) && sub.DeletionTimestamp == nil {
+			// in case this subscription does not use this manifest as a feed
+			inUse, err := utils.IsManifestUsedBySubscription(deployer.mfstLister, manifest, sub)
+			if err != nil {
+				return err
+			}
+			if inUse {
+				allRelatedSubscriptions = append(allRelatedSubscriptions, sub)
+				allSubInfos = append(allSubInfos, klog.KObj(sub).String())
+			}
+		}
 	}
-	return err
+
+	// block Manifest deletion until all Subscriptions that refer this Feed get deleted
+	if utils.ContainsString(manifest.Finalizers, known.FeedProtectionFinalizer) && len(allRelatedSubscriptions) > 0 {
+		msg := fmt.Sprintf("block deleting current %s until all Subscriptions (including %s) that refer this as a feed get deleted",
+			manifest.Labels[known.ConfigKindLabel], strings.Join(allSubInfos, ", "))
+		klog.WarningDepth(5, msg)
+
+		annotationsToPatch := map[string]*string{}
+		annotationsToPatch[known.FeedProtectionAnnotation] = utilpointer.StringPtr(msg)
+		if err := utils.PatchManifestLabelsAndAnnotations(deployer.clusternetClient, manifest,
+			nil, annotationsToPatch); err != nil {
+			return err
+		}
+
+		return errors.New(msg)
+	}
+
+	// finalizer FeedProtectionFinalizer does not exist,
+	// so we just remove this feed from all Subscriptions
+	wg := sync.WaitGroup{}
+	wg.Add(len(allRelatedSubscriptions))
+	errCh := make(chan error, len(allRelatedSubscriptions))
+	for _, sub := range allRelatedSubscriptions {
+		go func(sub *appsapi.Subscription) {
+			defer wg.Done()
+
+			if err := utils.RemoveFeedFromSubscription(context.TODO(), deployer.clusternetClient, manifest.GetLabels(),
+				sub, nil, deployer.mfstLister); err != nil {
+				errCh <- err
+			}
+		}(sub)
+	}
+
+	wg.Wait()
+
+	// collect errors
+	close(errCh)
+	var allErrs []error
+	for err := range errCh {
+		allErrs = append(allErrs, err)
+	}
+	return utilerrors.NewAggregate(allErrs)
 }

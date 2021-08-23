@@ -18,6 +18,9 @@ package known
 
 // annotations
 const (
-	// AutoUpdateAnnotationKey is the name of an annotation which prevents reconciliation if set to "false"
-	AutoUpdateAnnotationKey = "clusternet.io/autoupdate"
+	// AutoUpdateAnnotation is the name of an annotation which prevents reconciliation if set to "false"
+	AutoUpdateAnnotation = "clusternet.io/autoupdate"
+
+	// FeedProtectionAnnotation passes detailed message on protecting current object as a feed
+	FeedProtectionAnnotation = "apps.clusternet.io/feed-protection"
 )

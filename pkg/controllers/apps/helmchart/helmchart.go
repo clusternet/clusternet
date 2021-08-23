@@ -22,11 +22,13 @@ import (
 	"reflect"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -35,6 +37,8 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
@@ -58,22 +62,28 @@ type Controller struct {
 	helmChartLister applisters.HelmChartLister
 	helmChartSynced cache.InformerSynced
 
+	feedInUseProtection bool
+
+	recorder        record.EventRecorder
 	syncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
-	helmChartInformer appinformers.HelmChartInformer, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	helmChartInformer appinformers.HelmChartInformer, feedInUseProtection bool,
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
-		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmChart"),
-		helmChartLister:  helmChartInformer.Lister(),
-		helmChartSynced:  helmChartInformer.Informer().HasSynced,
-		syncHandlerFunc:  syncHandlerFunc,
+		ctx:                 ctx,
+		clusternetClient:    clusternetClient,
+		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmChart"),
+		helmChartLister:     helmChartInformer.Lister(),
+		helmChartSynced:     helmChartInformer.Informer().HasSynced,
+		feedInUseProtection: feedInUseProtection,
+		recorder:            recorder,
+		syncHandlerFunc:     syncHandlerFunc,
 	}
 
 	// Manage the addition/update of HelmChart
@@ -115,12 +125,54 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addHelmChart(obj interface{}) {
 	chart := obj.(*appsapi.HelmChart)
 	klog.V(4).Infof("adding HelmChart %q", klog.KObj(chart))
+
+	// add finalizers and append Clusternet labels
+	if chart.DeletionTimestamp == nil {
+		updatedChart := chart.DeepCopy()
+		if !utils.ContainsString(updatedChart.Finalizers, known.AppFinalizer) {
+			updatedChart.Finalizers = append(updatedChart.Finalizers, known.AppFinalizer)
+		}
+		if !utils.ContainsString(updatedChart.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
+			updatedChart.Finalizers = append(updatedChart.Finalizers, known.FeedProtectionFinalizer)
+		}
+		// append Clusternet labels
+		if updatedChart.Labels == nil {
+			updatedChart.Labels = map[string]string{}
+		}
+		updatedChart.Labels[known.ConfigGroupLabel] = controllerKind.Group
+		updatedChart.Labels[known.ConfigVersionLabel] = controllerKind.Version
+		updatedChart.Labels[known.ConfigKindLabel] = controllerKind.Kind
+		updatedChart.Labels[known.ConfigNameLabel] = chart.Name
+		updatedChart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
+
+		// only update on changed
+		if !reflect.DeepEqual(chart, updatedChart) {
+			if _, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(),
+				chart, metav1.UpdateOptions{}); err == nil {
+				msg := fmt.Sprintf("successfully inject finalizers to HelmChart %s", klog.KObj(chart))
+				klog.V(4).Info(msg)
+				c.recorder.Event(chart, corev1.EventTypeNormal, "FinalizerInjected", msg)
+			} else {
+				msg := fmt.Sprintf("failed to inject finalizers to HelmChart %s: %v", klog.KObj(chart), err)
+				klog.WarningDepth(4, msg)
+				c.recorder.Event(chart, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+				c.addHelmChart(obj)
+				return
+			}
+		}
+	}
+
 	c.enqueue(chart)
 }
 
 func (c *Controller) updateHelmChart(old, cur interface{}) {
 	oldChart := old.(*appsapi.HelmChart)
 	newChart := cur.(*appsapi.HelmChart)
+
+	if newChart.DeletionTimestamp != nil {
+		c.enqueue(newChart)
+		return
+	}
 
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldChart.Spec, newChart.Spec) {

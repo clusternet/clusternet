@@ -143,7 +143,7 @@ func (crrApprover *CRRApprover) defaultRoles(namespace string) []rbacv1.Role {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        ManagedClusterRole,
 			Namespace:   namespace,
-			Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
+			Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 			Labels: map[string]string{
 				known.ClusterBootstrappingLabel: known.RBACDefaults,
 				known.ObjectCreatedByLabel:      known.ClusternetHubName,
@@ -167,7 +167,7 @@ func (crrApprover *CRRApprover) defaultClusterRoles(clusterID types.UID) []rbacv
 	clusterRoles := rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        SocketsClusterRoleNamePrefix + string(clusterID),
-			Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
+			Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 			Labels: map[string]string{
 				known.ClusterBootstrappingLabel: known.RBACDefaults,
 				known.ObjectCreatedByLabel:      known.ClusternetHubName,
@@ -431,7 +431,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 			err := utils.EnsureClusterRoleBinding(crrApprover.ctx, rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        cr.Name,
-					Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
+					Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 					Labels: map[string]string{
 						known.ClusterBootstrappingLabel: known.RBACDefaults,
 						known.ObjectCreatedByLabel:      known.ClusternetHubName,
@@ -484,7 +484,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        r.Name,
 					Namespace:   r.Namespace,
-					Annotations: map[string]string{known.AutoUpdateAnnotationKey: "true"},
+					Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 					Labels: map[string]string{
 						known.ClusterBootstrappingLabel: known.RBACDefaults,
 						known.ObjectCreatedByLabel:      known.ClusternetHubName,
