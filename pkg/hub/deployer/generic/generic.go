@@ -18,6 +18,7 @@ package generic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -240,7 +241,8 @@ func (deployer *Deployer) deleteDescription(desc *appsapi.Description) error {
 			wg.Add(1)
 			go func(resource *unstructured.Unstructured) {
 				defer wg.Done()
-
+				klog.V(5).Infof("deleting %s %s defined in Description %s", resource.GetKind(),
+					klog.KObj(resource), klog.KObj(desc))
 				err := deployer.deleteResourceWithRetry(dynamicClient, discoveryRESTMapper, resource, defaultRetries)
 				if err != nil {
 					errCh <- err
@@ -267,7 +269,8 @@ func (deployer *Deployer) deleteDescription(desc *appsapi.Description) error {
 	return err
 }
 
-func (deployer *Deployer) applyResourceWithRetry(dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured, retries int) error {
+func (deployer *Deployer) applyResourceWithRetry(dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
+	resource *unstructured.Unstructured, retries int) error {
 	// set UID as empty
 	resource.SetUID("")
 
@@ -321,21 +324,26 @@ func (deployer *Deployer) applyResourceWithRetry(dynamicClient dynamic.Interface
 	})
 }
 
-func (deployer *Deployer) deleteResourceWithRetry(dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured, retries int) error {
+func (deployer *Deployer) deleteResourceWithRetry(dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
+	resource *unstructured.Unstructured, retries int) error {
 	backoff := retry.DefaultBackoff
 	backoff.Steps = retries
 	deletePropagationBackground := metav1.DeletePropagationBackground
 	return wait.ExponentialBackoffWithContext(deployer.ctx, backoff, func() (done bool, err error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
-			return false, nil
+			msg := fmt.Sprintf("%v. Please check whether the advertised apiserver of current child cluster is accessible.", err)
+			klog.WarningDepth(5, msg)
+			return false, errors.New(msg)
 		}
 
-		if err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
-			Delete(context.TODO(), resource.GetName(), metav1.DeleteOptions{PropagationPolicy: &deletePropagationBackground}); err != nil {
-			return false, nil
+		err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+			Delete(context.TODO(), resource.GetName(), metav1.DeleteOptions{PropagationPolicy: &deletePropagationBackground})
+		if err == nil || (err != nil && apierrors.IsNotFound(err)) {
+			return true, nil
 		}
-		return true, nil
+		klog.ErrorDepth(5, "failed to delete %s %s: %v", resource.GetKind(), klog.KObj(resource), err)
+		return false, nil
 	})
 }
 
