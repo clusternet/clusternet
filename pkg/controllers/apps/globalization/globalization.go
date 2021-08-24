@@ -339,21 +339,23 @@ func (c *Controller) enqueue(glob *appsapi.Globalization) {
 
 func (c *Controller) getLabelsForPatching(glob *appsapi.Globalization) (map[string]*string, error) {
 	labelsToPatch := map[string]*string{}
-	if glob.Spec.Feed.Kind == chartKind.Kind {
-		charts, err := utils.ListChartsBySelector(c.chartLister, glob.Spec.Feed)
+	switch glob.Spec.Feed.Kind {
+	case chartKind.Kind:
+		chart, err := c.chartLister.HelmCharts(glob.Spec.Feed.Namespace).Get(glob.Spec.Feed.Name)
 		if err != nil {
 			return nil, err
 		}
-		for _, chart := range charts {
-			val, ok := glob.Labels[string(chart.UID)]
-			if !ok || val != chartKind.Kind {
-				labelsToPatch[string(chart.UID)] = &chartKind.Kind
-			}
+		val, ok := glob.Labels[string(chart.UID)]
+		if !ok || val != chartKind.Kind {
+			labelsToPatch[string(chart.UID)] = &chartKind.Kind
 		}
-	} else {
+	default:
 		manifests, err := utils.ListManifestsBySelector(c.manifestLister, glob.Spec.Feed)
 		if err != nil {
 			return nil, err
+		}
+		if manifests == nil {
+			return nil, fmt.Errorf("%s is not found for Globalization %s", utils.FormatFeed(glob.Spec.Feed), klog.KObj(glob))
 		}
 		for _, manifest := range manifests {
 			kind := manifest.Labels[known.ConfigKindLabel]
@@ -362,8 +364,8 @@ func (c *Controller) getLabelsForPatching(glob *appsapi.Globalization) (map[stri
 				labelsToPatch[string(manifest.UID)] = &kind
 			}
 		}
-	}
 
+	}
 	return labelsToPatch, nil
 }
 

@@ -88,12 +88,14 @@ type Feed struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
 	Kind string `json:"kind"`
 
 	// APIVersion defines the versioned schema of this representation of an object.
 	//
 	// +required
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
 	APIVersion string `json:"apiVersion"`
 
 	// Namespace of the target resource.
@@ -102,16 +104,11 @@ type Feed struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// Name of the target resource.
-	// Either Name or FeedSelector should be set.
 	//
-	// +optional
-	Name string `json:"name,omitempty"`
-
-	// FeedSelector selects all matching resources.
-	// FeedSelector will be ignored if Name is specified.
-	//
-	// +optional
-	FeedSelector *metav1.LabelSelector `json:"feedSelector,omitempty"`
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
+	Name string `json:"name"`
 }
 
 // +kubebuilder:object:root=true

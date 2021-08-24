@@ -165,7 +165,7 @@ func (c *Controller) addLocalization(obj interface{}) {
 		err = c.PatchLocalizationLabels(loc, labelsToPatch)
 	}
 	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Localization %s: %v",
 			klog.KObj(loc), err))
 		c.addLocalization(obj)
 		return
@@ -183,13 +183,13 @@ func (c *Controller) updateLocalization(old, cur interface{}) {
 		return
 	}
 
-	// label matching Feeds uid to Globalization
+	// label matching Feeds uid to Localization
 	labelsToPatch, err := c.getLabelsForPatching(newLoc)
 	if err == nil {
 		err = c.PatchLocalizationLabels(newLoc, labelsToPatch)
 	}
 	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Localization %s: %v",
 			klog.KObj(newLoc), err))
 		c.updateLocalization(old, cur)
 		return
@@ -339,21 +339,23 @@ func (c *Controller) enqueue(loc *appsapi.Localization) {
 
 func (c *Controller) getLabelsForPatching(loc *appsapi.Localization) (map[string]*string, error) {
 	labelsToPatch := map[string]*string{}
-	if loc.Spec.Feed.Kind == chartKind.Kind {
-		charts, err := utils.ListChartsBySelector(c.chartLister, loc.Spec.Feed)
+	switch loc.Spec.Feed.Kind {
+	case chartKind.Kind:
+		chart, err := c.chartLister.HelmCharts(loc.Spec.Feed.Namespace).Get(loc.Spec.Feed.Name)
 		if err != nil {
 			return nil, err
 		}
-		for _, chart := range charts {
-			val, ok := loc.Labels[string(chart.UID)]
-			if !ok || val != chartKind.Kind {
-				labelsToPatch[string(chart.UID)] = &chartKind.Kind
-			}
+		val, ok := loc.Labels[string(chart.UID)]
+		if !ok || val != chartKind.Kind {
+			labelsToPatch[string(chart.UID)] = &chartKind.Kind
 		}
-	} else {
+	default:
 		manifests, err := utils.ListManifestsBySelector(c.manifestLister, loc.Spec.Feed)
 		if err != nil {
 			return nil, err
+		}
+		if manifests == nil {
+			return nil, fmt.Errorf("%s is not found for Localization %s", utils.FormatFeed(loc.Spec.Feed), klog.KObj(loc))
 		}
 		for _, manifest := range manifests {
 			kind := manifest.Labels[known.ConfigKindLabel]

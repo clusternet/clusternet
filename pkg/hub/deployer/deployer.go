@@ -489,58 +489,60 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	var allManifests []*appsapi.Manifest
 
 	var err error
-	var charts []*appsapi.HelmChart
+	var index int
+	var chart *appsapi.HelmChart
 	var manifests []*appsapi.Manifest
-	for _, feed := range base.Spec.Feeds {
-		if feed.Kind == helmChartKind.Kind {
-			charts, err = utils.ListChartsBySelector(deployer.chartLister, feed)
-			if err == nil {
-				// verify HelmChart can be found
-				for _, chart := range charts {
-					if len(chart.Status.Phase) == 0 {
-						msg := fmt.Sprintf("HelmChart %s is in verifying", klog.KObj(chart))
-						klog.Warning(msg)
-						deployer.recorder.Event(base, corev1.EventTypeWarning, "VerifyingHelmChart", msg)
-						return fmt.Errorf(msg)
-					}
-
-					if chart.Status.Phase != appsapi.HelmChartFound {
-						deployer.recorder.Event(base, corev1.EventTypeWarning, "HelmChartNotFound",
-							fmt.Sprintf("helm chart %s is not found", klog.KObj(chart)))
-						return nil
-					} else {
-						allChartRefs = append(allChartRefs, appsapi.ChartReference{
-							Namespace: chart.Namespace,
-							Name:      chart.Name,
-						})
-					}
-				}
+	for idx, feed := range base.Spec.Feeds {
+		switch feed.Kind {
+		case helmChartKind.Kind:
+			chart, err = deployer.chartLister.HelmCharts(feed.Namespace).Get(feed.Name)
+			if err != nil {
+				break
 			}
-			if charts == nil {
-				err = apierrors.NewNotFound(schema.GroupResource{}, "")
+			if len(chart.Status.Phase) == 0 {
+				msg := fmt.Sprintf("HelmChart %s is in verifying", klog.KObj(chart))
+				klog.Warning(msg)
+				deployer.recorder.Event(base, corev1.EventTypeWarning, "VerifyingHelmChart", msg)
+				return fmt.Errorf(msg)
 			}
-		} else {
+			if chart.Status.Phase != appsapi.HelmChartFound {
+				deployer.recorder.Event(base, corev1.EventTypeWarning, "HelmChartNotFound",
+					fmt.Sprintf("helm chart %s is not found", klog.KObj(chart)))
+				return nil
+			} else {
+				allChartRefs = append(allChartRefs, appsapi.ChartReference{
+					Namespace: chart.Namespace,
+					Name:      chart.Name,
+				})
+			}
+		default:
 			manifests, err = utils.ListManifestsBySelector(deployer.mfstLister, feed)
-			if err == nil {
-				allManifests = append(allManifests, manifests...)
+			if err != nil {
+				break
 			}
+			allManifests = append(allManifests, manifests...)
 			if manifests == nil {
 				err = apierrors.NewNotFound(schema.GroupResource{}, "")
 			}
 		}
 
-		if apierrors.IsNotFound(err) {
-			msg := fmt.Sprintf("Base %s is using a nonexistent %s", klog.KObj(base), utils.FormatFeed(feed))
-			klog.Error(msg)
-			deployer.recorder.Event(base, corev1.EventTypeWarning, fmt.Sprintf("Nonexistent%s", feed.Kind), msg)
-			return errors.New(msg)
-		}
 		if err != nil {
-			msg := fmt.Sprintf("failed to get matched objects %q for Base %s: %v", utils.FormatFeed(feed), klog.KObj(base), err)
-			klog.Error(msg)
-			deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedRetrievingObjects", msg)
-			return err
+			index = idx
+			break
 		}
+	}
+
+	if apierrors.IsNotFound(err) {
+		msg := fmt.Sprintf("Base %s is using a nonexistent %s", klog.KObj(base), utils.FormatFeed(base.Spec.Feeds[index]))
+		klog.Error(msg)
+		deployer.recorder.Event(base, corev1.EventTypeWarning, fmt.Sprintf("Nonexistent%s", base.Spec.Feeds[index].Kind), msg)
+		return errors.New(msg)
+	}
+	if err != nil {
+		msg := fmt.Sprintf("failed to get matched objects %q for Base %s: %v", utils.FormatFeed(base.Spec.Feeds[index]), klog.KObj(base), err)
+		klog.Error(msg)
+		deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedRetrievingObjects", msg)
+		return err
 	}
 
 	allExistingDescriptions, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
@@ -771,14 +773,15 @@ func (deployer *Deployer) addLabelsToReferredFeeds(b *appsapi.Base) error {
 	var allManifests []*appsapi.Manifest
 	var allErrs []error
 	for _, feed := range b.Spec.Feeds {
-		if feed.Kind == helmChartKind.Kind {
-			charts, err := utils.ListChartsBySelector(deployer.chartLister, feed)
+		switch feed.Kind {
+		case helmChartKind.Kind:
+			chart, err := deployer.chartLister.HelmCharts(feed.Namespace).Get(feed.Name)
 			if err == nil {
-				allHelmCharts = append(allHelmCharts, charts...)
+				allHelmCharts = append(allHelmCharts, chart)
 			} else {
 				allErrs = append(allErrs, err)
 			}
-		} else {
+		default:
 			manifests, err := utils.ListManifestsBySelector(deployer.mfstLister, feed)
 			if err == nil {
 				allManifests = append(allManifests, manifests...)
@@ -791,7 +794,7 @@ func (deployer *Deployer) addLabelsToReferredFeeds(b *appsapi.Base) error {
 		return utilerrors.NewAggregate(allErrs)
 	}
 	if (allHelmCharts == nil || len(allHelmCharts) == 0) && (allManifests == nil || len(allManifests) == 0) {
-		return nil
+		return fmt.Errorf("feed sources declared in Base %s do not exist", klog.KObj(b))
 	}
 
 	labelsToPatch := map[string]*string{
@@ -921,14 +924,21 @@ func (deployer *Deployer) protectManifestFeed(manifest *appsapi.Manifest) error 
 	for _, sub := range subscriptions {
 		// in case some subscriptions do not exist any more, while labels still persist
 		if subUIDs.Has(string(sub.UID)) && sub.DeletionTimestamp == nil {
-			// in case this subscription does not use this manifest as a feed
-			inUse, err := utils.IsManifestUsedBySubscription(deployer.mfstLister, manifest, sub)
-			if err != nil {
-				return err
-			}
-			if inUse {
+			// perform strictly check
+			// whether this Manifest is still referred as a feed in Subscription
+			for _, feed := range sub.Spec.Feeds {
+				if feed.Kind != manifest.Labels[known.ConfigKindLabel] {
+					continue
+				}
+				if feed.Namespace != manifest.Labels[known.ConfigNamespaceLabel] {
+					continue
+				}
+				if feed.Name != manifest.Labels[known.ConfigNameLabel] {
+					continue
+				}
 				allRelatedSubscriptions = append(allRelatedSubscriptions, sub)
 				allSubInfos = append(allSubInfos, klog.KObj(sub).String())
+				break
 			}
 		}
 	}
@@ -958,8 +968,8 @@ func (deployer *Deployer) protectManifestFeed(manifest *appsapi.Manifest) error 
 		go func(sub *appsapi.Subscription) {
 			defer wg.Done()
 
-			if err := utils.RemoveFeedFromSubscription(context.TODO(), deployer.clusternetClient, manifest.GetLabels(),
-				sub, nil, deployer.mfstLister); err != nil {
+			if err := utils.RemoveFeedFromSubscription(context.TODO(),
+				deployer.clusternetClient, manifest.GetLabels(), sub); err != nil {
 				errCh <- err
 			}
 		}(sub)

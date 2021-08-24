@@ -58,6 +58,7 @@ import (
 )
 
 var (
+	helmChartKind    = appsapi.SchemeGroupVersion.WithKind("HelmChart")
 	descriptionKind  = appsapi.SchemeGroupVersion.WithKind("Description")
 	subscriptionKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
 )
@@ -635,14 +636,21 @@ func (deployer *Deployer) protectHelmChartFeed(chart *appsapi.HelmChart) error {
 	for _, sub := range subscriptions {
 		// in case some subscriptions do not exist any more, while labels still persist
 		if subUIDs.Has(string(sub.UID)) && sub.DeletionTimestamp == nil {
-			// in case this subscription does not use this manifest as a feed
-			inUse, err := utils.IsHelmChartUsedBySubscription(deployer.chartLister, chart, sub)
-			if err != nil {
-				return err
-			}
-			if inUse {
+			// perform strictly check
+			// whether this HelmChart is still referred as a feed in Subscription
+			for _, feed := range sub.Spec.Feeds {
+				if feed.Kind != helmChartKind.Kind {
+					continue
+				}
+				if feed.Namespace != chart.Namespace {
+					continue
+				}
+				if feed.Name != chart.Name {
+					continue
+				}
 				allRelatedSubscriptions = append(allRelatedSubscriptions, sub)
 				allSubInfos = append(allSubInfos, klog.KObj(sub).String())
+				break
 			}
 		}
 	}
@@ -672,8 +680,8 @@ func (deployer *Deployer) protectHelmChartFeed(chart *appsapi.HelmChart) error {
 		go func(sub *appsapi.Subscription) {
 			defer wg.Done()
 
-			if err := utils.RemoveFeedFromSubscription(context.TODO(), deployer.clusternetClient, chart.GetLabels(),
-				sub, deployer.chartLister, nil); err != nil {
+			if err := utils.RemoveFeedFromSubscription(context.TODO(),
+				deployer.clusternetClient, chart.GetLabels(), sub); err != nil {
 				errCh <- err
 			}
 		}(sub)
