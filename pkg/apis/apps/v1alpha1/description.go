@@ -66,6 +66,7 @@ type DescriptionStatus struct {
 	// +optional
 	// +kubebuilder:validation:Enum=Pending;Success;Failure
 	Phase DescriptionPhase `json:"phase,omitempty"`
+
 	// Reason indicates the reason of DescriptionPhase
 	// +optional
 	Reason string `json:"reason,omitempty"`
