@@ -28,7 +28,7 @@ import (
 // +kubebuilder:resource:scope="Cluster",shortName=glob;global,categories=clusternet
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
-// Globalization represents the cluster-scoped override rule for a group of resources.
+// Globalization represents the cluster-scoped override config for a group of resources.
 type Globalization struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -51,10 +51,10 @@ type GlobalizationSpec struct {
 	// +optional
 	ClusterAffinity *metav1.LabelSelector `json:"clusterAffinity,omitempty"`
 
-	// Overrides holds all the OverrideRule.
+	// Overrides holds all the OverrideConfig.
 	//
 	// +optional
-	Overrides []OverrideRule `json:"overrides,omitempty"`
+	Overrides []OverrideConfig `json:"overrides,omitempty"`
 
 	// Priority is an integer defining the relative importance of this Globalization compared to others. Lower
 	// numbers are considered lower priority.

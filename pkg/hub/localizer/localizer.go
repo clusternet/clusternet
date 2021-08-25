@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/apps/localization"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -38,6 +40,15 @@ type Localizer struct {
 	ctx context.Context
 
 	clusternetClient *clusternetclientset.Clientset
+
+	locLister      applisters.LocalizationLister
+	locSynced      cache.InformerSynced
+	globLister     applisters.GlobalizationLister
+	globSynced     cache.InformerSynced
+	chartLister    applisters.HelmChartLister
+	chartSynced    cache.InformerSynced
+	manifestLister applisters.ManifestLister
+	manifestSynced cache.InformerSynced
 
 	locController  *localization.Controller
 	globController *globalization.Controller
@@ -53,6 +64,14 @@ func NewLocalizer(ctx context.Context,
 	localizer := &Localizer{
 		ctx:              ctx,
 		clusternetClient: clusternetClient,
+		locLister:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Lister(),
+		locSynced:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer().HasSynced,
+		globLister:       clusternetInformerFactory.Apps().V1alpha1().Globalizations().Lister(),
+		globSynced:       clusternetInformerFactory.Apps().V1alpha1().Globalizations().Informer().HasSynced,
+		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
+		manifestLister:   clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
+		manifestSynced:   clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
 		recorder:         recorder,
 	}
 
@@ -84,6 +103,17 @@ func NewLocalizer(ctx context.Context,
 
 func (l *Localizer) Run(workers int) {
 	klog.Info("starting Clusternet localizer ...")
+
+	// Wait for the caches to be synced before starting workers
+	klog.V(5).Info("waiting for informer caches to sync")
+	if !cache.WaitForCacheSync(l.ctx.Done(),
+		l.locSynced,
+		l.globSynced,
+		l.chartSynced,
+		l.manifestSynced,
+	) {
+		return
+	}
 
 	go l.locController.Run(workers, l.ctx.Done())
 	go l.globController.Run(workers, l.ctx.Done())
