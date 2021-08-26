@@ -129,6 +129,7 @@ func NewDeployer(ctx context.Context,
 		clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
+		deployer.recorder,
 		deployer.handleHelmRelease)
 	if err != nil {
 		return nil, err
@@ -138,6 +139,7 @@ func NewDeployer(ctx context.Context,
 	secretController, err := secret.NewController(ctx,
 		kubeClient,
 		kubeInformerFactory.Core().V1().Secrets(),
+		deployer.recorder,
 		deployer.handleSecret)
 	if err != nil {
 		return nil, err

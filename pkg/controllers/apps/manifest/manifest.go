@@ -285,7 +285,13 @@ func (c *Controller) syncHandler(key string) error {
 	manifest.Kind = controllerKind.Kind
 	manifest.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(manifest)
+	err = c.syncHandlerFunc(manifest)
+	if err != nil {
+		c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(manifest, corev1.EventTypeNormal, "Synced", "Manifest synced successfully")
+	}
+	return err
 }
 
 // enqueue takes a Manifest resource and converts it into a namespace/name

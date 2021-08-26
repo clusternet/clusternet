@@ -330,7 +330,13 @@ func (c *Controller) syncHandler(key string) error {
 	desc.Kind = controllerKind.Kind
 	desc.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(desc)
+	err = c.syncHandlerFunc(desc)
+	if err != nil {
+		c.recorder.Event(desc, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(desc, corev1.EventTypeNormal, "Synced", "Description synced successfully")
+	}
+	return err
 }
 
 func (c *Controller) UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus) error {
