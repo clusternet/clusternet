@@ -45,10 +45,10 @@ type Manager struct {
 	managedCluster *clusterapi.ManagedCluster
 }
 
-func NewStatusManager(apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, statusCollectFrequency metav1.Duration, statusReportFrequency metav1.Duration) *Manager {
+func NewStatusManager(ctx context.Context, apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, statusCollectFrequency metav1.Duration, statusReportFrequency metav1.Duration) *Manager {
 	return &Manager{
 		statusReportFrequency:   statusReportFrequency,
-		clusterStatusController: clusterstatus.NewController(apiserverURL, parentAPIServerURL, kubeClient, statusCollectFrequency),
+		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL, parentAPIServerURL, kubeClient, statusCollectFrequency),
 	}
 }
 

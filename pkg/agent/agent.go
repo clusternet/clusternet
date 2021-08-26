@@ -95,7 +95,7 @@ func NewAgent(ctx context.Context, childKubeConfigFile string, regOpts *ClusterR
 		Identity:           identity,
 		childKubeClientSet: childKubeClientSet,
 		Options:            regOpts,
-		statusManager:      NewStatusManager(childKubeConfig.Host, regOpts.ParentURL, childKubeClientSet, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
+		statusManager:      NewStatusManager(ctx, childKubeConfig.Host, regOpts.ParentURL, childKubeClientSet, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
 		deployer:           NewDeployer(regOpts.ClusterSyncMode, childKubeConfig.Host, childKubeClientSet),
 	}
 	return agent, nil
