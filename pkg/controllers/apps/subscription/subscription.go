@@ -322,7 +322,13 @@ func (c *Controller) syncHandler(key string) error {
 	sub.Kind = controllerKind.Kind
 	sub.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(sub)
+	err = c.syncHandlerFunc(sub)
+	if err != nil {
+		c.recorder.Event(sub, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(sub, corev1.EventTypeNormal, "Synced", "Subscription synced successfully")
+	}
+	return err
 }
 
 func (c *Controller) UpdateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {

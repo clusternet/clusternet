@@ -23,11 +23,13 @@ import (
 	"time"
 
 	"helm.sh/helm/v3/pkg/release"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -61,12 +63,13 @@ type Controller struct {
 	hrLister   applisters.HelmReleaseLister
 	hrSynced   cache.InformerSynced
 
+	recorder        record.EventRecorder
 	syncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
 	descInformer appinformers.DescriptionInformer, hrInformer appinformers.HelmReleaseInformer,
-	syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
@@ -79,6 +82,7 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 		descSynced:       descInformer.Informer().HasSynced,
 		hrLister:         hrInformer.Lister(),
 		hrSynced:         hrInformer.Informer().HasSynced,
+		recorder:         recorder,
 		syncHandlerFunc:  syncHandlerFunc,
 	}
 
@@ -254,7 +258,13 @@ func (c *Controller) syncHandler(key string) error {
 	hr.Kind = controllerKind.Kind
 	hr.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(hr)
+	err = c.syncHandlerFunc(hr)
+	if err != nil {
+		c.recorder.Event(hr, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(hr, corev1.EventTypeNormal, "Synced", "HelmRelease synced successfully")
+	}
+	return err
 }
 
 func (c *Controller) UpdateHelmReleaseStatus(hr *appsapi.HelmRelease, status *appsapi.HelmReleaseStatus) error {

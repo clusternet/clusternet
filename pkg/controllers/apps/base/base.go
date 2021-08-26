@@ -355,7 +355,13 @@ func (c *Controller) syncHandler(key string) error {
 	base.Kind = controllerKind.Kind
 	base.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(base)
+	err = c.syncHandlerFunc(base)
+	if err != nil {
+		c.recorder.Event(base, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(base, corev1.EventTypeNormal, "Synced", "Base synced successfully")
+	}
+	return err
 }
 
 // enqueue takes a Base resource and converts it into a namespace/name

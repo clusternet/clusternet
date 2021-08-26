@@ -295,7 +295,13 @@ func (c *Controller) syncHandler(key string) error {
 	chart.Kind = controllerKind.Kind
 	chart.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(chart)
+	err = c.syncHandlerFunc(chart)
+	if err != nil {
+		c.recorder.Event(chart, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(chart, corev1.EventTypeNormal, "Synced", "HelmChart synced successfully")
+	}
+	return err
 }
 
 func (c *Controller) UpdateChartStatus(chart *appsapi.HelmChart, status *appsapi.HelmChartStatus) error {

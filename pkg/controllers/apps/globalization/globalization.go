@@ -316,7 +316,13 @@ func (c *Controller) syncHandler(key string) error {
 	glob.Kind = controllerKind.Kind
 	glob.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(glob)
+	err = c.syncHandlerFunc(glob)
+	if err != nil {
+		c.recorder.Event(glob, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(glob, corev1.EventTypeNormal, "Synced", "Globalization synced successfully")
+	}
+	return err
 }
 
 // enqueue takes a Globalization resource and converts it into a namespace/name

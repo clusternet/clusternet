@@ -316,7 +316,13 @@ func (c *Controller) syncHandler(key string) error {
 	loc.Kind = controllerKind.Kind
 	loc.APIVersion = controllerKind.Version
 
-	return c.syncHandlerFunc(loc)
+	err = c.syncHandlerFunc(loc)
+	if err != nil {
+		c.recorder.Event(loc, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(loc, corev1.EventTypeNormal, "Synced", "Localization synced successfully")
+	}
+	return err
 }
 
 // enqueue takes a Localization resource and converts it into a namespace/name

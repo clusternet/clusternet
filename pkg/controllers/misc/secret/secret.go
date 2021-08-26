@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	coreapi "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	coreListers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -38,9 +39,9 @@ import (
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
-var controllerKind = coreapi.SchemeGroupVersion.WithKind("Secret")
+var controllerKind = corev1.SchemeGroupVersion.WithKind("Secret")
 
-type SyncHandlerFunc func(secret *coreapi.Secret) error
+type SyncHandlerFunc func(secret *corev1.Secret) error
 
 // Controller is a controller that handle Secret
 // here we only foucs on Secret "child-cluster-deployer" !!!
@@ -59,11 +60,13 @@ type Controller struct {
 	secretLister coreListers.SecretLister
 	secretSynced cache.InformerSynced
 
+	recorder    record.EventRecorder
 	SyncHandler SyncHandlerFunc
 }
 
 func NewController(ctx context.Context, kubeclient kubernetes.Interface,
-	secretInformer coreInformers.SecretInformer, syncHandler SyncHandlerFunc) (*Controller, error) {
+	secretInformer coreInformers.SecretInformer,
+	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
@@ -74,6 +77,7 @@ func NewController(ctx context.Context, kubeclient kubernetes.Interface,
 		workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "secret"),
 		secretLister: secretInformer.Lister(),
 		secretSynced: secretInformer.Informer().HasSynced,
+		recorder:     recorder,
 		SyncHandler:  syncHandler,
 	}
 
@@ -115,7 +119,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 }
 
 func (c *Controller) addSecret(obj interface{}) {
-	secret := obj.(*coreapi.Secret)
+	secret := obj.(*corev1.Secret)
 
 	if secret.Name != known.ChildClusterSecretName {
 		return
@@ -144,7 +148,7 @@ func (c *Controller) addSecret(obj interface{}) {
 }
 
 func (c *Controller) updateSecret(old, cur interface{}) {
-	secret := cur.(*coreapi.Secret)
+	secret := cur.(*corev1.Secret)
 	if secret.Name != known.ChildClusterSecretName {
 		return
 	}
@@ -156,14 +160,14 @@ func (c *Controller) updateSecret(old, cur interface{}) {
 }
 
 func (c *Controller) deleteSecret(obj interface{}) {
-	secret, ok := obj.(*coreapi.Secret)
+	secret, ok := obj.(*corev1.Secret)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		secret, ok = tombstone.Obj.(*coreapi.Secret)
+		secret, ok = tombstone.Obj.(*corev1.Secret)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Secret %#v", obj))
 			return
@@ -271,13 +275,19 @@ func (c *Controller) syncHandler(key string) error {
 	secret.Kind = controllerKind.Kind
 	secret.APIVersion = controllerKind.Version
 
-	return c.SyncHandler(secret)
+	err = c.SyncHandler(secret)
+	if err != nil {
+		c.recorder.Event(secret, corev1.EventTypeWarning, "FailedSynced", err.Error())
+	} else {
+		c.recorder.Event(secret, corev1.EventTypeNormal, "Synced", "Secret synced successfully")
+	}
+	return err
 }
 
 // enqueue takes a Secret resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
 // passed resources of any type other than Secret.
-func (c *Controller) enqueue(secret *coreapi.Secret) {
+func (c *Controller) enqueue(secret *corev1.Secret) {
 	key, err := cache.MetaNamespaceKeyFunc(secret)
 	if err != nil {
 		utilruntime.HandleError(err)
