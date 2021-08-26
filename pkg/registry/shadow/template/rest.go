@@ -479,6 +479,22 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 
 func (r *REST) generateNameForManifest(namespace, name string) string {
 	resource, _ := r.getResourceName()
+	// resource is a word ("[a-z]([-a-z0-9]*[a-z0-9])?") without "."
+	// namespace is a word ("[a-z]([-a-z0-9]*[a-z0-9])?") without "."
+	// so we use "." for concatenation
+	if r.namespaced {
+		return fmt.Sprintf("%s.%s.%s", resource, namespace, name)
+	}
+	return fmt.Sprintf("%s.%s", resource, name)
+}
+
+// DEPRECATED
+// use hyphens for concatenation may lead to conflicts, such as
+// - resource "foos" with name "lovely-panda" in namespace "bar"
+// - resource "foos" with name "panda" in namespace "bar-lovely"
+// will map a same Manifest object with name "foos-bar-lovely-panda"
+func (r *REST) generateLegacyNameForManifest(namespace, name string) string {
+	resource, _ := r.getResourceName()
 	if r.namespaced {
 		return fmt.Sprintf("%s-%s-%s", resource, namespace, name)
 	}
