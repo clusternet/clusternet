@@ -103,12 +103,18 @@ spec:
                       description: Name indicate the OverrideConfig name.
                       type: string
                     type:
-                      default: Helm
                       description: Type specifies the override type for override value.
+                      enum:
+                      - Helm
+                      - JSONPatch
+                      - MergePatch
                       type: string
                     value:
                       description: Value represents override value.
                       type: string
+                  required:
+                  - type
+                  - value
                   type: object
                 type: array
               priority:

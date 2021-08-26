@@ -77,16 +77,21 @@ const (
 
 type OverrideType string
 
-// Available values for OverrideType are: JSONPatch, StrategicMergePatch and HelmValues.
 const (
-	// JsonPatchOverride apply JSONPatch for all matched objects (excluding HelmChart).
-	JSONPatchOverride OverrideType = "JSONPatch"
+	// HelmType applies Helm values for all matched HelmCharts.
+	// Note: HelmType only works with HelmChart(s).
+	HelmType OverrideType = "Helm"
 
-	// StrategicMergePatchOverride apply Strategic MergePatch for all matched objects (excluding HelmChart).
-	StrategicMergePatchOverride OverrideType = "StrategicMergePatch"
+	// JSONPatchType applies a json patch for all matched objects.
+	// Note: JSONPatchType does not work with HelmChart(s).
+	JSONPatchType OverrideType = "JSONPatch"
 
-	// HelmOverride apply Helm values for all matched HelmCharts.
-	HelmOverride OverrideType = "Helm"
+	// MergePatchType applies a json merge patch for all matched objects.
+	// Note: MergePatchType does not work with HelmChart(s).
+	MergePatchType OverrideType = "MergePatch"
+
+	// StrategicMergePatchType won't be supported, since `patchStrategy`
+	// and `patchMergeKey` can not be retrieved.
 )
 
 // OverrideConfig holds information that describes a override config.
@@ -98,15 +103,18 @@ type OverrideConfig struct {
 
 	// Value represents override value.
 	//
-	// +optional
-	Value string `json:"value,omitempty"`
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
+	Value string `json:"value"`
 
 	// Type specifies the override type for override value.
 	//
-	// +optional
+	// +required
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:default=Helm
-	Type OverrideType `json:"type,omitempty"`
+	// +kubebuilder:validation:Enum=Helm;JSONPatch;MergePatch
+	Type OverrideType `json:"type"`
 }
 
 // +kubebuilder:object:root=true

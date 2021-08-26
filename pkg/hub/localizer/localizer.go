@@ -18,9 +18,17 @@ package localizer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -33,6 +41,10 @@ import (
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
+)
+
+var (
+	chartKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
 )
 
 // Localizer defines configuration for the application localization
@@ -152,7 +164,123 @@ func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 }
 
 func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error {
-	// TODO
+	var allErrs []error
+	descCopy := desc.DeepCopy()
+	switch descCopy.Spec.Deployer {
+	case appsapi.DescriptionHelmDeployer:
+		for idx, chartRef := range descCopy.Spec.Charts {
+			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+				Kind:       chartKind.Kind,
+				APIVersion: chartKind.Version,
+				Namespace:  chartRef.Namespace,
+				Name:       chartRef.Name,
+			})
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
 
-	return nil
+			result, err := applyOverrides([]byte(""), overrides)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+			desc.Spec.Raw[idx] = result
+		}
+		return utilerrors.NewAggregate(allErrs)
+	case appsapi.DescriptionGenericDeployer:
+		for idx, rawObject := range descCopy.Spec.Raw {
+			obj := &unstructured.Unstructured{}
+			if err := json.Unmarshal(rawObject, obj); err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+
+			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+				Kind:       obj.GetKind(),
+				APIVersion: obj.GetAPIVersion(),
+				Namespace:  obj.GetNamespace(),
+				Name:       obj.GetName(),
+			})
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+
+			result, err := applyOverrides(rawObject, overrides)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+			desc.Spec.Raw[idx] = result
+		}
+		return utilerrors.NewAggregate(allErrs)
+	default:
+		return fmt.Errorf("unsupported deployer %s", descCopy.Spec.Deployer)
+	}
+}
+
+func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi.OverrideConfig, error) {
+	var uid types.UID
+	switch feed.Kind {
+	case chartKind.Kind:
+		chart, err := l.chartLister.HelmCharts(feed.Namespace).Get(feed.Name)
+		if err != nil {
+			return nil, err
+		}
+		uid = chart.UID
+	default:
+		manifests, err := utils.ListManifestsBySelector(l.manifestLister, feed)
+		if err != nil {
+			return nil, err
+		}
+		if manifests == nil {
+			return nil, apierrors.NewNotFound(schema.GroupResource{Resource: feed.Kind}, feed.Name)
+		}
+		uid = manifests[0].UID
+	}
+
+	globs, err := l.globLister.List(labels.SelectorFromSet(labels.Set{
+		string(uid): feed.Kind,
+	}))
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(globs, func(i, j int) bool {
+		if globs[i].Spec.Priority < globs[j].Spec.Priority {
+			return true
+		}
+
+		return globs[i].CreationTimestamp.Second() < globs[j].CreationTimestamp.Second()
+	})
+
+	locs, err := l.locLister.Localizations(namespace).List(labels.SelectorFromSet(labels.Set{
+		string(uid): feed.Kind,
+	}))
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(locs, func(i, j int) bool {
+		if locs[i].Spec.Priority < locs[j].Spec.Priority {
+			return true
+		}
+
+		return locs[i].CreationTimestamp.Second() < locs[j].CreationTimestamp.Second()
+	})
+
+	var allOverrideConfigs []appsapi.OverrideConfig
+	for _, glob := range globs {
+		if glob.DeletionTimestamp != nil {
+			continue
+		}
+		allOverrideConfigs = append(allOverrideConfigs, glob.Spec.Overrides...)
+	}
+	for _, loc := range locs {
+		if loc.DeletionTimestamp != nil {
+			continue
+		}
+		allOverrideConfigs = append(allOverrideConfigs, loc.Spec.Overrides...)
+	}
+
+	return allOverrideConfigs, nil
 }
