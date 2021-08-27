@@ -47,41 +47,11 @@ spec:
                   apiVersion:
                     description: APIVersion defines the versioned schema of this representation of an object.
                     type: string
-                  feedSelector:
-                    description: FeedSelector selects all matching resources. FeedSelector will be ignored if Name is specified.
-                    properties:
-                      matchExpressions:
-                        description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
-                        items:
-                          description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
-                          properties:
-                            key:
-                              description: key is the label key that the selector applies to.
-                              type: string
-                            operator:
-                              description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
-                              type: string
-                            values:
-                              description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
-                              items:
-                                type: string
-                              type: array
-                          required:
-                          - key
-                          - operator
-                          type: object
-                        type: array
-                      matchLabels:
-                        additionalProperties:
-                          type: string
-                        description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
-                        type: object
-                    type: object
                   kind:
                     description: Kind is a string value representing the REST resource this object represents. In CamelCase.
                     type: string
                   name:
-                    description: Name of the target resource. Either Name or FeedSelector should be set.
+                    description: Name of the target resource.
                     type: string
                   namespace:
                     description: Namespace of the target resource.
@@ -89,6 +59,7 @@ spec:
                 required:
                 - apiVersion
                 - kind
+                - name
                 type: object
               overridePolicy:
                 default: ApplyLater

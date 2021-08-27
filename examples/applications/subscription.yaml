@@ -22,6 +22,5 @@ spec:
       namespace: foo
     - apiVersion: apps/v1
       kind: Deployment
-      feedSelector: # we could also use feedSelector to select resources
-        matchLabels:
-          clusternet-app: multi-cluster-nginx
+      name: my-nginx
+      namespace: foo

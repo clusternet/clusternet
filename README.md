@@ -163,7 +163,10 @@ $ # here we use the token created above
 $ PARENTURL=https://192.168.10.10 REGTOKEN=07401b.f395accd246ae52d envsubst < ./deploy/templates/clusternet_agent_secret.yaml | kubectl apply -f -
 ```
 
-The `PARENTURL` above is the apiserver address of the parent cluster that you want to register to, the `https` scheme must be specified and it is the only one supported at the moment. If the apiserver is not listening on the standard https port (:443), please specify the port number in the URL to ensure the agent connects to the right endpoint, for instance, `https://192.168.10.10:6443`.
+The `PARENTURL` above is the apiserver address of the parent cluster that you want to register to, the `https` scheme
+must be specified and it is the only one supported at the moment. If the apiserver is not listening on the standard
+https port (:443), please specify the port number in the URL to ensure the agent connects to the right endpoint, for
+instance, `https://192.168.10.10:6443`.
 
 ```bash
 $ # before deploying, you could update the SyncMode if needed
@@ -518,9 +521,8 @@ spec:
       namespace: foo
     - apiVersion: apps/v1
       kind: Deployment
-      feedSelector: # we could also use feedSelector to select resources
-        matchLabels:
-          clusternet-app: multi-cluster-nginx
+      name: my-nginx
+      namespace: foo
 ```
 
 Before applying this `Subscription`, please
