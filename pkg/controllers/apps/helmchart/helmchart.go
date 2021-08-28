@@ -125,43 +125,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addHelmChart(obj interface{}) {
 	chart := obj.(*appsapi.HelmChart)
 	klog.V(4).Infof("adding HelmChart %q", klog.KObj(chart))
-
-	// add finalizers and append Clusternet labels
-	if chart.DeletionTimestamp == nil {
-		updatedChart := chart.DeepCopy()
-		if !utils.ContainsString(updatedChart.Finalizers, known.AppFinalizer) {
-			updatedChart.Finalizers = append(updatedChart.Finalizers, known.AppFinalizer)
-		}
-		if !utils.ContainsString(updatedChart.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
-			updatedChart.Finalizers = append(updatedChart.Finalizers, known.FeedProtectionFinalizer)
-		}
-		// append Clusternet labels
-		if updatedChart.Labels == nil {
-			updatedChart.Labels = map[string]string{}
-		}
-		updatedChart.Labels[known.ConfigGroupLabel] = controllerKind.Group
-		updatedChart.Labels[known.ConfigVersionLabel] = controllerKind.Version
-		updatedChart.Labels[known.ConfigKindLabel] = controllerKind.Kind
-		updatedChart.Labels[known.ConfigNameLabel] = chart.Name
-		updatedChart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
-
-		// only update on changed
-		if !reflect.DeepEqual(chart, updatedChart) {
-			if _, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(),
-				chart, metav1.UpdateOptions{}); err == nil {
-				msg := fmt.Sprintf("successfully inject finalizers to HelmChart %s", klog.KObj(chart))
-				klog.V(4).Info(msg)
-				c.recorder.Event(chart, corev1.EventTypeNormal, "FinalizerInjected", msg)
-			} else {
-				msg := fmt.Sprintf("failed to inject finalizers to HelmChart %s: %v", klog.KObj(chart), err)
-				klog.WarningDepth(4, msg)
-				c.recorder.Event(chart, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-				c.addHelmChart(obj)
-				return
-			}
-		}
-	}
-
 	c.enqueue(chart)
 }
 
@@ -176,7 +139,7 @@ func (c *Controller) updateHelmChart(old, cur interface{}) {
 
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldChart.Spec, newChart.Spec) {
-		klog.V(4).Infof("no updates on the spec of HelmChart %q, skipping syncing", oldChart.Name)
+		klog.V(4).Infof("no updates on the spec of HelmChart %s, skipping syncing", klog.KObj(oldChart))
 		return
 	}
 
@@ -292,9 +255,44 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	if chart.DeletionTimestamp == nil {
+		updatedChart := chart.DeepCopy()
+
+		// add finalizer
+		if !utils.ContainsString(updatedChart.Finalizers, known.AppFinalizer) {
+			updatedChart.Finalizers = append(updatedChart.Finalizers, known.AppFinalizer)
+		}
+		if !utils.ContainsString(updatedChart.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
+			updatedChart.Finalizers = append(updatedChart.Finalizers, known.FeedProtectionFinalizer)
+		}
+
+		// append Clusternet labels
+		if updatedChart.Labels == nil {
+			updatedChart.Labels = map[string]string{}
+		}
+		updatedChart.Labels[known.ConfigGroupLabel] = controllerKind.Group
+		updatedChart.Labels[known.ConfigVersionLabel] = controllerKind.Version
+		updatedChart.Labels[known.ConfigKindLabel] = controllerKind.Kind
+		updatedChart.Labels[known.ConfigNameLabel] = chart.Name
+		updatedChart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
+
+		// only update on changed
+		if !reflect.DeepEqual(chart, updatedChart) {
+			if chart, err = c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(),
+				updatedChart, metav1.UpdateOptions{}); err != nil {
+				msg := fmt.Sprintf("failed to inject finalizers to HelmChart %s: %v", klog.KObj(chart), err)
+				klog.WarningDepth(4, msg)
+				c.recorder.Event(chart, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+				return err
+			}
+			msg := fmt.Sprintf("successfully inject finalizers to HelmChart %s", klog.KObj(chart))
+			klog.V(4).Info(msg)
+			c.recorder.Event(chart, corev1.EventTypeNormal, "FinalizerInjected", msg)
+		}
+	}
+
 	chart.Kind = controllerKind.Kind
 	chart.APIVersion = controllerKind.Version
-
 	err = c.syncHandlerFunc(chart)
 	if err != nil {
 		c.recorder.Event(chart, corev1.EventTypeWarning, "FailedSynced", err.Error())

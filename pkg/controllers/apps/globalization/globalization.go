@@ -138,39 +138,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addGlobalization(obj interface{}) {
 	glob := obj.(*appsapi.Globalization)
 	klog.V(4).Infof("adding Globalization %q", klog.KObj(glob))
-
-	// add finalizer
-	if !utils.ContainsString(glob.Finalizers, known.AppFinalizer) && glob.DeletionTimestamp == nil {
-		glob.Finalizers = append(glob.Finalizers, known.AppFinalizer)
-		_, err := c.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(),
-			glob, metav1.UpdateOptions{})
-		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Globalization %s",
-				known.AppFinalizer, klog.KObj(glob))
-			klog.V(4).Info(msg)
-			c.recorder.Event(glob, corev1.EventTypeNormal, "FinalizerInjected", msg)
-		} else {
-			msg := fmt.Sprintf("failed to inject finalizer %s to Globalization %s: %v",
-				known.AppFinalizer, klog.KObj(glob), err)
-			klog.WarningDepth(4, msg)
-			c.recorder.Event(glob, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-			c.addGlobalization(obj)
-			return
-		}
-	}
-
-	// label matching Feeds uid to Globalization
-	labelsToPatch, err := c.getLabelsForPatching(glob)
-	if err == nil {
-		err = c.PatchGlobalizationLabels(glob, labelsToPatch)
-	}
-	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
-			klog.KObj(glob), err))
-		c.addGlobalization(obj)
-		return
-	}
-
 	c.enqueue(glob)
 }
 
@@ -183,21 +150,9 @@ func (c *Controller) updateGlobalization(old, cur interface{}) {
 		return
 	}
 
-	// label matching Feeds uid to Globalization
-	labelsToPatch, err := c.getLabelsForPatching(newGlob)
-	if err == nil {
-		err = c.PatchGlobalizationLabels(newGlob, labelsToPatch)
-	}
-	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
-			klog.KObj(newGlob), err))
-		c.updateGlobalization(old, cur)
-		return
-	}
-
-	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldGlob.Spec, newGlob.Spec) {
-		klog.V(4).Infof("no updates on the spec of Globalization %q, skipping syncing", oldGlob.Name)
+	if reflect.DeepEqual(oldGlob.Labels, newGlob.Labels) && reflect.DeepEqual(oldGlob.Spec, newGlob.Spec) {
+		// Decide whether discovery has reported labels or spec change.
+		klog.V(4).Infof("no updates on the labels and spec of Globalization %s, skipping syncing", klog.KObj(oldGlob))
 		return
 	}
 
@@ -313,9 +268,37 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	// add finalizer
+	if !utils.ContainsString(glob.Finalizers, known.AppFinalizer) && glob.DeletionTimestamp == nil {
+		glob.Finalizers = append(glob.Finalizers, known.AppFinalizer)
+		glob, err = c.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(),
+			glob, metav1.UpdateOptions{})
+		if err != nil {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Globalization %s: %v",
+				known.AppFinalizer, klog.KObj(glob), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(glob, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			return err
+		}
+		msg := fmt.Sprintf("successfully inject finalizer %s to Globalization %s",
+			known.AppFinalizer, klog.KObj(glob))
+		klog.V(4).Info(msg)
+		c.recorder.Event(glob, corev1.EventTypeNormal, "FinalizerInjected", msg)
+	}
+
+	// label matching Feeds uid to Globalization
+	labelsToPatch, err := c.getLabelsForPatching(glob)
+	if err == nil {
+		glob, err = c.patchGlobalizationLabels(glob, labelsToPatch)
+	}
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Globalization %s: %v",
+			klog.KObj(glob), err))
+		return err
+	}
+
 	glob.Kind = controllerKind.Kind
 	glob.APIVersion = controllerKind.Version
-
 	err = c.syncHandlerFunc(glob)
 	if err != nil {
 		c.recorder.Event(glob, corev1.EventTypeWarning, "FailedSynced", err.Error())
@@ -339,6 +322,9 @@ func (c *Controller) enqueue(glob *appsapi.Globalization) {
 
 func (c *Controller) getLabelsForPatching(glob *appsapi.Globalization) (map[string]*string, error) {
 	labelsToPatch := map[string]*string{}
+	if glob.DeletionTimestamp != nil {
+		return labelsToPatch, nil
+	}
 	switch glob.Spec.Feed.Kind {
 	case chartKind.Kind:
 		chart, err := c.chartLister.HelmCharts(glob.Spec.Feed.Namespace).Get(glob.Spec.Feed.Name)
@@ -369,22 +355,21 @@ func (c *Controller) getLabelsForPatching(glob *appsapi.Globalization) (map[stri
 	return labelsToPatch, nil
 }
 
-func (c *Controller) PatchGlobalizationLabels(glob *appsapi.Globalization, labels map[string]*string) error {
-	klog.V(5).Infof("patching Globalization labels")
-	if len(labels) == 0 {
-		return nil
+func (c *Controller) patchGlobalizationLabels(glob *appsapi.Globalization, labels map[string]*string) (*appsapi.Globalization, error) {
+	if glob.DeletionTimestamp != nil || len(labels) == 0 {
+		return glob, nil
 	}
 
+	klog.V(5).Infof("patching Globalization %s labels", klog.KObj(glob))
 	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
 	patchData, err := json.Marshal(option)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = c.clusternetClient.AppsV1alpha1().Globalizations().Patch(context.TODO(),
+	return c.clusternetClient.AppsV1alpha1().Globalizations().Patch(context.TODO(),
 		glob.Name,
 		types.MergePatchType,
 		patchData,
 		metav1.PatchOptions{})
-	return err
 }

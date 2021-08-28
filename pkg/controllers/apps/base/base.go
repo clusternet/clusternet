@@ -129,37 +129,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addBase(obj interface{}) {
 	base := obj.(*appsapi.Base)
 	klog.V(4).Infof("adding Base %q", klog.KObj(base))
-
-	// add finalizer
-	if !utils.ContainsString(base.Finalizers, known.AppFinalizer) && base.DeletionTimestamp == nil {
-		base.Finalizers = append(base.Finalizers, known.AppFinalizer)
-		_, err := c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Update(context.TODO(),
-			base, metav1.UpdateOptions{})
-		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Base %s", known.AppFinalizer, klog.KObj(base))
-			klog.V(4).Info(msg)
-			c.recorder.Event(base, corev1.EventTypeNormal, "FinalizerInjected", msg)
-		} else {
-			msg := fmt.Sprintf("failed to inject finalizer %s to Base %s: %v", known.AppFinalizer, klog.KObj(base), err)
-			klog.WarningDepth(4, msg)
-			c.recorder.Event(base, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-			c.addBase(obj)
-			return
-		}
-	}
-
-	// label Base self uid
-	if val, ok := base.Labels[string(base.UID)]; !ok || val != controllerKind.Kind {
-		err := c.patchBaseLabels(base, map[string]*string{
-			string(base.UID): utilpointer.StringPtr(controllerKind.Kind),
-		})
-		if err != nil {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
-			c.addBase(obj)
-			return
-		}
-	}
-
 	c.enqueue(base)
 }
 
@@ -172,21 +141,9 @@ func (c *Controller) updateBase(old, cur interface{}) {
 		return
 	}
 
-	// label Base self uid
-	if val, ok := newBase.Labels[string(newBase.UID)]; !ok || val != controllerKind.Kind {
-		err := c.patchBaseLabels(newBase, map[string]*string{
-			string(newBase.UID): utilpointer.StringPtr(controllerKind.Kind),
-		})
-		if err != nil {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
-			c.updateBase(old, cur)
-			return
-		}
-	}
-
-	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldBase.Spec, newBase.Spec) {
-		klog.V(4).Infof("no updates on the spec of Base %q, skipping syncing", oldBase.Name)
+	if reflect.DeepEqual(oldBase.Labels, newBase.Labels) && reflect.DeepEqual(oldBase.Spec, newBase.Spec) {
+		// Decide whether discovery has reported labels or spec change.
+		klog.V(4).Infof("no updates on the labels and spec of Base %s, skipping syncing", klog.KObj(oldBase))
 		return
 	}
 
@@ -352,9 +309,35 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	// add finalizer
+	if !utils.ContainsString(base.Finalizers, known.AppFinalizer) && base.DeletionTimestamp == nil {
+		base.Finalizers = append(base.Finalizers, known.AppFinalizer)
+		base, err = c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Update(context.TODO(),
+			base, metav1.UpdateOptions{})
+		if err != nil {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Base %s: %v", known.AppFinalizer, klog.KObj(base), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(base, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			return err
+		}
+		msg := fmt.Sprintf("successfully inject finalizer %s to Base %s", known.AppFinalizer, klog.KObj(base))
+		klog.V(4).Info(msg)
+		c.recorder.Event(base, corev1.EventTypeNormal, "FinalizerInjected", msg)
+	}
+
+	// label Base self uid
+	if val, ok := base.Labels[string(base.UID)]; !ok || val != controllerKind.Kind {
+		base, err = c.patchBaseLabels(base, map[string]*string{
+			string(base.UID): utilpointer.StringPtr(controllerKind.Kind),
+		})
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
+			return err
+		}
+	}
+
 	base.Kind = controllerKind.Kind
 	base.APIVersion = controllerKind.Version
-
 	err = c.syncHandlerFunc(base)
 	if err != nil {
 		c.recorder.Event(base, corev1.EventTypeWarning, "FailedSynced", err.Error())
@@ -376,18 +359,21 @@ func (c *Controller) enqueue(base *appsapi.Base) {
 	c.workqueue.Add(key)
 }
 
-func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*string) error {
-	klog.V(5).Infof("patching Base labels")
+func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*string) (*appsapi.Base, error) {
+	if base.DeletionTimestamp != nil || len(labels) == 0 {
+		return base, nil
+	}
+
+	klog.V(5).Infof("patching Base %s labels", klog.KObj(base))
 	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
 	patchData, err := json.Marshal(option)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Patch(context.TODO(),
+	return c.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Patch(context.TODO(),
 		base.Name,
 		types.MergePatchType,
 		patchData,
 		metav1.PatchOptions{})
-	return err
 }

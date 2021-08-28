@@ -130,25 +130,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addSubscription(obj interface{}) {
 	sub := obj.(*appsapi.Subscription)
 	klog.V(4).Infof("adding Subscription %q", klog.KObj(sub))
-
-	// add finalizer
-	if !utils.ContainsString(sub.Finalizers, known.AppFinalizer) && sub.DeletionTimestamp == nil {
-		sub.Finalizers = append(sub.Finalizers, known.AppFinalizer)
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).Update(context.TODO(),
-			sub, metav1.UpdateOptions{})
-		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(sub))
-			klog.V(4).Info(msg)
-			c.recorder.Event(sub, corev1.EventTypeNormal, "FinalizerInjected", msg)
-		} else {
-			msg := fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(sub), err)
-			klog.WarningDepth(4, msg)
-			c.recorder.Event(sub, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-			c.addSubscription(obj)
-			return
-		}
-	}
-
 	c.enqueue(sub)
 }
 
@@ -163,7 +144,7 @@ func (c *Controller) updateSubscription(old, cur interface{}) {
 
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldSub.Spec, newSub.Spec) {
-		klog.V(4).Infof("no updates on the spec of Subscription %q, skipping syncing", oldSub.Name)
+		klog.V(4).Infof("no updates on the spec of Subscription %s, skipping syncing", klog.KObj(oldSub))
 		return
 	}
 
@@ -319,9 +300,23 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	// add finalizer
+	if !utils.ContainsString(sub.Finalizers, known.AppFinalizer) && sub.DeletionTimestamp == nil {
+		sub.Finalizers = append(sub.Finalizers, known.AppFinalizer)
+		if sub, err = c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).Update(context.TODO(),
+			sub, metav1.UpdateOptions{}); err != nil {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Subscription %s: %v", known.AppFinalizer, klog.KObj(sub), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(sub, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			return err
+		}
+		msg := fmt.Sprintf("successfully inject finalizer %s to Subscription %s", known.AppFinalizer, klog.KObj(sub))
+		klog.V(4).Info(msg)
+		c.recorder.Event(sub, corev1.EventTypeNormal, "FinalizerInjected", msg)
+	}
+
 	sub.Kind = controllerKind.Kind
 	sub.APIVersion = controllerKind.Version
-
 	err = c.syncHandlerFunc(sub)
 	if err != nil {
 		c.recorder.Event(sub, corev1.EventTypeWarning, "FailedSynced", err.Error())
