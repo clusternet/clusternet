@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// copyied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
+// copied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
 func getNestedString(obj map[string]interface{}, fields ...string) string {
 	val, found, err := unstructured.NestedString(obj, fields...)
 	if !found || err != nil {
@@ -31,7 +31,7 @@ func getNestedString(obj map[string]interface{}, fields ...string) string {
 	return val
 }
 
-// copyied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
+// copied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
 // and modified
 func setNestedField(u *unstructured.Unstructured, value interface{}, fields ...string) {
 	if u.Object == nil {

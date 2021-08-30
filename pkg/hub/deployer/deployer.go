@@ -793,7 +793,7 @@ func (deployer *Deployer) addLabelsToReferredFeeds(b *appsapi.Base) error {
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
 	}
-	if (allHelmCharts == nil || len(allHelmCharts) == 0) && (allManifests == nil || len(allManifests) == 0) {
+	if len(allHelmCharts) == 0 && len(allManifests) == 0 {
 		return fmt.Errorf("feed sources declared in Base %s do not exist", klog.KObj(b))
 	}
 
@@ -922,7 +922,7 @@ func (deployer *Deployer) protectManifestFeed(manifest *appsapi.Manifest) error 
 		return err
 	}
 	for _, sub := range subscriptions {
-		// in case some subscriptions do not exist any more, while labels still persist
+		// in case some subscriptions do not exist anymore, while labels still persist
 		if subUIDs.Has(string(sub.UID)) && sub.DeletionTimestamp == nil {
 			// perform strictly check
 			// whether this Manifest is still referred as a feed in Subscription
