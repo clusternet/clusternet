@@ -28,8 +28,8 @@ type ClusterType string
 
 // These are the valid values for ClusterType
 const (
-	// self provisioned edge cluster
-	EdgeClusterSelfProvisioned ClusterType = "EdgeClusterSelfProvisioned"
+	// edge cluster
+	EdgeCluster ClusterType = "EdgeCluster"
 
 	// todo: add more types
 )
