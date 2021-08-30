@@ -118,6 +118,7 @@ func (deployer *Deployer) Run(workers int) {
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
+	klog.V(5).Infof("handle Description %s", klog.KObj(desc))
 	if desc.Spec.Deployer != appsapi.DescriptionGenericDeployer {
 		return nil
 	}
@@ -276,51 +277,58 @@ func (deployer *Deployer) applyResourceWithRetry(dynamicClient dynamic.Interface
 
 	backoff := retry.DefaultBackoff
 	backoff.Steps = retries
-	return wait.ExponentialBackoffWithContext(deployer.ctx, backoff, func() (done bool, err error) {
+	return wait.ExponentialBackoffWithContext(deployer.ctx, backoff, func() (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to get RESTMapping: %v", err))
 			return false, nil
 		}
 
 		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 			Create(context.TODO(), resource, metav1.CreateOptions{})
-		if err != nil {
-			if apierrors.IsAlreadyExists(err) {
-				curObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
-					Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
-				if err != nil {
-					return false, nil
-				}
-
-				resourceCopy := resource.DeepCopy()
-				_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
-					Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
-				if err != nil {
-					statusCauses, ok := getStatusCause(err)
-					if ok {
-						for _, cause := range statusCauses {
-							if cause.Type != metav1.CauseTypeFieldValueInvalid {
-								continue
-							}
-							// apply immutable value
-							fields := strings.Split(cause.Field, ".")
-							setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
-						}
-						// update with immutable values applied
-						if _, err = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
-							Update(context.TODO(), resourceCopy, metav1.UpdateOptions{}); err != nil {
-							return false, nil
-						} else {
-							return true, nil
-						}
-					}
-					return false, nil
-				}
-				return true, nil
-			}
+		if err == nil {
+			return true, nil
+		}
+		if !apierrors.IsAlreadyExists(err) {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to create %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
 			return false, nil
 		}
-		return true, nil
+
+		// try  to update resource
+		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+			Update(context.TODO(), resource, metav1.UpdateOptions{})
+		if err == nil {
+			return true, nil
+		}
+		statusCauses, ok := getStatusCause(err)
+		if !ok {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to get StatusCause for %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
+			return false, nil
+		}
+
+		curObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+			Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to get %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
+			return false, nil
+		}
+		resourceCopy := resource.DeepCopy()
+		for _, cause := range statusCauses {
+			if cause.Type != metav1.CauseTypeFieldValueInvalid {
+				continue
+			}
+			// apply immutable value
+			fields := strings.Split(cause.Field, ".")
+			setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
+		}
+		// update with immutable values applied
+		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
+			Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
+		if err == nil {
+			return true, nil
+		}
+		klog.ErrorDepth(5, fmt.Sprintf("failed to update %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
+		return false, nil
 	})
 }
 
@@ -329,7 +337,7 @@ func (deployer *Deployer) deleteResourceWithRetry(dynamicClient dynamic.Interfac
 	backoff := retry.DefaultBackoff
 	backoff.Steps = retries
 	deletePropagationBackground := metav1.DeletePropagationBackground
-	return wait.ExponentialBackoffWithContext(deployer.ctx, backoff, func() (done bool, err error) {
+	return wait.ExponentialBackoffWithContext(deployer.ctx, backoff, func() (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
 			msg := fmt.Sprintf("%v. Please check whether the advertised apiserver of current child cluster is accessible.", err)

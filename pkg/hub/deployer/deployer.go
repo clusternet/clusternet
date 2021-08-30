@@ -221,6 +221,7 @@ func (deployer *Deployer) Run(workers int) {
 }
 
 func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
+	klog.V(5).Infof("handle Subscription %s", klog.KObj(sub))
 	if sub.DeletionTimestamp != nil {
 		bases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      subscriptionKind.Kind,
@@ -434,6 +435,7 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 }
 
 func (deployer *Deployer) handleBase(base *appsapi.Base) error {
+	klog.V(5).Infof("handle Base %s", klog.KObj(base))
 	if base.DeletionTimestamp != nil {
 		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      baseKind.Kind,
@@ -706,6 +708,7 @@ func (deployer *Deployer) deleteDescription(ctx context.Context, namespacedKey s
 }
 
 func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
+	klog.V(5).Infof("handle Manifest %s", klog.KObj(manifest))
 	if manifest.DeletionTimestamp != nil {
 		if err := deployer.protectManifestFeed(manifest); err != nil {
 			return err
