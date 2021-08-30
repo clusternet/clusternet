@@ -125,25 +125,7 @@ func (c *Controller) addSecret(obj interface{}) {
 		return
 	}
 
-	// add finalizer
-	if secret.DeletionTimestamp == nil {
-		if !utils.ContainsString(secret.Finalizers, known.AppFinalizer) {
-			secret.Finalizers = append(secret.Finalizers, known.AppFinalizer)
-		}
-		_, err := c.kubeclient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(),
-			secret, metav1.UpdateOptions{})
-		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Secret %s", known.AppFinalizer, klog.KObj(secret))
-			klog.V(4).Info(msg)
-			return
-		} else {
-			klog.WarningDepth(4,
-				fmt.Sprintf("failed to inject finalizer %s to Secret %s: %v", known.AppFinalizer, klog.KObj(secret), err))
-			c.addSecret(obj)
-			return
-		}
-	}
-
+	klog.V(4).Infof("adding Secret %q", klog.KObj(secret))
 	c.enqueue(secret)
 }
 
@@ -154,6 +136,7 @@ func (c *Controller) updateSecret(old, cur interface{}) {
 	}
 
 	if secret.DeletionTimestamp != nil {
+		klog.V(4).Infof("updating Secret %q", klog.KObj(secret))
 		c.enqueue(secret)
 		return
 	}
@@ -272,9 +255,23 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	// add finalizer
+	if !utils.ContainsString(secret.Finalizers, known.AppFinalizer) && secret.DeletionTimestamp == nil {
+		secret.Finalizers = append(secret.Finalizers, known.AppFinalizer)
+		if secret, err = c.kubeclient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(),
+			secret, metav1.UpdateOptions{}); err != nil {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Secret %s: %v", known.AppFinalizer, klog.KObj(secret), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(secret, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			return err
+		}
+		msg := fmt.Sprintf("successfully inject finalizer %s to Secret %s", known.AppFinalizer, klog.KObj(secret))
+		klog.V(4).Info(msg)
+		c.recorder.Event(secret, corev1.EventTypeNormal, "FinalizerInjected", msg)
+	}
+
 	secret.Kind = controllerKind.Kind
 	secret.APIVersion = controllerKind.Version
-
 	err = c.SyncHandler(secret)
 	if err != nil {
 		c.recorder.Event(secret, corev1.EventTypeWarning, "FailedSynced", err.Error())

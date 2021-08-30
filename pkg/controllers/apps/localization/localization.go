@@ -138,39 +138,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addLocalization(obj interface{}) {
 	loc := obj.(*appsapi.Localization)
 	klog.V(4).Infof("adding Localization %q", klog.KObj(loc))
-
-	// add finalizer
-	if !utils.ContainsString(loc.Finalizers, known.AppFinalizer) && loc.DeletionTimestamp == nil {
-		loc.Finalizers = append(loc.Finalizers, known.AppFinalizer)
-		_, err := c.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Update(context.TODO(),
-			loc, metav1.UpdateOptions{})
-		if err == nil {
-			msg := fmt.Sprintf("successfully inject finalizer %s to Localization %s",
-				known.AppFinalizer, klog.KObj(loc))
-			klog.V(4).Info(msg)
-			c.recorder.Event(loc, corev1.EventTypeNormal, "FinalizerInjected", msg)
-		} else {
-			msg := fmt.Sprintf("failed to inject finalizer %s to Localization %s: %v",
-				known.AppFinalizer, klog.KObj(loc), err)
-			klog.WarningDepth(4, msg)
-			c.recorder.Event(loc, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-			c.addLocalization(obj)
-			return
-		}
-	}
-
-	// label matching Feeds uid to Localization
-	labelsToPatch, err := c.getLabelsForPatching(loc)
-	if err == nil {
-		err = c.PatchLocalizationLabels(loc, labelsToPatch)
-	}
-	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Localization %s: %v",
-			klog.KObj(loc), err))
-		c.addLocalization(obj)
-		return
-	}
-
 	c.enqueue(loc)
 }
 
@@ -183,21 +150,9 @@ func (c *Controller) updateLocalization(old, cur interface{}) {
 		return
 	}
 
-	// label matching Feeds uid to Localization
-	labelsToPatch, err := c.getLabelsForPatching(newLoc)
-	if err == nil {
-		err = c.PatchLocalizationLabels(newLoc, labelsToPatch)
-	}
-	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Localization %s: %v",
-			klog.KObj(newLoc), err))
-		c.updateLocalization(old, cur)
-		return
-	}
-
-	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldLoc.Spec, newLoc.Spec) {
-		klog.V(4).Infof("no updates on the spec of Localization %q, skipping syncing", oldLoc.Name)
+	if reflect.DeepEqual(oldLoc.Labels, newLoc.Labels) && reflect.DeepEqual(oldLoc.Spec, newLoc.Spec) {
+		// Decide whether discovery has reported labels or spec change.
+		klog.V(4).Infof("no updates on the labels and spec of Localization %s, skipping syncing", klog.KObj(oldLoc))
 		return
 	}
 
@@ -313,9 +268,37 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	// add finalizer
+	if !utils.ContainsString(loc.Finalizers, known.AppFinalizer) && loc.DeletionTimestamp == nil {
+		loc.Finalizers = append(loc.Finalizers, known.AppFinalizer)
+		loc, err = c.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Update(context.TODO(),
+			loc, metav1.UpdateOptions{})
+		if err != nil {
+			msg := fmt.Sprintf("failed to inject finalizer %s to Localization %s: %v",
+				known.AppFinalizer, klog.KObj(loc), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(loc, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			return err
+		}
+		msg := fmt.Sprintf("successfully inject finalizer %s to Localization %s",
+			known.AppFinalizer, klog.KObj(loc))
+		klog.V(4).Info(msg)
+		c.recorder.Event(loc, corev1.EventTypeNormal, "FinalizerInjected", msg)
+	}
+
+	// label matching Feeds uid to Localization
+	labelsToPatch, err := c.getLabelsForPatching(loc)
+	if err == nil {
+		loc, err = c.patchLocalizationLabels(loc, labelsToPatch)
+	}
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("failed to patch labels to Localization %s: %v",
+			klog.KObj(loc), err))
+		return err
+	}
+
 	loc.Kind = controllerKind.Kind
 	loc.APIVersion = controllerKind.Version
-
 	err = c.syncHandlerFunc(loc)
 	if err != nil {
 		c.recorder.Event(loc, corev1.EventTypeWarning, "FailedSynced", err.Error())
@@ -339,6 +322,9 @@ func (c *Controller) enqueue(loc *appsapi.Localization) {
 
 func (c *Controller) getLabelsForPatching(loc *appsapi.Localization) (map[string]*string, error) {
 	labelsToPatch := map[string]*string{}
+	if loc.DeletionTimestamp != nil {
+		return labelsToPatch, nil
+	}
 	switch loc.Spec.Feed.Kind {
 	case chartKind.Kind:
 		chart, err := c.chartLister.HelmCharts(loc.Spec.Feed.Namespace).Get(loc.Spec.Feed.Name)
@@ -369,22 +355,21 @@ func (c *Controller) getLabelsForPatching(loc *appsapi.Localization) (map[string
 	return labelsToPatch, nil
 }
 
-func (c *Controller) PatchLocalizationLabels(loc *appsapi.Localization, labels map[string]*string) error {
-	klog.V(5).Infof("patching Localization labels")
-	if len(labels) == 0 {
-		return nil
+func (c *Controller) patchLocalizationLabels(loc *appsapi.Localization, labels map[string]*string) (*appsapi.Localization, error) {
+	if loc.DeletionTimestamp != nil || len(labels) == 0 {
+		return loc, nil
 	}
 
+	klog.V(5).Infof("patching Localization %s labels", klog.KObj(loc))
 	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
 	patchData, err := json.Marshal(option)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = c.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Patch(context.TODO(),
+	return c.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Patch(context.TODO(),
 		loc.Name,
 		types.MergePatchType,
 		patchData,
 		metav1.PatchOptions{})
-	return err
 }

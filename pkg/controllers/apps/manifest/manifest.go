@@ -124,34 +124,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 func (c *Controller) addManifest(obj interface{}) {
 	manifest := obj.(*appsapi.Manifest)
 	klog.V(4).Infof("adding Manifest %q", klog.KObj(manifest))
-
-	// add finalizers
-	if manifest.DeletionTimestamp == nil {
-		updatedManifest := manifest.DeepCopy()
-		if !utils.ContainsString(updatedManifest.Finalizers, known.AppFinalizer) {
-			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.AppFinalizer)
-		}
-		if !utils.ContainsString(updatedManifest.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
-			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.FeedProtectionFinalizer)
-		}
-
-		// only update on changed
-		if !reflect.DeepEqual(manifest, updatedManifest) {
-			if _, err := c.clusternetClient.AppsV1alpha1().Manifests(updatedManifest.Namespace).Update(context.TODO(),
-				manifest, metav1.UpdateOptions{}); err == nil {
-				msg := fmt.Sprintf("successfully inject finalizers to Manifest %s", klog.KObj(manifest))
-				klog.V(4).Info(msg)
-				c.recorder.Event(manifest, corev1.EventTypeNormal, "FinalizerInjected", msg)
-			} else {
-				msg := fmt.Sprintf("failed to inject finalizers to Manifest %s: %v", klog.KObj(manifest), err)
-				klog.WarningDepth(4, msg)
-				c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-				c.addManifest(obj)
-				return
-			}
-		}
-	}
-
 	c.enqueue(manifest)
 }
 
@@ -166,7 +138,7 @@ func (c *Controller) updateManifest(old, cur interface{}) {
 
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldManifest.Template, newManifest.Template) {
-		klog.V(4).Infof("no updates on Manifest template %q, skipping syncing", oldManifest.Name)
+		klog.V(4).Infof("no updates on Manifest template %s, skipping syncing", klog.KObj(oldManifest))
 		return
 	}
 
@@ -282,9 +254,34 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	if manifest.DeletionTimestamp == nil {
+		updatedManifest := manifest.DeepCopy()
+
+		// add finalizers
+		if !utils.ContainsString(updatedManifest.Finalizers, known.AppFinalizer) {
+			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.AppFinalizer)
+		}
+		if !utils.ContainsString(updatedManifest.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
+			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.FeedProtectionFinalizer)
+		}
+
+		// only update on changed
+		if !reflect.DeepEqual(manifest, updatedManifest) {
+			if manifest, err = c.clusternetClient.AppsV1alpha1().Manifests(updatedManifest.Namespace).Update(context.TODO(),
+				updatedManifest, metav1.UpdateOptions{}); err != nil {
+				msg := fmt.Sprintf("failed to inject finalizers to Manifest %s: %v", klog.KObj(manifest), err)
+				klog.WarningDepth(4, msg)
+				c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+				return err
+			}
+			msg := fmt.Sprintf("successfully inject finalizers to Manifest %s", klog.KObj(manifest))
+			klog.V(4).Info(msg)
+			c.recorder.Event(manifest, corev1.EventTypeNormal, "FinalizerInjected", msg)
+		}
+	}
+
 	manifest.Kind = controllerKind.Kind
 	manifest.APIVersion = controllerKind.Version
-
 	err = c.syncHandlerFunc(manifest)
 	if err != nil {
 		c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedSynced", err.Error())

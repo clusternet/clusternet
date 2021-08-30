@@ -38,6 +38,8 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
@@ -139,7 +141,7 @@ func (c *Controller) updateHelmRelease(old, cur interface{}) {
 
 	// Decide whether discovery has reported a spec change.
 	if reflect.DeepEqual(oldHr.Spec, newHr.Spec) {
-		klog.V(4).Infof("no updates on the spec of HelmRelease %q, skipping syncing", oldHr.Name)
+		klog.V(4).Infof("no updates on the spec of HelmRelease %s, skipping syncing", klog.KObj(oldHr))
 		return
 	}
 
@@ -255,9 +257,26 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	// add finalizer
+	if !utils.ContainsString(hr.Finalizers, known.AppFinalizer) && hr.DeletionTimestamp == nil {
+		hr.Finalizers = append(hr.Finalizers, known.AppFinalizer)
+		hr, err = c.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(),
+			hr, metav1.UpdateOptions{})
+		if err != nil {
+			msg := fmt.Sprintf("failed to inject finalizer %s to HelmRelease %s: %v",
+				known.AppFinalizer, klog.KObj(hr), err)
+			klog.WarningDepth(4, msg)
+			c.recorder.Event(hr, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
+			return err
+		}
+		msg := fmt.Sprintf("successfully inject finalizer %s to HelmRelease %s",
+			known.AppFinalizer, klog.KObj(hr))
+		klog.V(4).Info(msg)
+		c.recorder.Event(hr, corev1.EventTypeNormal, "FinalizerInjected", msg)
+	}
+
 	hr.Kind = controllerKind.Kind
 	hr.APIVersion = controllerKind.Version
-
 	err = c.syncHandlerFunc(hr)
 	if err != nil {
 		c.recorder.Event(hr, corev1.EventTypeWarning, "FailedSynced", err.Error())
