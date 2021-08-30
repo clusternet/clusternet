@@ -188,6 +188,7 @@ func (deployer *Deployer) Run(workers int) {
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
+	klog.V(5).Infof("handle Description %s", klog.KObj(desc))
 	if desc.Spec.Deployer != appsapi.DescriptionHelmDeployer {
 		return nil
 	}
@@ -260,6 +261,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 }
 
 func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
+	klog.V(5).Infof("handle HelmChart %s", klog.KObj(chart))
 	if chart.DeletionTimestamp != nil {
 		if err := deployer.protectHelmChartFeed(chart); err != nil {
 			return err
@@ -438,6 +440,7 @@ func (deployer *Deployer) deleteHelmRelease(ctx context.Context, namespacedKey s
 }
 
 func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
+	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
 	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, hr.Namespace, hr.Labels[known.ClusterIDLabel])
 	if err != nil {
 		return err
@@ -524,6 +527,7 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 }
 
 func (deployer *Deployer) handleSecret(secret *corev1.Secret) error {
+	klog.V(5).Infof("handle Secret %s", klog.KObj(secret))
 	if secret.DeletionTimestamp == nil {
 		return nil
 	}
