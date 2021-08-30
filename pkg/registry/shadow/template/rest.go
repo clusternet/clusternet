@@ -322,7 +322,7 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		if manifest, ok := object.(*appsapi.Manifest); ok {
 			obj, err := transformManifest(manifest)
 			if err != nil {
-				klog.ErrorDepth(3, fmt.Sprintf("failed to tranform Manifest %s: %v", klog.KObj(manifest), err))
+				klog.ErrorDepth(3, fmt.Sprintf("failed to transform Manifest %s: %v", klog.KObj(manifest), err))
 				return manifest
 			}
 			return obj

@@ -17,8 +17,9 @@ limitations under the License.
 package utils
 
 import (
-	"github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	"testing"
+
+	"github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
 func TestFormatFeed(t *testing.T) {

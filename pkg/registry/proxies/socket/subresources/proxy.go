@@ -19,15 +19,15 @@ package subresources
 import (
 	"context"
 	"fmt"
-	"github.com/clusternet/clusternet/pkg/features"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"net/http"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
 	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/exchanger"
+	"github.com/clusternet/clusternet/pkg/features"
 )
 
 // ProxyREST implements the proxy subresource for a Socket

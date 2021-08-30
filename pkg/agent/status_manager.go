@@ -97,7 +97,7 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 	if mgr.managedCluster == nil {
 		managedClusters, err := client.ClustersV1beta1().ManagedClusters(namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(labels.Set{
-				known.ClusterIDLabel: string(clusterID),
+				known.ClusterIDLabel: clusterID,
 			}).String(),
 		})
 		if err != nil {
