@@ -192,7 +192,7 @@ metadata:
 spec:
   clusterId: dc91021d-2361-4f6d-a404-7c33b9e01118
   clusterName: clusternet-cluster-dzqkw
-  clusterType: EdgeClusterSelfProvisioned
+  clusterType: EdgeCluster
 status:
   caCertificate: REDACTED
   dedicatedNamespace: clusternet-dhxfs
@@ -263,8 +263,8 @@ $ # mcls is an alias for ManagedCluster
 $ # kubectl get mcls -A
 $ # or append "-o wide" to display extra columns
 $ kubectl get mcls -A -o wide
-NAMESPACE          NAME                       CLUSTER ID                             CLUSTER TYPE                 SYNC MODE   KUBERNETES   READYZ   AGE
-clusternet-dhxfs   clusternet-cluster-dzqkw   dc91021d-2361-4f6d-a404-7c33b9e01118   EdgeClusterSelfProvisioned   Dual        v1.19.10     true     7d23h
+NAMESPACE          NAME                       CLUSTER ID                             CLUSTER TYPE   SYNC MODE   KUBERNETES   READYZ   AGE
+clusternet-dhxfs   clusternet-cluster-dzqkw   dc91021d-2361-4f6d-a404-7c33b9e01118   EdgeCluster    Dual        v1.19.10     true     7d23h
 $ kubectl get mcls -n clusternet-dhxfs   clusternet-cluster-dzqkw -o yaml
 apiVersion: clusters.clusternet.io/v1beta1
 kind: ManagedCluster
@@ -277,7 +277,7 @@ metadata:
   namespace: clusternet-dhxfs
 spec:
   clusterId: dc91021d-2361-4f6d-a404-7c33b9e01118
-  clusterType: EdgeClusterSelfProvisioned
+  clusterType: EdgeCluster
   syncMode: Dual
 status:
   apiserverURL: http://10.0.0.10:8080
