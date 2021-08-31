@@ -34,6 +34,9 @@ const (
 
 	// ClusternetSystemNamespace is the system namespace where we place system components.
 	ClusternetSystemNamespace = "clusternet-system"
+
+	// ClusternetAppSA is the service account where we store credentials to deploy resources
+	ClusternetAppSA = "clusternet-app-deployer"
 )
 
 // These are internal finalizer values to Clusternet, must be qualified name.
@@ -45,4 +48,7 @@ const (
 const (
 	// default resync time
 	DefaultResync = time.Hour * 12
+
+	// default retry period
+	DefaultRetryPeriod = 5 * time.Second
 )

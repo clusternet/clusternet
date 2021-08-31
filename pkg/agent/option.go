@@ -22,9 +22,12 @@ import (
 	"regexp"
 	"strings"
 
-	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/features"
 )
 
 var validateClusterNameRegex = regexp.MustCompile(nameFmt)
@@ -134,7 +137,13 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 	}
 
 	switch opts.ClusterSyncMode {
-	case string(clusterapi.Pull), string(clusterapi.Push), string(clusterapi.Dual):
+	case string(clusterapi.Push):
+		if !utilfeature.DefaultFeatureGate.Enabled(features.AppPusher) {
+			allErrs = append(allErrs,
+				fmt.Errorf("inconsitent setting: FeatureGate %s is disbled, while syncMode is set to %s",
+					features.AppPusher, opts.ClusterSyncMode))
+		}
+	case string(clusterapi.Pull), string(clusterapi.Dual):
 	default:
 		allErrs = append(allErrs, fmt.Errorf("invalid sync mode %q, only 'Pull', 'Push' and 'Dual' are supported", opts.ClusterSyncMode))
 	}
