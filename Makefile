@@ -58,14 +58,14 @@ lint: golangci-lint
       -E unused \
       -E varcheck \
       -E ineffassign \
-	  -E goimports \
-	  -E gofmt \
-	  -E misspell \
-	  -E unparam \
-	  -E unconvert \
-	  -E govet \
-	  -E errcheck \
-	  -E structcheck
+      -E goimports \
+      -E gofmt \
+      -E misspell \
+      -E unparam \
+      -E unconvert \
+      -E govet \
+      -E errcheck \
+      -E structcheck
 
 # Run mod tidy against code
 .PHONY: tidy
