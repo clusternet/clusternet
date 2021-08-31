@@ -44,7 +44,7 @@ var controllerKind = corev1.SchemeGroupVersion.WithKind("Secret")
 type SyncHandlerFunc func(secret *corev1.Secret) error
 
 // Controller is a controller that handle Secret
-// here we only foucs on Secret "child-cluster-deployer" !!!
+// here we only focus on Secret "child-cluster-deployer" !!!
 type Controller struct {
 	ctx context.Context
 
@@ -82,7 +82,7 @@ func NewController(ctx context.Context, kubeclient kubernetes.Interface,
 	}
 
 	// Manage the addition/update of Secret
-	// here we only foucs on Secret "child-cluster-deployer" !!!
+	// here we only focus on Secret "child-cluster-deployer" !!!
 	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addSecret,
 		UpdateFunc: c.updateSecret,

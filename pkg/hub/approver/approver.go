@@ -92,7 +92,7 @@ func NewCRRApprover(ctx context.Context, kubeclient *kubernetes.Clientset, clust
 	return crrApprover, nil
 }
 
-func (crrApprover *CRRApprover) Run(threadiness int) error {
+func (crrApprover *CRRApprover) Run(threadiness int) {
 	klog.Info("starting Clusternet CRRApprover ...")
 
 	// initializing roles is really important
@@ -101,7 +101,7 @@ func (crrApprover *CRRApprover) Run(threadiness int) error {
 
 	// todo: gorountine
 	crrApprover.crrController.Run(threadiness, crrApprover.ctx.Done())
-	return nil
+	return
 }
 
 func (crrApprover *CRRApprover) applyDefaultRBACRules() {
@@ -284,7 +284,7 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 }
 
 func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clusterName string) (*corev1.Namespace, error) {
-	// checks for a existed dedicated namespace for child cluster
+	// checks for an existed dedicated namespace for child cluster
 	// the clusterName here may vary, we use clusterID as the identifier
 	namespaces, err := crrApprover.nsLister.List(labels.SelectorFromSet(labels.Set{
 		known.ObjectCreatedByLabel: known.ClusternetAgentName,
@@ -322,7 +322,7 @@ func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID
 
 func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID,
 	clusterType clusterapi.ClusterType, clusterSyncMode clusterapi.ClusterSyncMode) (*clusterapi.ManagedCluster, error) {
-	// checks for a existed ManagedCluster object
+	// checks for an existed ManagedCluster object
 	// the clusterName here may vary, we use clusterID as the identifier
 	mcs, err := crrApprover.mclsLister.List(labels.SelectorFromSet(labels.Set{
 		known.ObjectCreatedByLabel: known.ClusternetAgentName,
@@ -365,7 +365,7 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 }
 
 func (crrApprover *CRRApprover) createServiceAccountIfNeeded(namespace, clusterName string, clusterID types.UID) (*corev1.ServiceAccount, error) {
-	// checks for a existed dedicated service account created for child cluster to access parent cluster
+	// checks for an existed dedicated service account created for child cluster to access parent cluster
 	// the clusterName here may vary, we use clusterID as the identifier
 	sas, err := crrApprover.saLister.List(labels.SelectorFromSet(labels.Set{
 		known.ObjectCreatedByLabel: known.ClusternetAgentName,
@@ -403,7 +403,7 @@ func (crrApprover *CRRApprover) createServiceAccountIfNeeded(namespace, clusterN
 }
 
 func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, serivceAccountNamespace string, clusterID types.UID) error {
-	allErrs := []error{}
+	var allErrs []error
 	wg := sync.WaitGroup{}
 
 	// create sockets clusterrole first
@@ -454,7 +454,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 }
 
 func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespace string) error {
-	allErrs := []error{}
+	var allErrs []error
 	wg := sync.WaitGroup{}
 
 	// first we ensure default roles exist
@@ -507,9 +507,8 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 
 func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clientset, backoff wait.Backoff, saName, saNamespace string) (*corev1.Secret, error) {
 	var secret *corev1.Secret
-	var err error
 
-	err = wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
 		// first we get the auto-created secret name from serviceaccount
 		sa, err := client.CoreV1().ServiceAccounts(saNamespace).Get(ctx, saName, metav1.GetOptions{})
 		if err != nil {

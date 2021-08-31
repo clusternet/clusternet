@@ -265,7 +265,7 @@ func (ss *ShadowAPIServer) newAPIGroupVersion(apiGroupInfo *genericapiserver.API
 
 		ParameterCodec:        apiGroupInfo.ParameterCodec,
 		Serializer:            apiGroupInfo.NegotiatedSerializer,
-		Creater:               apiGroupInfo.Scheme,
+		Creater:               apiGroupInfo.Scheme, //nolint:misspell
 		Convertor:             apiGroupInfo.Scheme,
 		ConvertabilityChecker: apiGroupInfo.Scheme,
 		UnsafeConvertor:       runtime.UnsafeObjectConvertor(apiGroupInfo.Scheme),

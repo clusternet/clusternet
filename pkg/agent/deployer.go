@@ -108,7 +108,6 @@ func (d *Deployer) getDeployerCredentials(ctx context.Context) *corev1.Secret {
 		}
 
 		cancel()
-		return
 	}, DefaultRetryPeriod, 0.4, true, localCtx.Done())
 
 	klog.V(4).Info("successfully get credentials populated for deployer")

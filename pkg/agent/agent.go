@@ -292,8 +292,6 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 
 		klog.V(4).Infof("the registration request for cluster %q (%q) is still waiting for approval...",
 			*agent.ClusterID, agent.Options.ClusterName)
-		return
-
 	}, DefaultRetryPeriod, 0.4, true, waitingCtx.Done())
 
 	parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.Options.ParentURL,

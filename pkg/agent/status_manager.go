@@ -97,7 +97,7 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 	if mgr.managedCluster == nil {
 		managedClusters, err := client.ClustersV1beta1().ManagedClusters(namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(labels.Set{
-				known.ClusterIDLabel: string(clusterID),
+				known.ClusterIDLabel: clusterID,
 			}).String(),
 		})
 		if err != nil {
@@ -118,7 +118,7 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 	}
 
 	// in case the network is not stable, retry with backoff
-	wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
 		status := mgr.clusterStatusController.GetClusterStatus()
 		if status == nil {
 			klog.Warningf("cluster status is not ready, will retry later")
@@ -144,4 +144,7 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 		mgr.managedCluster = mc
 		return true, nil
 	})
+	if err != nil {
+		klog.Errorf("failed to update status of ManagedCluster after retrying many times: %v", err)
+	}
 }

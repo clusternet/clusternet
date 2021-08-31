@@ -20,9 +20,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/klog/v2"
 )
 
-// copyied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
+// copied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
 func getNestedString(obj map[string]interface{}, fields ...string) string {
 	val, found, err := unstructured.NestedString(obj, fields...)
 	if !found || err != nil {
@@ -31,13 +32,16 @@ func getNestedString(obj map[string]interface{}, fields ...string) string {
 	return val
 }
 
-// copyied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
+// copied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
 // and modified
 func setNestedField(u *unstructured.Unstructured, value interface{}, fields ...string) {
 	if u.Object == nil {
 		u.Object = make(map[string]interface{})
 	}
-	unstructured.SetNestedField(u.Object, value, fields...)
+	err := unstructured.SetNestedField(u.Object, value, fields...)
+	if err != nil {
+		klog.Warningf("failed to set nested field: %v", err)
+	}
 }
 
 // getStatusCause returns the named cause from the provided error if it exists and

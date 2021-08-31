@@ -154,12 +154,7 @@ func (hub *Hub) Run() error {
 		}()
 	}
 
-	err := hub.RunAPIServer()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return hub.RunAPIServer()
 }
 
 // RunAPIServer starts a new HubAPIServer given HubServerOptions
