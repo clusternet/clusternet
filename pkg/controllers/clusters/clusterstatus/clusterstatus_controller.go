@@ -103,10 +103,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 		klog.Warningf("failed to list nodes: %v", err)
 	}
 
-	nodeStatistics, err := getNodeStatistics(nodes)
-	if err != nil {
-		klog.Warningf("failed to collect cluster node count: %v", err)
-	}
+	nodeStatistics := getNodeStatistics(nodes)
 
 	capacity, allocatable := getNodeResource(nodes)
 
@@ -162,7 +159,7 @@ func (c *Controller) GetClusterStatus() *clusterapi.ManagedClusterStatus {
 	return c.clusterStatus.DeepCopy()
 }
 
-func (c *Controller) getKubernetesVersion(ctx context.Context) (*version.Info, error) {
+func (c *Controller) getKubernetesVersion(_ context.Context) (*version.Info, error) {
 	return c.kubeClient.Discovery().ServerVersion()
 }
 
@@ -174,7 +171,7 @@ func (c *Controller) getHealthStatus(ctx context.Context, path string) bool {
 
 // getNodeStatistics returns the NodeStatistics in the cluster
 // get nodes num in different conditions
-func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStatistics, err error) {
+func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStatistics) {
 	for _, node := range nodes {
 		flag, condition := getNodeCondition(&node.Status, corev1.NodeReady)
 		if flag == -1 {

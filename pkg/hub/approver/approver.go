@@ -92,7 +92,7 @@ func NewCRRApprover(ctx context.Context, kubeclient *kubernetes.Clientset, clust
 	return crrApprover, nil
 }
 
-func (crrApprover *CRRApprover) Run(threadiness int) error {
+func (crrApprover *CRRApprover) Run(threadiness int) {
 	klog.Info("starting Clusternet CRRApprover ...")
 
 	// initializing roles is really important
@@ -101,7 +101,7 @@ func (crrApprover *CRRApprover) Run(threadiness int) error {
 
 	// todo: gorountine
 	crrApprover.crrController.Run(threadiness, crrApprover.ctx.Done())
-	return nil
+	return
 }
 
 func (crrApprover *CRRApprover) applyDefaultRBACRules() {

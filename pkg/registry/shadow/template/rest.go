@@ -462,7 +462,7 @@ func (r *REST) generateNameForManifest(namespace, name string) string {
 	return fmt.Sprintf("%s-%s", resource, name)
 }
 
-func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, createValidation rest.ValidateObjectFunc, options *metav1.CreateOptions) (*unstructured.Unstructured, error) {
+func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.ValidateObjectFunc, options *metav1.CreateOptions) (*unstructured.Unstructured, error) {
 	objNamespace := request.NamespaceValue(ctx)
 
 	u, ok := obj.(*unstructured.Unstructured)
