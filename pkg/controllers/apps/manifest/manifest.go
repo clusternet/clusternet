@@ -43,7 +43,7 @@ import (
 // controllerKind contains the schema.GroupVersionKind for this controller type.
 var controllerKind = appsapi.SchemeGroupVersion.WithKind("Manifest")
 
-type SyncHandlerFunc func(orig *appsapi.Manifest) error
+type SyncHandlerFunc func(manifest *appsapi.Manifest) error
 
 // Controller is a controller that handle Manifest
 type Controller struct {

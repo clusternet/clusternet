@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"time"
 
-	"helm.sh/helm/v3/pkg/release"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -284,82 +282,6 @@ func (c *Controller) syncHandler(key string) error {
 		c.recorder.Event(hr, corev1.EventTypeNormal, "Synced", "HelmRelease synced successfully")
 	}
 	return err
-}
-
-func (c *Controller) UpdateHelmReleaseStatus(hr *appsapi.HelmRelease, status *appsapi.HelmReleaseStatus) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update HelmRelease %q status", hr.Name)
-
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		hr.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).UpdateStatus(c.ctx, hr, metav1.UpdateOptions{})
-		if err == nil {
-			return nil
-		}
-
-		if updated, err := c.hrLister.HelmReleases(hr.Namespace).Get(hr.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
-			hr = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated HelmRelease %q from lister: %v", hr.Name, err))
-		}
-		return err
-	})
-
-	if err != nil {
-		return err
-	}
-
-	klog.V(5).Infof("try to update HelmRelease %q owner Description status", hr.Name)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		controllerRef := metav1.GetControllerOf(hr)
-		if controllerRef == nil {
-			// No controller should care about orphans being deleted.
-			return nil
-		}
-		desc := c.resolveControllerRef(hr.Namespace, controllerRef)
-		if desc == nil {
-			return nil
-		}
-		if status.Phase == release.StatusDeployed {
-			desc.Status.Phase = appsapi.DescriptionPhaseSuccess
-			desc.Status.Reason = ""
-		} else {
-			desc.Status.Phase = appsapi.DescriptionPhaseFailure
-			desc.Status.Reason = status.Notes
-		}
-		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(c.ctx, desc, metav1.UpdateOptions{})
-		if err == nil {
-			return nil
-		}
-
-		utilruntime.HandleError(fmt.Errorf("error updating status for Description %q: %v", klog.KObj(desc), err))
-		return err
-	})
-}
-
-// resolveControllerRef returns the controller referenced by a ControllerRef,
-// or nil if the ControllerRef could not be resolved to a matching controller
-// of the correct Kind.
-func (c *Controller) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Description {
-	// We can't look up by UID, so look up by Name and then verify UID.
-	// Don't even try to look up by Name if it's the wrong Kind.
-	if controllerRef.Kind != "Description" {
-		return nil
-	}
-	desc, err := c.descLister.Descriptions(namespace).Get(controllerRef.Name)
-	if err != nil {
-		return nil
-	}
-	if desc.UID != controllerRef.UID {
-		// The controller we found with this Name is not the same one that the
-		// ControllerRef points to.
-		return nil
-	}
-	return desc
 }
 
 // enqueue takes a HelmReleases resource and converts it into a namespace/name

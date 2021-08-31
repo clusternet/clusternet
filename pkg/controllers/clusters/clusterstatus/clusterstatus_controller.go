@@ -20,7 +20,6 @@ import (
 	"context"
 	"net/http"
 	"sync"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -31,17 +30,13 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	corev1Lister "k8s.io/client-go/listers/core/v1"
+	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/features"
-)
-
-const (
-	// default resync time
-	defaultResync = time.Hour * 12
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
 // Controller is a controller that collects cluster status
@@ -54,17 +49,17 @@ type Controller struct {
 	appPusherEnabled bool
 	useSocket        bool
 	parentAPIServer  string
-	nodeLister       corev1Lister.NodeLister
-	podLister        corev1Lister.PodLister
-	nodeListerSynced cache.InformerSynced
-	podListerSynced  cache.InformerSynced
+	nodeLister       corev1lister.NodeLister
+	nodeSynced       cache.InformerSynced
+	podLister        corev1lister.PodLister
+	podSynced        cache.InformerSynced
 }
 
 func NewController(ctx context.Context, apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration) *Controller {
-	k8sFactory := informers.NewSharedInformerFactory(kubeClient, defaultResync)
-	k8sFactory.Core().V1().Nodes().Informer()
-	k8sFactory.Core().V1().Pods().Informer()
-	k8sFactory.Start(ctx.Done())
+	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
+	kubeInformerFactory.Core().V1().Nodes().Informer()
+	kubeInformerFactory.Core().V1().Pods().Informer()
+	kubeInformerFactory.Start(ctx.Done())
 
 	return &Controller{
 		kubeClient:       kubeClient,
@@ -74,17 +69,19 @@ func NewController(ctx context.Context, apiserverURL, parentAPIServerURL string,
 		appPusherEnabled: utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		useSocket:        utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
 		parentAPIServer:  parentAPIServerURL,
-		nodeLister:       k8sFactory.Core().V1().Nodes().Lister(),
-		nodeListerSynced: k8sFactory.Core().V1().Nodes().Informer().HasSynced,
-		podLister:        k8sFactory.Core().V1().Pods().Lister(),
-		podListerSynced:  k8sFactory.Core().V1().Pods().Informer().HasSynced,
+		nodeLister:       kubeInformerFactory.Core().V1().Nodes().Lister(),
+		nodeSynced:       kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
+		podLister:        kubeInformerFactory.Core().V1().Pods().Lister(),
+		podSynced:        kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
 	}
 
 }
 
 func (c *Controller) Run(ctx context.Context) {
 	if !cache.WaitForNamedCacheSync("cluster-status-controller", ctx.Done(),
-		c.podListerSynced, c.nodeListerSynced) {
+		c.podSynced,
+		c.nodeSynced,
+	) {
 		return
 	}
 
