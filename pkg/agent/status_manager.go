@@ -20,6 +20,7 @@ import (
 	"context"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -34,6 +35,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterstatus"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 type Manager struct {
@@ -46,6 +48,18 @@ type Manager struct {
 }
 
 func NewStatusManager(ctx context.Context, apiserverURL string, regOpts *ClusterRegistrationOptions, kubeClient kubernetes.Interface) *Manager {
+	retryCtx, retryCancel := context.WithTimeout(ctx, known.DefaultRetryPeriod)
+	defer retryCancel()
+
+	secret := utils.GetDeployerCredentials(retryCtx, kubeClient)
+	if secret != nil {
+		clusterStatusKubeConfig, err := utils.GenerateKubeConfigFromToken(apiserverURL,
+			string(secret.Data[corev1.ServiceAccountTokenKey]), secret.Data[corev1.ServiceAccountRootCAKey], 2)
+		if err == nil {
+			kubeClient = kubernetes.NewForConfigOrDie(clusterStatusKubeConfig)
+		}
+	}
+
 	return &Manager{
 		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
 		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL, regOpts.ParentURL,

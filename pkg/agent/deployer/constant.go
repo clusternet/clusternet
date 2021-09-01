@@ -22,6 +22,4 @@ const (
 	ServiceAccountNameKey = "service-account.name"
 	// ServiceAccountUIDKey is the key of the required annotation for SecretTypeServiceAccountToken secrets
 	ServiceAccountUIDKey = "service-account.uid"
-	// ClusternetAppSA is the service account where we store credentials to deploy resources
-	ClusternetAppSA = "clusternet-app-deployer"
 )
