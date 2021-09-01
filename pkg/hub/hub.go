@@ -91,6 +91,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	}
 
 	// add informers for minimum requirements
+	// register informers first before informerFactory starts
 	kubeInformerFactory.Core().V1().Namespaces().Informer()
 	kubeInformerFactory.Core().V1().ServiceAccounts().Informer()
 	kubeInformerFactory.Core().V1().Secrets().Informer()
@@ -100,6 +101,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 
 	var d *deployer.Deployer
 	if deployerEnabled {
+		// register informers first before informerFactory starts
 		clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().Bases().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer()

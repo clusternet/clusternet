@@ -156,6 +156,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 		clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().Bases(),
+		clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
 		deployer.recorder,
 		deployer.handleSubscription)
 	if err != nil {
