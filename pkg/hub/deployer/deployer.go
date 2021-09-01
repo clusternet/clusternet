@@ -601,6 +601,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		desc.Name = fmt.Sprintf("%s-helm", base.Name)
 		desc.Spec.Deployer = appsapi.DescriptionHelmDeployer
 		desc.Spec.Charts = allChartRefs
+		desc.Spec.Raw = make([][]byte, len(allChartRefs))
 		err := deployer.syncDescriptions(base, desc)
 		if err != nil {
 			allErrs = append(allErrs, err)
