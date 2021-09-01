@@ -49,6 +49,11 @@ const (
 	Dual ClusterSyncMode = "Dual"
 )
 
+const (
+	// ClusterReady means cluster is ready.
+	ClusterReady = "Ready"
+)
+
 // ClusterRegistrationRequestSpec defines the desired state of ClusterRegistrationRequest
 type ClusterRegistrationRequestSpec struct {
 	// ClusterID, a Random (Version 4) UUID, is a unique value in time and space value representing for child cluster.
@@ -210,15 +215,15 @@ type ManagedClusterStatus struct {
 	// which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead.
 	// Leave it here only for compatibility.
 	// +optional
-	Healthz bool `json:"healthz,omitempty"`
+	Healthz bool `json:"healthz"`
 
 	// Livez indicates the livez status of the cluster
 	// +optional
-	Livez bool `json:"livez,omitempty"`
+	Livez bool `json:"livez"`
 
 	// Readyz indicates the readyz status of the cluster
 	// +optional
-	Readyz bool `json:"readyz,omitempty"`
+	Readyz bool `json:"readyz"`
 
 	// AppPusher indicates whether to allow parent cluster deploying applications in Push or Dual Mode.
 	// Mainly for security concerns.
@@ -254,6 +259,14 @@ type ManagedClusterStatus struct {
 	// NodeStatistics is the info summary of nodes in the cluster
 	// +optional
 	NodeStatistics NodeStatistics `json:"nodeStatistics,omitempty"`
+
+	// Conditions is an array of current cluster conditions.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// heartbeatFrequencySeconds is the frequency at which the agent reports current cluster status
+	// +optional
+	HeartbeatFrequencySeconds *int64 `json:"heartbeatFrequencySeconds,omitempty"`
 }
 
 // +genclient

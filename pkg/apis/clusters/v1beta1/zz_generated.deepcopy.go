@@ -21,6 +21,7 @@ package v1beta1
 
 import (
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -228,6 +229,18 @@ func (in *ManagedClusterStatus) DeepCopyInto(out *ManagedClusterStatus) {
 		}
 	}
 	out.NodeStatistics = in.NodeStatistics
+	if in.Conditions != nil {
+		in, out := &in.Conditions, &out.Conditions
+		*out = make([]metav1.Condition, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.HeartbeatFrequencySeconds != nil {
+		in, out := &in.HeartbeatFrequencySeconds, &out.HeartbeatFrequencySeconds
+		*out = new(int64)
+		**out = **in
+	}
 	return
 }
 
