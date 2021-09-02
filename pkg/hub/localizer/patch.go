@@ -19,6 +19,7 @@ package localizer
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -38,6 +39,16 @@ func applyOverrides(original []byte, overrides []appsapi.OverrideConfig) ([]byte
 		overrideBytes, err := yaml.YAMLToJSON([]byte(overrideConfig.Value))
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert patch %s to JSON: %v", overrideConfig.Value, err)
+		}
+
+		// validation before apply override
+		if len(strings.TrimSpace(string(result))) == 0 {
+			result = overrideBytes
+			continue
+		}
+
+		if len(strings.TrimSpace(string(overrideBytes))) == 0 {
+			continue
 		}
 
 		switch overrideConfig.Type {

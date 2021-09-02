@@ -67,6 +67,11 @@ hole: black
 			}`),
 			overrides: []appsapi.OverrideConfig{
 				{
+					Name:  "empty override",
+					Type:  appsapi.HelmType,
+					Value: ``,
+				},
+				{
 					Name:  "add/update value - json format",
 					Type:  appsapi.HelmType,
 					Value: `{"address":{"country":"US","state":"MA"},"boat":"fighter"}`,
