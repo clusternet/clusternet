@@ -18,15 +18,20 @@ package apiserver
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
+	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
+	apiextensionsv1lister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
 	genericapi "k8s.io/apiserver/pkg/endpoints"
 	genericdiscovery "k8s.io/apiserver/pkg/endpoints/discovery"
@@ -36,8 +41,9 @@ import (
 	"k8s.io/apiserver/pkg/storageversion"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
@@ -91,29 +97,54 @@ type ShadowAPIServer struct {
 	// to set values and determine whether its allowed
 	admissionControl admission.Interface
 
-	kubeclient       *kubernetes.Clientset
+	kubeRESTClient   restclient.Interface
 	clusternetclient *clusternet.Clientset
 
 	manifestLister applisters.ManifestLister
+	crdLister      apiextensionsv1lister.CustomResourceDefinitionLister
+	crdSynced      cache.InformerSynced
+	crdHandler     *crdHandler
 }
 
 func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 	maxRequestBodyBytes int64, minRequestTimeout int,
 	admissionControl admission.Interface,
-	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset,
-	manifestLister applisters.ManifestLister) *ShadowAPIServer {
+	kubeRESTClient restclient.Interface, clusternetclient *clusternet.Clientset,
+	manifestLister applisters.ManifestLister,
+	crdInformerFactory crdinformers.SharedInformerFactory) *ShadowAPIServer {
 	return &ShadowAPIServer{
 		GenericAPIServer:    apiserver,
 		maxRequestBodyBytes: maxRequestBodyBytes,
 		minRequestTimeout:   minRequestTimeout,
 		admissionControl:    admissionControl,
-		kubeclient:          kubeclient,
+		kubeRESTClient:      kubeRESTClient,
 		clusternetclient:    clusternetclient,
 		manifestLister:      manifestLister,
+		crdLister:           crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Lister(),
+		crdSynced:           crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Informer().HasSynced,
+		crdHandler: NewCRDHandler(
+			kubeRESTClient, clusternetclient, manifestLister,
+			crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions(),
+			minRequestTimeout, maxRequestBodyBytes, admissionControl, apiserver.Authorizer, apiserver.Serializer),
 	}
 }
 
-func (ss *ShadowAPIServer) InstallShadowAPIGroups(cl discovery.DiscoveryInterface) error {
+func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl discovery.DiscoveryInterface) error {
+	// Wait for all CRDs to sync before installing shadow api resources.
+	klog.V(5).Info("shadow apiserver is waiting for informer caches to sync")
+	cache.WaitForCacheSync(stopCh, ss.crdSynced)
+	crds, err := ss.crdLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	crdGroups := sets.String{}
+	for _, crd := range crds {
+		if crdGroups.Has(crd.Spec.Group) {
+			continue
+		}
+		crdGroups = crdGroups.Insert(crd.Spec.Group)
+	}
+
 	// TODO: add openapi controller to update openapi spec
 
 	apiGroupResources, err := restmapper.GetAPIGroupResources(cl)
@@ -133,13 +164,19 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(cl discovery.DiscoveryInterfac
 			continue
 		}
 
+		// skip CRDs, which will be handled by crdHandler later
+		if crdGroups.Has(apiGroupResource.Group.Name) {
+			continue
+		}
+
 		preferredVersion := apiGroupResource.Group.PreferredVersion.Version
 		for _, apiresource := range apiGroupResource.VersionedResources[preferredVersion] {
+			ss.crdHandler.AddNonCRDAPIResource(apiresource)
 			// register scheme for original GVK
 			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: preferredVersion}.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
-			resourceRest := template.NewREST(ss.kubeclient, ss.clusternetclient, ParameterCodec, ss.manifestLister)
+			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)
@@ -180,6 +217,19 @@ func (ss *ShadowAPIServer) installAPIGroups(apiGroupInfos ...*genericapiserver.A
 			return fmt.Errorf("unable to install api resources: %v", err)
 		}
 
+		if apiGroupInfo.PrioritizedVersions[0].String() == shadowapi.SchemeGroupVersion.String() {
+			var found bool
+			for _, ws := range ss.GenericAPIServer.Handler.GoRestfulContainer.RegisteredWebServices() {
+				if ws.RootPath() == path.Join(genericapiserver.APIGroupPrefix, shadowapi.SchemeGroupVersion.String()) {
+					ss.crdHandler.SetRootWebService(ws)
+					found = true
+				}
+			}
+			if !found {
+				klog.WarningDepth(2, fmt.Sprintf("failed to find a root WebServices for %s", shadowapi.SchemeGroupVersion))
+			}
+		}
+
 		// setup discovery
 		// Install the version handler.
 		// Add a handler at /apis/<groupName> to enumerate all versions supported by this group.
@@ -203,7 +253,6 @@ func (ss *ShadowAPIServer) installAPIGroups(apiGroupInfos ...*genericapiserver.A
 			Versions:         apiVersionsForDiscovery,
 			PreferredVersion: preferredVersionForDiscovery,
 		}
-
 		ss.GenericAPIServer.DiscoveryGroupManager.AddGroup(apiGroup)
 		ss.GenericAPIServer.Handler.GoRestfulContainer.Add(genericdiscovery.NewAPIGroupHandler(ss.GenericAPIServer.Serializer, apiGroup).WebService())
 	}
@@ -231,6 +280,7 @@ func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *g
 		if err != nil {
 			return fmt.Errorf("unable to setup API %v: %v", apiGroupInfo, err)
 		}
+
 		resourceInfos = append(resourceInfos, r...)
 	}
 
@@ -275,8 +325,9 @@ func (ss *ShadowAPIServer) newAPIGroupVersion(apiGroupInfo *genericapiserver.API
 
 		EquivalentResourceRegistry: ss.GenericAPIServer.EquivalentResourceRegistry,
 
-		Admit:             ss.admissionControl,
-		MinRequestTimeout: time.Duration(ss.minRequestTimeout) * time.Second,
-		Authorizer:        ss.GenericAPIServer.Authorizer,
+		Admit:               ss.admissionControl,
+		MinRequestTimeout:   time.Duration(ss.minRequestTimeout) * time.Second,
+		Authorizer:          ss.GenericAPIServer.Authorizer,
+		MaxRequestBodyBytes: ss.maxRequestBodyBytes,
 	}
 }

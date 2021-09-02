@@ -37,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
-	"k8s.io/client-go/kubernetes"
 	clientgorest "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
@@ -48,7 +47,6 @@ import (
 )
 
 const (
-	category         = "clusternet.shadow"
 	CoreGroupPrefix  = "api"
 	NamedGroupPrefix = "apis"
 
@@ -73,7 +71,7 @@ type REST struct {
 
 	parameterCodec runtime.ParameterCodec
 
-	dryRunClient     *kubernetes.Clientset
+	dryRunClient     clientgorest.Interface
 	clusternetClient *clusternet.Clientset
 	manifestLister   applisters.ManifestLister
 
@@ -421,7 +419,7 @@ func (r *REST) SetNamespaceScoped(namespaceScoped bool) {
 }
 
 func (r *REST) Categories() []string {
-	return []string{category}
+	return []string{known.Category}
 }
 
 func (r *REST) SetGroup(group string) {
@@ -500,12 +498,11 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 		return nil, errors.NewBadRequest(fmt.Sprintf("failed to marshal to json: %v", u.Object))
 	}
 
-	client := r.dryRunClient.RESTClient()
 	result := &unstructured.Unstructured{}
 	klog.V(7).Infof("creating %s with %s", r.kind, body)
 	resource, _ := r.getResourceName()
 	// first we dry-run the creation
-	req := client.Post().
+	req := r.dryRunClient.Post().
 		Resource(resource).
 		Param("dryRun", "All").
 		VersionedParams(options, r.parameterCodec).
@@ -583,7 +580,7 @@ func (r *REST) getListKind() string {
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
-func NewREST(dryRunClient *kubernetes.Clientset, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
+func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
 	manifestLister applisters.ManifestLister) *REST {
 	return &REST{
 		dryRunClient:     dryRunClient,

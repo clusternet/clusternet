@@ -36,12 +36,10 @@ import (
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
-	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
-	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 )
 
@@ -54,8 +52,7 @@ type Exchanger struct {
 	// dialerServer is used for serving websocket connection
 	dialerServer *remotedialer.Server
 
-	mcLister clusterListers.ManagedClusterLister
-	mcSynced cache.InformerSynced
+	mcLister clusterlisters.ManagedClusterLister
 }
 
 var (
@@ -73,7 +70,7 @@ func authorizer(req *http.Request) (string, bool, error) {
 	return clusterID, clusterID != "", nil
 }
 
-func NewExchanger(tunnelLogging bool, mclsInformer clusterInformers.ManagedClusterInformer) *Exchanger {
+func NewExchanger(tunnelLogging bool, mcLister clusterlisters.ManagedClusterLister) *Exchanger {
 	if tunnelLogging {
 		logrus.SetLevel(logrus.DebugLevel)
 		remotedialer.PrintTunnelData = true
@@ -82,8 +79,7 @@ func NewExchanger(tunnelLogging bool, mclsInformer clusterInformers.ManagedClust
 	e := &Exchanger{
 		cachedTransports: map[string]*http.Transport{},
 		dialerServer:     remotedialer.New(authorizer, remotedialer.DefaultErrorWriter),
-		mcLister:         mclsInformer.Lister(),
-		mcSynced:         mclsInformer.Informer().HasSynced,
+		mcLister:         mcLister,
 	}
 	return e
 }
@@ -120,13 +116,6 @@ func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket
 }
 
 func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder, extraHeaderPrefixes []string) (http.Handler, error) {
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForCacheSync(ctx.Done(), e.mcSynced) {
-		err := apierrors.NewServiceUnavailable("cache for ManagedCluster is not ready yet, please retry later")
-		responder.Error(err)
-		return nil, err
-	}
-
 	location, transport, err := e.ClusterLocation(id, opts)
 	if err != nil {
 		return nil, err

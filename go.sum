@@ -1164,6 +1164,8 @@ k8s.io/component-base v0.21.1/go.mod h1:NgzFZ2qu4m1juby4TnrmpR8adRk6ka62YdH5DkII
 k8s.io/component-base v0.21.2 h1:EsnmFFoJ86cEywC0DoIkAUiEV6fjgauNugiw1lmIjs4=
 k8s.io/component-base v0.21.2/go.mod h1:9lvmIThzdlrJj5Hp8Z/TOgIkdfsNARQ1pT+3PByuiuc=
 k8s.io/component-helpers v0.21.0/go.mod h1:tezqefP7lxfvJyR+0a+6QtVrkZ/wIkyMLK4WcQ3Cj8U=
+k8s.io/controller-manager v0.21.2 h1:wEA1CAqAcviq37BGf9LHou4iJv8fyzA7ad5O9VbmQ6M=
+k8s.io/controller-manager v0.21.2/go.mod h1:tkiSDYJj4H/QRxGNefy5ibFAmhEvqmEh9yLzYI3XUH4=
 k8s.io/gengo v0.0.0-20200413195148-3a45101e95ac/go.mod h1:ezvh/TsK7cY6rbqRK0oQQ8IAqLxYwwyPxAX1Pzy0ii0=
 k8s.io/gengo v0.0.0-20201214224949-b6c5ce23f027 h1:Uusb3oh8XcdzDF/ndlI4ToKTYVlkCSJP39SRY2mfRAw=
 k8s.io/gengo v0.0.0-20201214224949-b6c5ce23f027/go.mod h1:FiNAH4ZV3gBg2Kwh89tzAEV2be7d5xI0vBa/VySYy3E=

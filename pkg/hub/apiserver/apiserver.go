@@ -17,6 +17,10 @@ limitations under the License.
 package apiserver
 
 import (
+	"time"
+
+	crdclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -26,6 +30,7 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
@@ -111,7 +116,8 @@ func (cfg *Config) Complete() CompletedConfig {
 // New returns a new instance of HubAPIServer from the given config.
 func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
 	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset,
-	clusternetInformerFactory informers.SharedInformerFactory) (*HubAPIServer, error) {
+	clusternetInformerFactory informers.SharedInformerFactory,
+	clientBuilder clientbuilder.ControllerClientBuilder) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
@@ -125,7 +131,7 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 
 	var ec *exchanger.Exchanger
 	if socketConnection {
-		ec = exchanger.NewExchanger(tunnelLogging, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters())
+		ec = exchanger.NewExchanger(tunnelLogging, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister())
 	}
 
 	proxiesv1alpha1storage := map[string]rest.Storage{}
@@ -143,22 +149,28 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 	}
 
 	s.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-shadowapis", func(context genericapiserver.PostStartHookContext) error {
-		if s.GenericAPIServer.OpenAPIVersionedService != nil && s.GenericAPIServer.StaticOpenAPISpec != nil {
-			//openapiController := openapi.NewController(hub.crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions())
-			//go openapiController.Run(server.GenericAPIServer.StaticOpenAPISpec, server.GenericAPIServer.OpenAPIVersionedService, context.StopCh)
-
-			if utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
-				klog.Infof("install shadow apis...")
-				ss := shadowapiserver.NewShadowAPIServer(s.GenericAPIServer,
-					c.GenericConfig.MaxRequestBodyBytes,
-					c.GenericConfig.MinRequestTimeout,
-					c.GenericConfig.AdmissionControl,
-					kubeclient,
-					clusternetclient,
-					clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister())
-				return ss.InstallShadowAPIGroups(kubeclient.DiscoveryClient)
-			}
+		if s.GenericAPIServer != nil && utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
+			klog.Infof("install shadow apis...")
+			crdInformerFactory := crdinformers.NewSharedInformerFactory(
+				crdclientset.NewForConfigOrDie(clientBuilder.ConfigOrDie("crd-shared-informers")),
+				5*time.Minute,
+			)
+			ss := shadowapiserver.NewShadowAPIServer(s.GenericAPIServer,
+				c.GenericConfig.MaxRequestBodyBytes,
+				c.GenericConfig.MinRequestTimeout,
+				c.GenericConfig.AdmissionControl,
+				kubeclient.RESTClient(),
+				clusternetclient,
+				clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
+				crdInformerFactory)
+			crdInformerFactory.Start(context.StopCh)
+			return ss.InstallShadowAPIGroups(context.StopCh, kubeclient.DiscoveryClient)
 		}
+
+		select {
+		case <-context.StopCh:
+		}
+
 		return nil
 	})
 
