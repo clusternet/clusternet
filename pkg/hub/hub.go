@@ -34,12 +34,11 @@ import (
 	"github.com/clusternet/clusternet/pkg/hub/approver"
 	"github.com/clusternet/clusternet/pkg/hub/deployer"
 	"github.com/clusternet/clusternet/pkg/hub/options"
+	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
-	// default resync time
-	DefaultResync = time.Hour * 12
 	// default number of threads
 	DefaultThreadiness = 2
 )
@@ -81,8 +80,8 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	crdclient := crdclientset.NewForConfigOrDie(config)
 
 	// creates the informer factory
-	kubeInformerFactory := kubeInformers.NewSharedInformerFactory(kubeclient, DefaultResync)
-	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetclient, DefaultResync)
+	kubeInformerFactory := kubeInformers.NewSharedInformerFactory(kubeclient, known.DefaultResync)
+	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetclient, known.DefaultResync)
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdclient, 5*time.Minute)
 	approver, err := approver.NewCRRApprover(ctx, kubeclient, clusternetclient, clusternetInformerFactory,
 		kubeInformerFactory, socketConnection)

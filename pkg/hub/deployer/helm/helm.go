@@ -18,18 +18,14 @@ package helm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 
-	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/getter"
-	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
-	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -283,7 +279,7 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 
 	_, err := repo.FindChartInRepoURL(chart.Spec.Repository, chart.Spec.Chart, chart.Spec.ChartVersion,
 		"", "", "",
-		getter.All(settings))
+		getter.All(utils.Settings))
 	if err != nil {
 		// failed to find chart
 		return deployer.helmChartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
@@ -441,89 +437,30 @@ func (deployer *Deployer) deleteHelmRelease(ctx context.Context, namespacedKey s
 
 func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
+
+	deployable, err := utils.DeployableByHub(deployer.clusterLister, hr.Labels[known.ClusterIDLabel], hr.Namespace)
+	if err != nil {
+		klog.ErrorDepth(4, err)
+		deployer.recorder.Event(hr, corev1.EventTypeWarning, "ManagedClusterNotFound", err.Error())
+		return err
+	}
+	if !deployable {
+		klog.V(5).Infof("HelmRelease %s is not deployable by hub, skipping syncing", klog.KObj(hr))
+		return nil
+	}
+
 	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, hr.Namespace, hr.Labels[known.ClusterIDLabel])
 	if err != nil {
 		return err
 	}
 
-	deployCtx, err := newDeployContext(config)
-	if err != nil {
-		return err
-	}
-	cfg := new(action.Configuration)
-	err = cfg.Init(deployCtx, hr.Spec.TargetNamespace, "secret", klog.V(5).Infof)
-	if err != nil {
-		return err
-	}
-	cfg.Releases.MaxHistory = 5
-
-	// delete helm release
-	if hr.DeletionTimestamp != nil {
-		err := UninstallRelease(cfg, hr)
-		if err != nil {
-			return err
-		}
-
-		hr.Finalizers = utils.RemoveString(hr.Finalizers, known.AppFinalizer)
-		_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(), hr, metav1.UpdateOptions{})
-		return err
-	}
-
-	// install or upgrade helm release
-	chart, err := LocateHelmChart(hr.Spec.Repository, hr.Spec.Chart, hr.Spec.ChartVersion)
-	if err != nil {
-		deployer.recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
-		return err
-	}
-
-	overrideValues, err := deployer.getOverrides(hr)
+	deployCtx, err := utils.NewDeployContext(config)
 	if err != nil {
 		return err
 	}
 
-	var rel *release.Release
-	// check whether the release is deployed
-	rel, err = cfg.Releases.Deployed(hr.Name)
-	if err != nil {
-		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
-			rel, err = InstallRelease(cfg, hr, chart, overrideValues)
-		}
-	} else {
-		// verify the release is changed or not
-		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
-			rel, err = UpgradeRelease(cfg, hr, chart, overrideValues)
-		} else {
-			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
-		}
-	}
-
-	if err != nil {
-		// repo update
-		if strings.Contains(err.Error(), "helm repo update") {
-			return UpdateRepo(hr.Spec.Repository)
-		}
-
-		if err := deployer.helmReleaseController.UpdateHelmReleaseStatus(hr, &appsapi.HelmReleaseStatus{
-			Phase: release.StatusFailed,
-			Notes: err.Error(),
-		}); err != nil {
-			return err
-		}
-		return err
-	}
-
-	status := &appsapi.HelmReleaseStatus{
-		Version: rel.Version,
-	}
-	if rel.Info != nil {
-		status.FirstDeployed = rel.Info.FirstDeployed.String()
-		status.LastDeployed = rel.Info.LastDeployed.String()
-		status.Description = rel.Info.Description
-		status.Phase = rel.Info.Status
-		status.Notes = rel.Info.Notes
-	}
-
-	return deployer.helmReleaseController.UpdateHelmReleaseStatus(hr, status)
+	return utils.ReconcileHelmRelease(deployer.ctx, deployCtx, deployer.clusternetClient,
+		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
 }
 
 func (deployer *Deployer) handleSecret(secret *corev1.Secret) error {
@@ -556,64 +493,6 @@ func (deployer *Deployer) handleSecret(secret *corev1.Secret) error {
 			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secret), err))
 	}
 	return err
-}
-
-func (deployer *Deployer) getOverrides(hr *appsapi.HelmRelease) (map[string]interface{}, error) {
-	var overrideValues map[string]interface{}
-	// get overrides
-	controllerRef := metav1.GetControllerOf(hr)
-	if controllerRef != nil {
-		desc := deployer.resolveControllerRef(hr.Namespace, controllerRef)
-		if desc == nil {
-			return overrideValues, nil
-		}
-
-		var found bool
-		var index int
-		for idx, chart := range desc.Spec.Charts {
-			if chart.Namespace == hr.Namespace && chart.Name == hr.Name {
-				found = true
-				index = idx
-				break
-			}
-		}
-		if !found {
-			msg := fmt.Sprintf("Description %s has no connection with HelmRelease %s", klog.KObj(desc), klog.KObj(hr))
-			klog.WarningDepth(5, msg)
-			deployer.recorder.Event(desc, corev1.EventTypeWarning, "DescriptionNotRelated", msg)
-			return overrideValues, nil
-		}
-		if len(desc.Spec.Raw) < index {
-			msg := fmt.Sprintf("unequal lengths of Spec.Raw and Spec.Charts in Description %s", klog.KObj(desc))
-			klog.ErrorDepth(5, msg)
-			deployer.recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
-			return nil, errors.New(msg)
-		}
-		err := json.Unmarshal(desc.Spec.Raw[index], &overrideValues)
-		return overrideValues, err
-	}
-	return overrideValues, nil
-}
-
-// resolveControllerRef returns the controller referenced by a ControllerRef,
-// or nil if the ControllerRef could not be resolved to a matching controller
-// of the correct Kind.
-func (deployer *Deployer) resolveControllerRef(namespace string, controllerRef *metav1.OwnerReference) *appsapi.Description {
-	// We can't look up by UID, so look up by Name and then verify UID.
-	// Don't even try to look up by Name if it's the wrong Kind.
-	if controllerRef.Kind != descriptionKind.Kind {
-		return nil
-	}
-	desc, err := deployer.descLister.Descriptions(namespace).Get(controllerRef.Name)
-	if err != nil {
-		return nil
-	}
-	if desc.UID != controllerRef.UID {
-		// The controller we found with this Name is not the same one that the
-		// ControllerRef points to.
-		return nil
-	}
-	return desc
 }
 
 func (deployer *Deployer) protectHelmChartFeed(chart *appsapi.HelmChart) error {

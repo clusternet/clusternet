@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package helm
+package utils
 
 import (
 	"fmt"
@@ -28,13 +28,21 @@ import (
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/discovery"
+	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
 var (
-	settings = cli.New()
+	Settings = cli.New()
 )
 
 // LocateHelmChart will looks for a chart from repository and load it.
@@ -43,7 +51,7 @@ func LocateHelmChart(chartRepo, chartName, chartVersion string) (*chart.Chart, e
 	client.ChartPathOptions.RepoURL = chartRepo
 	client.ChartPathOptions.Version = chartVersion
 
-	cp, err := client.ChartPathOptions.LocateChart(chartName, settings)
+	cp, err := client.ChartPathOptions.LocateChart(chartName, Settings)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +140,7 @@ func UpdateRepo(repoURL string) error {
 		URL:                   repoURL,
 		InsecureSkipTLSverify: true,
 	}
-	cr, err := repo.NewChartRepository(&entry, getter.All(settings))
+	cr, err := repo.NewChartRepository(&entry, getter.All(Settings))
 	if err != nil {
 		return err
 	}
@@ -143,4 +151,54 @@ func UpdateRepo(repoURL string) error {
 
 	klog.V(5).Infof("successfully got an repository update for %s", repoURL)
 	return nil
+}
+
+type DeployContext struct {
+	clientConfig             clientcmd.ClientConfig
+	restConfig               *rest.Config
+	cachedDiscoveryInterface discovery.CachedDiscoveryInterface
+	restMapper               meta.RESTMapper
+}
+
+func NewDeployContext(config *clientcmdapi.Config) (*DeployContext, error) {
+	clientConfig := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{})
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("error while creating DeployContext: %v", err)
+	}
+	restConfig.QPS = 5
+	restConfig.Burst = 10
+
+	kubeclient, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error while creating DeployContext: %v", err)
+	}
+
+	discoveryClient := cacheddiscovery.NewMemCacheClient(kubeclient.Discovery())
+	discoveryRESTMapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
+
+	dctx := &DeployContext{
+		clientConfig:             clientConfig,
+		restConfig:               restConfig,
+		cachedDiscoveryInterface: discoveryClient,
+		restMapper:               discoveryRESTMapper,
+	}
+
+	return dctx, nil
+}
+
+func (dctx *DeployContext) ToRawKubeConfigLoader() clientcmd.ClientConfig {
+	return dctx.clientConfig
+}
+
+func (dctx *DeployContext) ToRESTConfig() (*rest.Config, error) {
+	return dctx.restConfig, nil
+}
+
+func (dctx *DeployContext) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
+	return dctx.cachedDiscoveryInterface, nil
+}
+
+func (dctx *DeployContext) ToRESTMapper() (meta.RESTMapper, error) {
+	return dctx.restMapper, nil
 }

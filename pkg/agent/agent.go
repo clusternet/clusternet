@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,18 +35,25 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 
+	"github.com/clusternet/clusternet/pkg/agent/deployer"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/proxies/sockets"
 	"github.com/clusternet/clusternet/pkg/features"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
+const (
+	// default number of threads
+	defaultThreadiness = 2
+)
+
 // Agent defines configuration for clusternet-agent
 type Agent struct {
-	AgentContext context.Context
+	ctx context.Context
 
 	// Identity is the unique string identifying a lease holder across
 	// all participants in an election.
@@ -63,13 +71,13 @@ type Agent struct {
 	// dedicated kubeconfig for accessing parent cluster, which is auto populated by the parent cluster
 	// when cluster registration request gets approved
 	parentDedicatedKubeConfig *rest.Config
-	// secret that stores credentials from parent cluster
-	secretFromParentCluster *corev1.Secret
+	// dedicated namespace in parent cluster for current child cluster
+	DedicatedNamespace *string
 
 	// report cluster status
 	statusManager *Manager
 
-	deployer *Deployer
+	deployer *deployer.Deployer
 }
 
 // NewAgent returns a new Agent.
@@ -91,12 +99,12 @@ func NewAgent(ctx context.Context, childKubeConfigFile string, regOpts *ClusterR
 	childKubeClientSet := kubernetes.NewForConfigOrDie(childKubeConfig)
 
 	agent := &Agent{
-		AgentContext:       ctx,
+		ctx:                ctx,
 		Identity:           identity,
 		childKubeClientSet: childKubeClientSet,
 		Options:            regOpts,
-		statusManager:      NewStatusManager(ctx, childKubeConfig.Host, regOpts.ParentURL, childKubeClientSet, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
-		deployer:           NewDeployer(regOpts.ClusterSyncMode, childKubeConfig.Host, childKubeClientSet),
+		statusManager:      NewStatusManager(ctx, childKubeConfig.Host, regOpts, childKubeClientSet),
+		deployer:           deployer.NewDeployer(regOpts.ClusterSyncMode, childKubeConfig.Host),
 	}
 	return agent, nil
 }
@@ -105,7 +113,7 @@ func (agent *Agent) Run() {
 	klog.Info("starting agent controller ...")
 
 	// start the leader election code loop
-	leaderelection.RunOrDie(agent.AgentContext, *newLeaderElectionConfigWithDefaultValue(agent.Identity, agent.childKubeClientSet,
+	leaderelection.RunOrDie(agent.ctx, *newLeaderElectionConfigWithDefaultValue(agent.Identity, agent.childKubeClientSet,
 		leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				// we're notified when we start - this is where you would
@@ -123,8 +131,20 @@ func (agent *Agent) Run() {
 					go socketConn.Run(ctx, agent.ClusterID)
 				}
 
-				go agent.statusManager.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster)
-				go agent.deployer.Run(ctx, agent.parentDedicatedKubeConfig, agent.secretFromParentCluster, agent.ClusterID)
+				go wait.UntilWithContext(ctx, func(ctx context.Context) {
+					agent.statusManager.Run(ctx, agent.parentDedicatedKubeConfig, agent.DedicatedNamespace, agent.ClusterID)
+				}, time.Duration(0))
+
+				go wait.UntilWithContext(ctx, func(ctx context.Context) {
+					if err := agent.deployer.Run(ctx,
+						agent.parentDedicatedKubeConfig,
+						agent.childKubeClientSet,
+						agent.DedicatedNamespace,
+						agent.ClusterID,
+						defaultThreadiness); err != nil {
+						klog.Error(err)
+					}
+				}, time.Duration(0))
 			},
 			OnStoppedLeading: func() {
 				klog.Error("leader election got lost")
@@ -150,11 +170,12 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 
 	registerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	wait.JitterUntil(func() {
+
+	wait.JitterUntilWithContext(registerCtx, func(ctx context.Context) {
 		// get cluster unique id
 		if agent.ClusterID == nil {
 			klog.Infof("retrieving cluster id")
-			clusterID, err := agent.getClusterID(registerCtx, agent.childKubeClientSet)
+			clusterID, err := agent.getClusterID(ctx, agent.childKubeClientSet)
 			if err != nil {
 				return
 			}
@@ -164,16 +185,15 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 
 		// get parent cluster kubeconfig
 		if tryToUseSecret {
-			secret, err := agent.childKubeClientSet.CoreV1().Secrets(ClusternetSystemNamespace).Get(registerCtx,
+			secret, err := agent.childKubeClientSet.CoreV1().Secrets(known.ClusternetSystemNamespace).Get(ctx,
 				ParentClusterSecretName, metav1.GetOptions{})
 			if err != nil && !apierrors.IsNotFound(err) {
 				klog.Errorf("failed to get secretFromParentCluster: %v", err)
 				return
 			}
 			if err == nil {
-				agent.secretFromParentCluster = secret
 				klog.Infof("found existing secretFromParentCluster '%s/%s' that can be used to access parent cluster",
-					ClusternetSystemNamespace, ParentClusterSecretName)
+					known.ClusternetSystemNamespace, ParentClusterSecretName)
 
 				if string(secret.Data[known.ClusterAPIServerURLKey]) != agent.Options.ParentURL {
 					klog.Warningf("the parent url got changed from %q to %q", secret.Data[known.ClusterAPIServerURLKey], agent.Options.ParentURL)
@@ -189,7 +209,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 		}
 
 		// bootstrap cluster registration
-		if err := agent.bootstrapClusterRegistrationIfNeeded(registerCtx); err != nil {
+		if err := agent.bootstrapClusterRegistrationIfNeeded(ctx); err != nil {
 			klog.Error(err)
 			klog.Warning("something went wrong when using existing parent cluster credentials, switch to use bootstrap token instead")
 			tryToUseSecret = false
@@ -199,13 +219,13 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 
 		// Cancel the context on success
 		cancel()
-	}, DefaultRetryPeriod, 0.3, true, registerCtx.Done())
+	}, known.DefaultRetryPeriod, 0.3, true)
 }
 
 func (agent *Agent) getClusterID(ctx context.Context, childClientSet kubernetes.Interface) (types.UID, error) {
-	lease, err := childClientSet.CoordinationV1().Leases(ClusternetSystemNamespace).Get(ctx, SelfClusterLeaseName, metav1.GetOptions{})
+	lease, err := childClientSet.CoordinationV1().Leases(known.ClusternetSystemNamespace).Get(ctx, SelfClusterLeaseName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("unable to retrieve %s/%s Lease object: %v", ClusternetSystemNamespace, SelfClusterLeaseName, err)
+		klog.Errorf("unable to retrieve %s/%s Lease object: %v", known.ClusternetSystemNamespace, SelfClusterLeaseName, err)
 		return "", err
 	}
 	return lease.UID, nil
@@ -219,7 +239,7 @@ func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) er
 		return err
 	}
 	// create ClusterRegistrationRequest
-	client := clusternetClientSet.NewForConfigOrDie(clientConfig)
+	client := clusternetclientset.NewForConfigOrDie(clientConfig)
 	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
 		newClusterRegistrationRequest(*agent.ClusterID, agent.Options.ClusterType,
 			generateClusterName(agent.Options.ClusterName, agent.Options.ClusterNamePrefix),
@@ -264,16 +284,16 @@ func (agent *Agent) getBootstrapKubeConfigForParentCluster() (*rest.Config, erro
 	return clientConfig, nil
 }
 
-func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetClientSet.Interface) error {
+func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetclientset.Interface) error {
 	var crr *clusterapi.ClusterRegistrationRequest
 	var err error
 
 	// wait until stopCh is closed or request is approved
 	waitingCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	wait.JitterUntil(func() {
+	wait.JitterUntilWithContext(waitingCtx, func(ctx context.Context) {
 		crrName := generateClusterRegistrationRequestName(*agent.ClusterID)
-		crr, err = client.ClustersV1beta1().ClusterRegistrationRequests().Get(waitingCtx, crrName, metav1.GetOptions{})
+		crr, err = client.ClustersV1beta1().ClusterRegistrationRequests().Get(ctx, crrName, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get ClusterRegistrationRequest %s: %v", crrName, err)
 			return
@@ -292,7 +312,7 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 
 		klog.V(4).Infof("the registration request for cluster %q (%q) is still waiting for approval...",
 			*agent.ClusterID, agent.Options.ClusterName)
-	}, DefaultRetryPeriod, 0.4, true, waitingCtx.Done())
+	}, known.DefaultRetryPeriod, 0.4, true)
 
 	parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.Options.ParentURL,
 		string(crr.Status.DedicatedToken), crr.Status.CACertificate, 2)
@@ -300,17 +320,18 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetCli
 		return err
 	}
 	agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
+	agent.DedicatedNamespace = utilpointer.StringPtr(crr.Status.DedicatedNamespace)
 
 	// once the request gets approved
 	// store auto-populated credentials to Secret "parent-cluster" in "clusternet-system" namespace
-	agent.storeParentClusterCredentials(agent.AgentContext, crr)
+	go agent.storeParentClusterCredentials(crr)
 
 	return nil
 }
 
-func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clusterapi.ClusterRegistrationRequest) {
+func (agent *Agent) storeParentClusterCredentials(crr *clusterapi.ClusterRegistrationRequest) {
 	klog.V(4).Infof("store parent cluster credentials to secret for later use")
-	secretCtx, cancel := context.WithCancel(ctx)
+	secretCtx, cancel := context.WithCancel(agent.ctx)
 	defer cancel()
 
 	secret := &corev1.Secret{
@@ -329,25 +350,25 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 			known.ClusterAPIServerURLKey:      []byte(agent.Options.ParentURL),
 		},
 	}
-	agent.secretFromParentCluster = secret
-	wait.JitterUntil(func() {
-		_, err := agent.childKubeClientSet.CoreV1().Secrets(ClusternetSystemNamespace).Create(secretCtx, secret, metav1.CreateOptions{})
+
+	wait.JitterUntilWithContext(secretCtx, func(ctx context.Context) {
+		_, err := agent.childKubeClientSet.CoreV1().Secrets(known.ClusternetSystemNamespace).Create(ctx, secret, metav1.CreateOptions{})
 		if err == nil {
 			klog.V(5).Infof("successfully store parent cluster credentials")
 			cancel()
 			return
-		} else {
-			if apierrors.IsAlreadyExists(err) {
-				klog.V(5).Infof("found existed parent cluster credentials, will try to update if needed")
-				_, err = agent.childKubeClientSet.CoreV1().Secrets(ClusternetSystemNamespace).Update(secretCtx, secret, metav1.UpdateOptions{})
-				if err == nil {
-					cancel()
-					return
-				}
-			}
-			klog.ErrorDepth(5, fmt.Sprintf("failed to store parent cluster credentials: %v", err))
 		}
-	}, DefaultRetryPeriod, 0.4, true, secretCtx.Done())
+
+		if apierrors.IsAlreadyExists(err) {
+			klog.V(5).Infof("found existed parent cluster credentials, will try to update if needed")
+			_, err = agent.childKubeClientSet.CoreV1().Secrets(known.ClusternetSystemNamespace).Update(ctx, secret, metav1.UpdateOptions{})
+			if err == nil {
+				cancel()
+				return
+			}
+		}
+		klog.ErrorDepth(5, fmt.Sprintf("failed to store parent cluster credentials: %v", err))
+	}, known.DefaultRetryPeriod, 0.4, true)
 }
 
 func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernetes.Interface, callbacks leaderelection.LeaderCallbacks) *leaderelection.LeaderElectionConfig {
@@ -355,7 +376,7 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 		Lock: &resourcelock.LeaseLock{
 			LeaseMeta: metav1.ObjectMeta{
 				Name:      SelfClusterLeaseName,
-				Namespace: ClusternetSystemNamespace,
+				Namespace: known.ClusternetSystemNamespace,
 			},
 			Client: clientset.CoordinationV1(),
 			LockConfig: resourcelock.ResourceLockConfig{
@@ -371,7 +392,7 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 		ReleaseOnCancel: true,
 		LeaseDuration:   DefaultLeaseDuration,
 		RenewDeadline:   DefaultRenewDeadline,
-		RetryPeriod:     DefaultRetryPeriod,
+		RetryPeriod:     known.DefaultRetryPeriod,
 		Callbacks:       callbacks,
 	}
 }

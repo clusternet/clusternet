@@ -46,7 +46,7 @@ import (
 // controllerKind contains the schema.GroupVersionKind for this controller type.
 var controllerKind = appsapi.SchemeGroupVersion.WithKind("Base")
 
-type SyncHandlerFunc func(orig *appsapi.Base) error
+type SyncHandlerFunc func(base *appsapi.Base) error
 
 // Controller is a controller that handle Base
 type Controller struct {

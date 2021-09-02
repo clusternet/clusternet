@@ -50,16 +50,8 @@ const (
 
 // default values
 const (
-	SelfClusterLeaseName      = "self-cluster"
-	ClusternetSystemNamespace = "clusternet-system"
-	ParentClusterSecretName   = "parent-cluster"
-
-	// ServiceAccountNameKey is the key of the required annotation for SecretTypeServiceAccountToken secrets
-	ServiceAccountNameKey = "service-account.name"
-	// ServiceAccountUIDKey is the key of the required annotation for SecretTypeServiceAccountToken secrets
-	ServiceAccountUIDKey = "service-account.uid"
-
-	ClusternetAppSA = "clusternet-app-deployer"
+	SelfClusterLeaseName    = "self-cluster"
+	ParentClusterSecretName = "parent-cluster"
 
 	// RegistrationNamePrefix is a prefix name for cluster registration
 	RegistrationNamePrefix = "clusternet-cluster"
@@ -79,5 +71,4 @@ const (
 const (
 	DefaultLeaseDuration = 60 * time.Second
 	DefaultRenewDeadline = 15 * time.Second
-	DefaultRetryPeriod   = 5 * time.Second
 )

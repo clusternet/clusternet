@@ -19,20 +19,20 @@ package agent
 import (
 	"context"
 	"os"
-	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterstatus"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
 )
 
@@ -45,55 +45,41 @@ type Manager struct {
 	managedCluster *clusterapi.ManagedCluster
 }
 
-func NewStatusManager(ctx context.Context, apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, statusCollectFrequency metav1.Duration, statusReportFrequency metav1.Duration) *Manager {
+func NewStatusManager(ctx context.Context, apiserverURL string, regOpts *ClusterRegistrationOptions, kubeClient kubernetes.Interface) *Manager {
 	return &Manager{
-		statusReportFrequency:   statusReportFrequency,
-		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL, parentAPIServerURL, kubeClient, statusCollectFrequency),
+		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
+		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL, regOpts.ParentURL,
+			kubeClient, regOpts.ClusterStatusCollectFrequency),
 	}
 }
 
-func (mgr *Manager) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Config, secret *corev1.Secret) {
+func (mgr *Manager) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Config, dedicatedNamespace *string, clusterID *types.UID) {
 	klog.Infof("starting status manager to report heartbeats...")
 
 	go mgr.clusterStatusController.Run(ctx)
 
 	// in case the dedicated kubeconfig get changed when leader election gets lost,
 	// initialize the client when Run() is called
-	client := clusternetClientSet.NewForConfigOrDie(parentDedicatedKubeConfig)
-	wait.Until(func() {
-		if secret == nil {
-			klog.Error("unexpected nil secret")
+	client := clusternetclientset.NewForConfigOrDie(parentDedicatedKubeConfig)
+
+	wait.UntilWithContext(ctx, func(ctx context.Context) {
+		if dedicatedNamespace == nil {
+			klog.Error("unexpected nil dedicatedNamespace")
 			// in case a race condition here
 			os.Exit(1)
 			return
 		}
-
-		namespace, ok := secret.Data[corev1.ServiceAccountNamespaceKey]
-		if !ok {
-			klog.Errorf("cannot find secret data 'namespace' in secret %s", klog.KObj(secret))
+		if clusterID == nil {
+			klog.Error("unexpected nil clusterID")
+			// in case a race condition here
+			os.Exit(1)
 			return
 		}
-
-		clusterID, ok := secret.Labels[known.ClusterIDLabel]
-		if !ok {
-			klog.Errorf("cannot find label %s in secret %s", known.ClusterIDLabel, klog.KObj(secret))
-			return
-		}
-
-		mgr.updateClusterStatus(ctx,
-			string(namespace),
-			clusterID,
-			client,
-			wait.Backoff{
-				Steps:    4,
-				Duration: 500 * time.Millisecond,
-				Factor:   5.0,
-				Jitter:   0.1,
-			})
-	}, mgr.statusReportFrequency.Duration, ctx.Done())
+		mgr.updateClusterStatus(ctx, *dedicatedNamespace, string(*clusterID), client, retry.DefaultBackoff)
+	}, mgr.statusReportFrequency.Duration)
 }
 
-func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterID string, client clusternetClientSet.Interface, backoff wait.Backoff) {
+func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterID string, client clusternetclientset.Interface, backoff wait.Backoff) {
 	if mgr.managedCluster == nil {
 		managedClusters, err := client.ClustersV1beta1().ManagedClusters(namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: labels.SelectorFromSet(labels.Set{
@@ -126,22 +112,22 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 		}
 
 		mgr.managedCluster.Status = *status
-		mc, err := client.ClustersV1beta1().ManagedClusters(namespace).UpdateStatus(ctx, mgr.managedCluster, metav1.UpdateOptions{})
+		mcls, err := client.ClustersV1beta1().ManagedClusters(namespace).UpdateStatus(ctx, mgr.managedCluster, metav1.UpdateOptions{})
 		if err != nil {
 			if apierrors.IsConflict(err) {
-				latestMC, err := client.ClustersV1beta1().ManagedClusters(namespace).Get(ctx, mgr.managedCluster.Name, metav1.GetOptions{})
+				latestMcls, err := client.ClustersV1beta1().ManagedClusters(namespace).Get(ctx, mgr.managedCluster.Name, metav1.GetOptions{})
 				if err != nil {
 					klog.Errorf("failed to get latest ManagedCluster %s: %v", klog.KObj(mgr.managedCluster), err)
 					return false, nil
 				}
-				mgr.managedCluster = latestMC
+				mgr.managedCluster = latestMcls
 				return false, nil
 			}
 
 			klog.Errorf("failed to update status of ManagedCluster %s: %v", klog.KObj(mgr.managedCluster), err)
 			return false, nil
 		}
-		mgr.managedCluster = mc
+		mgr.managedCluster = mcls
 		return true, nil
 	})
 	if err != nil {
