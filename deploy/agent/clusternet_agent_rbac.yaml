@@ -46,3 +46,6 @@ subjects:
   - kind: ServiceAccount
     name: clusternet-app-deployer
     namespace: clusternet-system
+  - kind: ServiceAccount
+    name: clusternet-agent
+    namespace: clusternet-system
