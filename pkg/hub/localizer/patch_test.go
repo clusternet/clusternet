@@ -77,6 +77,11 @@ hole: black
 					Value: `{"address":{"country":"US","state":"MA"},"boat":"fighter"}`,
 				},
 				{
+					Name:  "empty override with whitespaces",
+					Type:  appsapi.HelmType,
+					Value: `   `,
+				},
+				{
 					Name:  "add/update value - yaml format",
 					Type:  appsapi.HelmType,
 					Value: helmDataYaml,
@@ -100,7 +105,54 @@ hole: black
 				}`),
 		},
 		{
-			name: "JSONPatch/MergePatch/StrategicMergePatch",
+			name:     "Helm with Empty Original",
+			original: []byte(``),
+			overrides: []appsapi.OverrideConfig{
+				{
+					Name:  "empty override",
+					Type:  appsapi.HelmType,
+					Value: `  `,
+				},
+				{
+					Name:  "initial override",
+					Type:  appsapi.HelmType,
+					Value: `{"kind":"Guess","address":{"city":"Nantucket","street":"123 Spouter Inn Ct."},"boat":"pequod","details":{"friends":["Tashtego"]},"name":"Ishmael"}`,
+				},
+				{
+					Name:  "add/update value - json format",
+					Type:  appsapi.HelmType,
+					Value: `{"address":{"country":"US","state":"MA"},"boat":"fighter"}`,
+				},
+				{
+					Name:  "empty override with whitespaces",
+					Type:  appsapi.HelmType,
+					Value: `   `,
+				},
+				{
+					Name:  "add/update value - yaml format",
+					Type:  appsapi.HelmType,
+					Value: helmDataYaml,
+				},
+			},
+			want: []byte(`{
+				"kind": "Guess",
+				"address": {
+					"city": "Nantucket",
+					"country": "US",
+					"planet": "Earth",
+					"state": "MA",
+					"street": "234 Spouter Inn Ct."
+                },
+				"boat": "fighter",
+				"details": {
+					"friends": ["Tashtego"]
+				},
+				"hole": "black",
+				"name": "Ishmael"
+				}`),
+		},
+		{
+			name: "JSONPatch and MergePatch",
 			original: []byte(`{
 				"apiVersion": "v1",
 				"kind": "Pod",
@@ -117,9 +169,19 @@ hole: black
 			}`),
 			overrides: []appsapi.OverrideConfig{
 				{
+					Name:  "empty override with whitespaces",
+					Type:  appsapi.MergePatchType,
+					Value: `   `,
+				},
+				{
 					Name:  "add namespace - json format",
 					Type:  appsapi.MergePatchType,
 					Value: `{"metadata":{"namespace":"test"}}`,
+				},
+				{
+					Name:  "empty override with whitespaces",
+					Type:  appsapi.JSONPatchType,
+					Value: `   `,
 				},
 				{
 					Name:  "add namespace - yaml format",
