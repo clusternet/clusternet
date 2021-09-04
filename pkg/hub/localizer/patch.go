@@ -36,18 +36,17 @@ const (
 func applyOverrides(original []byte, overrides []appsapi.OverrideConfig) ([]byte, error) {
 	result := original
 	for _, overrideConfig := range overrides {
+		// validates override value first
+		if len(strings.TrimSpace(overrideConfig.Value)) == 0 {
+			continue
+		}
 		overrideBytes, err := yaml.YAMLToJSON([]byte(overrideConfig.Value))
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert patch %s to JSON: %v", overrideConfig.Value, err)
 		}
 
-		// validation before apply override
 		if len(strings.TrimSpace(string(result))) == 0 {
 			result = overrideBytes
-			continue
-		}
-
-		if len(strings.TrimSpace(string(overrideBytes))) == 0 {
 			continue
 		}
 
