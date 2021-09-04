@@ -90,7 +90,7 @@ spec:
                 type: array
               priority:
                 default: 500
-                description: Priority is an integer defining the relative importance of this Localization compared to others. Lower numbers are considered lower priority.
+                description: Priority is an integer defining the relative importance of this Localization compared to others. Lower numbers are considered lower priority. And these Localization(s) will be applied by order from lower priority to higher. That means override values in lower Localization will be overridden by those in higher Localization.
                 format: int32
                 maximum: 1000
                 minimum: 0

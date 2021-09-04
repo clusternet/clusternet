@@ -49,8 +49,10 @@ type LocalizationSpec struct {
 	// +optional
 	Overrides []OverrideConfig `json:"overrides,omitempty"`
 
-	// Priority is an integer defining the relative importance of this Localization compared to others. Lower
-	// numbers are considered lower priority.
+	// Priority is an integer defining the relative importance of this Localization compared to others.
+	// Lower numbers are considered lower priority.
+	// And these Localization(s) will be applied by order from lower priority to higher.
+	// That means override values in lower Localization will be overridden by those in higher Localization.
 	//
 	// +optional
 	// +kubebuilder:validation:Maximum=1000
