@@ -247,11 +247,11 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 		return nil, err
 	}
 	sort.SliceStable(globs, func(i, j int) bool {
-		if globs[i].Spec.Priority < globs[j].Spec.Priority {
-			return true
+		if globs[i].Spec.Priority == globs[j].Spec.Priority {
+			return globs[i].CreationTimestamp.Second() < globs[j].CreationTimestamp.Second()
 		}
 
-		return globs[i].CreationTimestamp.Second() < globs[j].CreationTimestamp.Second()
+		return globs[i].Spec.Priority < globs[j].Spec.Priority
 	})
 
 	locs, err := l.locLister.Localizations(namespace).List(labels.SelectorFromSet(labels.Set{
@@ -261,11 +261,11 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 		return nil, err
 	}
 	sort.SliceStable(locs, func(i, j int) bool {
-		if locs[i].Spec.Priority < locs[j].Spec.Priority {
-			return true
+		if locs[i].Spec.Priority == locs[j].Spec.Priority {
+			return locs[i].CreationTimestamp.Second() < locs[j].CreationTimestamp.Second()
 		}
 
-		return locs[i].CreationTimestamp.Second() < locs[j].CreationTimestamp.Second()
+		return locs[i].Spec.Priority < locs[j].Spec.Priority
 	})
 
 	var allOverrideConfigs []appsapi.OverrideConfig
