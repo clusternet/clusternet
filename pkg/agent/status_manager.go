@@ -18,6 +18,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
@@ -118,33 +119,30 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 	}
 
 	// in case the network is not stable, retry with backoff
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+	var lastError error
+	var mcls *clusterapi.ManagedCluster
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
 		status := mgr.clusterStatusController.GetClusterStatus()
 		if status == nil {
-			klog.Warningf("cluster status is not ready, will retry later")
+			lastError = errors.New("cluster status is not ready, will retry later")
 			return false, nil
 		}
 
 		mgr.managedCluster.Status = *status
-		mcls, err := client.ClustersV1beta1().ManagedClusters(namespace).UpdateStatus(ctx, mgr.managedCluster, metav1.UpdateOptions{})
-		if err != nil {
-			if apierrors.IsConflict(err) {
-				latestMcls, err := client.ClustersV1beta1().ManagedClusters(namespace).Get(ctx, mgr.managedCluster.Name, metav1.GetOptions{})
-				if err != nil {
-					klog.Errorf("failed to get latest ManagedCluster %s: %v", klog.KObj(mgr.managedCluster), err)
-					return false, nil
-				}
-				mgr.managedCluster = latestMcls
-				return false, nil
-			}
-
-			klog.Errorf("failed to update status of ManagedCluster %s: %v", klog.KObj(mgr.managedCluster), err)
-			return false, nil
+		mcls, lastError = client.ClustersV1beta1().ManagedClusters(namespace).UpdateStatus(ctx, mgr.managedCluster, metav1.UpdateOptions{})
+		if lastError == nil {
+			mgr.managedCluster = mcls
+			return true, nil
 		}
-		mgr.managedCluster = mcls
-		return true, nil
+		if apierrors.IsConflict(lastError) {
+			mcls, lastError = client.ClustersV1beta1().ManagedClusters(namespace).Get(ctx, mgr.managedCluster.Name, metav1.GetOptions{})
+			if lastError == nil {
+				mgr.managedCluster = mcls
+			}
+		}
+		return false, nil
 	})
 	if err != nil {
-		klog.Errorf("failed to update status of ManagedCluster after retrying many times: %v", err)
+		klog.WarningDepth(2, "failed to update status of ManagedCluster: %v", lastError)
 	}
 }
