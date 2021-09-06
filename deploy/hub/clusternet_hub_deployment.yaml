@@ -54,10 +54,10 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-hub
-          image: ghcr.io/clusternet/clusternet-hub:v0.3.0
+          image: ghcr.io/clusternet/clusternet-hub:v0.4.0
           imagePullPolicy: IfNotPresent
           command:
             - /usr/local/bin/clusternet-hub
             - --secure-port=443
-            - --feature-gates=SocketConnection=true,Deployer=true,ShadowAPI=true
+            - --feature-gates=SocketConnection=true,Deployer=true,ShadowAPI=true,FeedInUseProtection=true
             - -v=4
