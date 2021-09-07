@@ -163,7 +163,9 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, cluster
 	}
 
 	if rel != nil {
-		hrStatus.Version = rel.Version
+		hrStatus = &appsapi.HelmReleaseStatus{
+			Version: rel.Version,
+		}
 		if rel.Info != nil {
 			hrStatus.FirstDeployed = rel.Info.FirstDeployed.String()
 			hrStatus.LastDeployed = rel.Info.LastDeployed.String()
