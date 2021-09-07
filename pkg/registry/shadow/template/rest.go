@@ -184,6 +184,18 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 
 	manifest.Template.Reset()
+	// in case labels get changed
+	if manifest.Labels == nil {
+		manifest.Labels = map[string]string{}
+	}
+	for k, v := range result.GetLabels() {
+		manifest.Labels[k] = v
+	}
+	manifest.Labels[known.ConfigGroupLabel] = r.group
+	manifest.Labels[known.ConfigVersionLabel] = r.version
+	manifest.Labels[known.ConfigKindLabel] = r.kind
+	manifest.Labels[known.ConfigNameLabel] = result.GetName()
+	manifest.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
 	manifest.Template.Object = result
 	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifest, *options)
 	if err != nil {
