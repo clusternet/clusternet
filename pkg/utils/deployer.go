@@ -414,39 +414,39 @@ func applyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 	// set UID as empty
 	resource.SetUID("")
 
-	return wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
+	var lastError error
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to get RESTMapping: %v", err))
+			lastError = fmt.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
 			return false, nil
 		}
 
-		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+		_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 			Create(context.TODO(), resource, metav1.CreateOptions{})
-		if err == nil {
+		if lastError == nil {
 			return true, nil
 		}
-		if !apierrors.IsAlreadyExists(err) {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to create %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
+		if !apierrors.IsAlreadyExists(lastError) {
 			return false, nil
 		}
 
 		// try  to update resource
-		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+		_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 			Update(context.TODO(), resource, metav1.UpdateOptions{})
-		if err == nil {
+		if lastError == nil {
 			return true, nil
 		}
-		statusCauses, ok := getStatusCause(err)
+		statusCauses, ok := getStatusCause(lastError)
 		if !ok {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to get StatusCause for %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
+			lastError = fmt.Errorf("failed to get StatusCause for %s %s", resource.GetKind(), klog.KObj(resource))
 			return false, nil
 		}
 
 		curObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 			Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
 		if err != nil {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to get %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
+			lastError = err
 			return false, nil
 		}
 		resourceCopy := resource.DeepCopy()
@@ -459,34 +459,42 @@ func applyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 			setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
 		}
 		// update with immutable values applied
-		_, err = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
+		_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
 			Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
-		if err == nil {
+		if lastError == nil {
 			return true, nil
 		}
-		klog.ErrorDepth(5, fmt.Sprintf("failed to update %s %s: %v", resource.GetKind(), klog.KObj(resource), err))
 		return false, nil
 	})
+
+	if err == nil {
+		return nil
+	}
+	return lastError
 }
 
 func deleteResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
 	deletePropagationBackground := metav1.DeletePropagationBackground
-	return wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
+
+	var lastError error
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
-			msg := fmt.Sprintf("%v. Please check whether the advertised apiserver of current child cluster is accessible.", err)
-			klog.WarningDepth(5, msg)
-			return false, errors.New(msg)
+			lastError = fmt.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
+			return false, nil
 		}
 
-		err = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+		lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 			Delete(context.TODO(), resource.GetName(), metav1.DeleteOptions{PropagationPolicy: &deletePropagationBackground})
-		if err == nil || (err != nil && apierrors.IsNotFound(err)) {
+		if lastError == nil || (lastError != nil && apierrors.IsNotFound(lastError)) {
 			return true, nil
 		}
-		klog.ErrorDepth(5, "failed to delete %s %s: %v", resource.GetKind(), klog.KObj(resource), err)
 		return false, nil
 	})
+	if err == nil {
+		return nil
+	}
+	return lastError
 }
 
 // copied from k8s.io/apimachinery/pkg/apis/meta/v1/unstructured

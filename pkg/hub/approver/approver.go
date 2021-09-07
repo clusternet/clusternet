@@ -106,24 +106,21 @@ func (crrApprover *CRRApprover) Run(threadiness int) {
 
 func (crrApprover *CRRApprover) applyDefaultRBACRules() {
 	klog.Infof("applying default rbac rules")
-
-	wg := sync.WaitGroup{}
-
 	clusterroles := crrApprover.bootstrappingClusterRoles()
+	wg := sync.WaitGroup{}
 	wg.Add(len(clusterroles))
 	for _, clusterrole := range clusterroles {
 		go func(cr rbacv1.ClusterRole) {
 			defer wg.Done()
 
-			klog.V(5).Infof("ensure ClusterRole %q...", cr.Name)
 			// make sure this clusterrole gets initialized before we go next
 			for {
 				err := utils.EnsureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultBackoff)
 				if err == nil {
 					break
 				}
+				klog.ErrorDepth(2, err)
 			}
-
 		}(clusterrole)
 	}
 
@@ -414,7 +411,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 			defer wg.Done()
 			err := utils.EnsureClusterRole(crrApprover.ctx, cr, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
-				allErrs = append(allErrs, fmt.Errorf("failed to ensure ClusterRole %q: %v", cr.Name, err))
+				allErrs = append(allErrs, err)
 			}
 		}(clusterrole)
 	}
@@ -444,7 +441,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 				RoleRef: rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: cr.Name},
 			}, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
-				allErrs = append(allErrs, fmt.Errorf("failed to ensure binding for ClusterRole %q: %v", cr.Name, err))
+				allErrs = append(allErrs, err)
 			}
 		}(clusterrole)
 	}
@@ -465,7 +462,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 			defer wg.Done()
 			err := utils.EnsureRole(crrApprover.ctx, r, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
-				allErrs = append(allErrs, fmt.Errorf("failed to ensure Role %q: %v", r.Name, err))
+				allErrs = append(allErrs, err)
 			}
 		}(role)
 	}
@@ -496,7 +493,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 				RoleRef: rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: r.Name},
 			}, crrApprover.kubeclient, retry.DefaultRetry)
 			if err != nil {
-				allErrs = append(allErrs, fmt.Errorf("failed to ensure binding for Role %q: %v", r.Name, err))
+				allErrs = append(allErrs, err)
 			}
 		}(role)
 	}
@@ -507,26 +504,29 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 
 func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clientset, backoff wait.Backoff, saName, saNamespace string) (*corev1.Secret, error) {
 	var secret *corev1.Secret
-
+	var sa *corev1.ServiceAccount
+	var lastError error
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
 		// first we get the auto-created secret name from serviceaccount
-		sa, err := client.CoreV1().ServiceAccounts(saNamespace).Get(ctx, saName, metav1.GetOptions{})
-		if err != nil {
-			klog.ErrorDepth(4, fmt.Sprintf("failed to get ServiceAccount %s/%s: %v, will retry", saNamespace, saName, err))
+		sa, lastError = client.CoreV1().ServiceAccounts(saNamespace).Get(ctx, saName, metav1.GetOptions{})
+		if lastError != nil {
 			return false, nil
 		}
 		if len(sa.Secrets) == 0 {
-			klog.WarningDepth(4, "waiting for secret get populated in ServiceAccount '%s/%s'...", saNamespace, saName)
+			lastError = fmt.Errorf("waiting for secret got populated in ServiceAccount %s/%s", saNamespace, saName)
 			return false, nil
 		}
 
 		secretName := sa.Secrets[0].Name
-		secret, err = client.CoreV1().Secrets(saNamespace).Get(ctx, secretName, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("failed to get Secret %s/%s: %v, will retry", saNamespace, saName, err)
+		secret, lastError = client.CoreV1().Secrets(saNamespace).Get(ctx, secretName, metav1.GetOptions{})
+		if lastError != nil {
 			return false, nil
 		}
 		return true, nil
 	})
-	return secret, err
+
+	if err == nil {
+		return secret, nil
+	}
+	return nil, lastError
 }
