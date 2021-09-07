@@ -87,7 +87,7 @@ spec:
       # The value here can also be in yaml format.
       value: |-
         - op: add
-          path: "/spec/containers/1"
+          path: "/spec/template/spec/containers/1"
           value:
             name: "redis-container"
             image: "redis:6.2.5"
