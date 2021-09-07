@@ -168,6 +168,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 	descCopy := desc.DeepCopy()
 	switch descCopy.Spec.Deployer {
 	case appsapi.DescriptionHelmDeployer:
+		desc.Spec.Raw = make([][]byte, len(descCopy.Spec.Charts))
 		for idx, chartRef := range descCopy.Spec.Charts {
 			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
 				Kind:       chartKind.Kind,
@@ -180,7 +181,8 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 				continue
 			}
 
-			result, err := applyOverrides([]byte(""), overrides)
+			// use a whitespace explicitly
+			result, err := applyOverrides([]byte(" "), overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
