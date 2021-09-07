@@ -213,6 +213,9 @@ func GetOverrides(descLister applisters.DescriptionLister, hr *appsapi.HelmRelea
 			recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
 			return nil, errors.New(msg)
 		}
+		if len(strings.TrimSpace(string(desc.Spec.Raw[index]))) == 0 {
+			return overrideValues, nil
+		}
 		err := json.Unmarshal(desc.Spec.Raw[index], &overrideValues)
 		return overrideValues, err
 	}
