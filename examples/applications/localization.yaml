@@ -57,7 +57,7 @@ spec:
         [
           {
             "path": "/spec/replicas",
-            "value": "3",
+            "value": 3,
             "op": "replace"
           },
           {
@@ -124,7 +124,7 @@ spec:
         [
           {
             "path": "/spec/replicas",
-            "value": "1",
+            "value": 1,
             "op": "replace"
           }
         ]
