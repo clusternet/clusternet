@@ -178,7 +178,8 @@ func NewDeployer(kubeclient *kubernetes.Clientset, clusternetclient *clusternetc
 	}
 	deployer.baseController = baseController
 
-	l, err := localizer.NewLocalizer(clusternetclient, clusternetInformerFactory, deployer.recorder)
+	l, err := localizer.NewLocalizer(clusternetclient, clusternetInformerFactory,
+		deployer.handleHelmChart, deployer.handleManifest, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
