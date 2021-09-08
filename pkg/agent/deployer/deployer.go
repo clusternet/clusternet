@@ -88,7 +88,7 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	if d.syncMode == clusterapi.Pull || (d.syncMode == clusterapi.Dual && !d.appPusherEnabled) {
 		appDeployerConfig, err := utils.GenerateKubeConfigFromToken(d.childAPIServerURL,
 			string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-			appDeployerSecret.Data[corev1.ServiceAccountTokenKey], 1)
+			appDeployerSecret.Data[corev1.ServiceAccountRootCAKey], 1)
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 
 		deployCtx, err := utils.NewDeployContext(utils.CreateKubeConfigWithToken(d.childAPIServerURL,
 			string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-			appDeployerSecret.Data[corev1.ServiceAccountTokenKey]))
+			appDeployerSecret.Data[corev1.ServiceAccountRootCAKey]))
 		if err != nil {
 			return err
 		}
