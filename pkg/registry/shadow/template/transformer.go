@@ -41,6 +41,9 @@ func transformManifest(manifest *appsapi.Manifest) (*unstructured.Unstructured, 
 
 	annotations := result.GetAnnotations()
 	if val, ok := manifest.Annotations[known.FeedProtectionAnnotation]; ok {
+		if annotations == nil {
+			annotations = map[string]string{}
+		}
 		annotations[known.FeedProtectionAnnotation] = val
 	}
 	result.SetAnnotations(annotations)
