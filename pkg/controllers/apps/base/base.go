@@ -331,7 +331,7 @@ func (c *Controller) syncHandler(key string) error {
 			string(base.UID): utilpointer.StringPtr(controllerKind.Kind),
 		})
 		if err != nil {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base labels: %v", err))
+			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Base %s labels: %v", klog.KObj(base), err))
 			return err
 		}
 	}
