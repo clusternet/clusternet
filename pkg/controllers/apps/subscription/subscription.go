@@ -18,6 +18,7 @@ package subscription
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -35,6 +36,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -404,6 +406,17 @@ func (c *Controller) syncHandler(key string) error {
 		c.recorder.Event(sub, corev1.EventTypeNormal, "FinalizerInjected", msg)
 	}
 
+	// label Subscription self uid
+	if val, ok := sub.Labels[string(sub.UID)]; !ok || val != controllerKind.Kind {
+		sub, err = c.patchSubscriptionLabels(sub, map[string]*string{
+			string(sub.UID): utilpointer.StringPtr(controllerKind.Kind),
+		})
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to patch Subscription %s labels: %v", klog.KObj(sub), err))
+			return err
+		}
+	}
+
 	sub.Kind = controllerKind.Kind
 	sub.APIVersion = controllerKind.Version
 	err = c.syncHandlerFunc(sub)
@@ -450,4 +463,23 @@ func (c *Controller) enqueue(sub *appsapi.Subscription) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+func (c *Controller) patchSubscriptionLabels(sub *appsapi.Subscription, labels map[string]*string) (*appsapi.Subscription, error) {
+	if sub.DeletionTimestamp != nil || len(labels) == 0 {
+		return sub, nil
+	}
+
+	klog.V(5).Infof("patching Subscription %s labels", klog.KObj(sub))
+	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
+	patchData, err := json.Marshal(option)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).Patch(context.TODO(),
+		sub.Name,
+		types.MergePatchType,
+		patchData,
+		metav1.PatchOptions{})
 }
