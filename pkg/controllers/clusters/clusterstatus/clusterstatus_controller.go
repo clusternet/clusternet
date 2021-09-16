@@ -20,7 +20,6 @@ import (
 	"context"
 	"net/http"
 	"sync"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -31,60 +30,59 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	corev1Lister "k8s.io/client-go/listers/core/v1"
+	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/features"
-)
-
-const (
-	// default resync time
-	defaultResync = time.Hour * 12
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
 // Controller is a controller that collects cluster status
 type Controller struct {
-	kubeClient       kubernetes.Interface
-	lock             *sync.Mutex
-	clusterStatus    *clusterapi.ManagedClusterStatus
-	collectingPeriod metav1.Duration
-	apiserverURL     string
-	appPusherEnabled bool
-	useSocket        bool
-	parentAPIServer  string
-	nodeLister       corev1Lister.NodeLister
-	podLister        corev1Lister.PodLister
-	nodeListerSynced cache.InformerSynced
-	podListerSynced  cache.InformerSynced
+	kubeClient         kubernetes.Interface
+	lock               *sync.Mutex
+	clusterStatus      *clusterapi.ManagedClusterStatus
+	collectingPeriod   metav1.Duration
+	heartbeatFrequency metav1.Duration
+	apiserverURL       string
+	appPusherEnabled   bool
+	useSocket          bool
+	parentAPIServer    string
+	nodeLister         corev1lister.NodeLister
+	nodeSynced         cache.InformerSynced
+	podLister          corev1lister.PodLister
+	podSynced          cache.InformerSynced
 }
 
-func NewController(ctx context.Context, apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration) *Controller {
-	k8sFactory := informers.NewSharedInformerFactory(kubeClient, defaultResync)
-	k8sFactory.Core().V1().Nodes().Informer()
-	k8sFactory.Core().V1().Pods().Informer()
-	k8sFactory.Start(ctx.Done())
+func NewController(ctx context.Context, apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
+	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
+	kubeInformerFactory.Core().V1().Nodes().Informer()
+	kubeInformerFactory.Core().V1().Pods().Informer()
+	kubeInformerFactory.Start(ctx.Done())
 
 	return &Controller{
-		kubeClient:       kubeClient,
-		lock:             &sync.Mutex{},
-		collectingPeriod: collectingPeriod,
-		apiserverURL:     apiserverURL,
-		appPusherEnabled: utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
-		useSocket:        utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
-		parentAPIServer:  parentAPIServerURL,
-		nodeLister:       k8sFactory.Core().V1().Nodes().Lister(),
-		nodeListerSynced: k8sFactory.Core().V1().Nodes().Informer().HasSynced,
-		podLister:        k8sFactory.Core().V1().Pods().Lister(),
-		podListerSynced:  k8sFactory.Core().V1().Pods().Informer().HasSynced,
+		kubeClient:         kubeClient,
+		lock:               &sync.Mutex{},
+		collectingPeriod:   collectingPeriod,
+		heartbeatFrequency: heartbeatFrequency,
+		apiserverURL:       apiserverURL,
+		appPusherEnabled:   utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
+		useSocket:          utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		parentAPIServer:    parentAPIServerURL,
+		nodeLister:         kubeInformerFactory.Core().V1().Nodes().Lister(),
+		nodeSynced:         kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
+		podLister:          kubeInformerFactory.Core().V1().Pods().Lister(),
+		podSynced:          kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
 	}
 
 }
 
 func (c *Controller) Run(ctx context.Context) {
 	if !cache.WaitForNamedCacheSync("cluster-status-controller", ctx.Done(),
-		c.podListerSynced, c.nodeListerSynced) {
+		c.podSynced,
+		c.nodeSynced) {
 		return
 	}
 
@@ -135,6 +133,9 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.NodeStatistics = nodeStatistics
 	status.Allocatable = allocatable
 	status.Capacity = capacity
+	heartBeatFrequencySeconds := int64(c.heartbeatFrequency.Seconds())
+	status.HeartbeatFrequencySeconds = &heartBeatFrequencySeconds
+	status.Conditions = []metav1.Condition{c.getCondition(status)}
 	c.setClusterStatus(status)
 }
 
@@ -170,6 +171,26 @@ func (c *Controller) getHealthStatus(ctx context.Context, path string) bool {
 	var statusCode int
 	c.kubeClient.Discovery().RESTClient().Get().AbsPath(path).Do(ctx).StatusCode(&statusCode)
 	return statusCode == http.StatusOK
+}
+
+func (c *Controller) getCondition(status clusterapi.ManagedClusterStatus) metav1.Condition {
+	if status.Livez && status.Readyz {
+		return metav1.Condition{
+			Type:               clusterapi.ClusterReady,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
+			Reason:             "ManagedClusterReady",
+			Message:            "managed cluster is ready.",
+		}
+	}
+
+	return metav1.Condition{
+		Type:               clusterapi.ClusterReady,
+		Status:             metav1.ConditionFalse,
+		LastTransitionTime: metav1.Now(),
+		Reason:             "ManagedClusterNotReady",
+		Message:            "managed cluster is not ready.",
+	}
 }
 
 // getNodeStatistics returns the NodeStatistics in the cluster

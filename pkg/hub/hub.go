@@ -20,14 +20,22 @@ import (
 	"context"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	crdclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
+	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterlifecycle"
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
@@ -61,6 +69,10 @@ type Hub struct {
 	crrApprover *approver.CRRApprover
 	deployer    *deployer.Deployer
 
+	clusterLifecycle *clusterlifecycle.Controller
+
+	recorder record.EventRecorder
+
 	socketConnection bool
 	deployerEnabled  bool
 }
@@ -79,6 +91,20 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	kubeclient := kubernetes.NewForConfigOrDie(config)
 	clusternetclient := clusternet.NewForConfigOrDie(config)
 	crdclient := crdclientset.NewForConfigOrDie(config)
+
+	//deployer.broadcaster.StartStructuredLogging(5)
+	broadcaster := record.NewBroadcaster()
+	if kubeclient != nil {
+		klog.Infof("sending events to api server")
+		broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
+			Interface: kubeclient.CoreV1().Events(""),
+		})
+	} else {
+		klog.Warningf("no api server defined - no events will be sent to API server.")
+	}
+	utilruntime.Must(appsapi.AddToScheme(scheme.Scheme))
+	utilruntime.Must(clusterapi.AddToScheme(scheme.Scheme))
+	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-hub"})
 
 	// creates the informer factory
 	kubeInformerFactory := kubeInformers.NewSharedInformerFactory(kubeclient, DefaultResync)
@@ -107,7 +133,7 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
 
-		d, err = deployer.NewDeployer(ctx, kubeclient, clusternetclient, clusternetInformerFactory, kubeInformerFactory)
+		d, err = deployer.NewDeployer(ctx, kubeclient, clusternetclient, clusternetInformerFactory, kubeInformerFactory, recorder)
 		if err != nil {
 			return nil, err
 		}
@@ -116,6 +142,8 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 	if utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
 		clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer()
 	}
+
+	clusterLifecycle := clusterlifecycle.NewController(ctx, clusternetclient, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(), recorder)
 
 	hub := &Hub{
 		ctx:                       ctx,
@@ -129,7 +157,9 @@ func NewHub(ctx context.Context, opts *options.HubServerOptions) (*Hub, error) {
 		crdInformerFactory:        crdInformerFactory,
 		socketConnection:          socketConnection,
 		deployer:                  d,
+		recorder:                  recorder,
 		deployerEnabled:           deployerEnabled,
+		clusterLifecycle:          clusterLifecycle,
 	}
 
 	// Start the informer factories to begin populating the informer caches
@@ -152,12 +182,9 @@ func (hub *Hub) Run() error {
 		}()
 	}
 
-	err := hub.RunAPIServer()
-	if err != nil {
-		return err
-	}
+	go hub.clusterLifecycle.Run(DefaultThreadiness, hub.ctx.Done())
 
-	return nil
+	return hub.RunAPIServer()
 }
 
 // RunAPIServer starts a new HubAPIServer given HubServerOptions

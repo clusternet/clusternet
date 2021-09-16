@@ -16,6 +16,10 @@ limitations under the License.
 
 package known
 
+import (
+	"time"
+)
+
 const (
 	// NamePrefixForClusternetObjects is a prefix name for generating Clusternet related objects for child cluster,
 	// such as namespace, sa, etc
@@ -32,4 +36,9 @@ const (
 // These are internal finalizer values to Clusternet, must be qualified name.
 const (
 	AppFinalizer string = "apps.clusternet.io/finalizer"
+)
+
+const (
+	// default resync time
+	DefaultResync = time.Hour * 12
 )
