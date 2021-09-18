@@ -620,3 +620,6 @@ $ helm ls -n abc
 NAME               	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART            	APP VERSION
 helm-demo-mysql    	abc      	1       	2021-07-06 14:34:44.188938 +0800 CST	deployed	mysql-8.6.2      	8.0.25
 ```
+> :pushpin: :pushpin: Note:
+>
+> When using custom admission webhook, please ensure that `dry run` mode is supported
