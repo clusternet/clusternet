@@ -375,6 +375,9 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 	result.SetAPIVersion(orignalGVK.GroupVersion().String())
 	result.SetKind(r.getListKind())
 	result.SetResourceVersion(manifests.ResourceVersion)
+	result.SetContinue(manifests.Continue)
+	// remainingItemCount will always be nil, since we're using non-empty label selectors.
+	// This is a limitation on Kubernetes side.
 	if len(manifests.Items) == 0 {
 		return result, nil
 	}
