@@ -136,11 +136,12 @@ func (l *Localizer) Run(workers int) {
 func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 	if loc.DeletionTimestamp != nil {
 		// remove finalizer
-		loc.Finalizers = utils.RemoveString(loc.Finalizers, known.AppFinalizer)
-		_, err := l.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Update(context.TODO(), loc, metav1.UpdateOptions{})
+		locCopy := loc.DeepCopy()
+		locCopy.Finalizers = utils.RemoveString(locCopy.Finalizers, known.AppFinalizer)
+		_, err := l.clusternetClient.AppsV1alpha1().Localizations(locCopy.Namespace).Update(context.TODO(), locCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(loc), err))
+				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(locCopy), err))
 		}
 		return err
 	}
@@ -151,11 +152,12 @@ func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 	if glob.DeletionTimestamp != nil {
 		// remove finalizer
-		glob.Finalizers = utils.RemoveString(glob.Finalizers, known.AppFinalizer)
-		_, err := l.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(), glob, metav1.UpdateOptions{})
+		globCopy := glob.DeepCopy()
+		globCopy.Finalizers = utils.RemoveString(globCopy.Finalizers, known.AppFinalizer)
+		_, err := l.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(), globCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Globalization %s: %v", known.AppFinalizer, klog.KObj(glob), err))
+				fmt.Sprintf("failed to remove finalizer %s from Globalization %s: %v", known.AppFinalizer, klog.KObj(globCopy), err))
 		}
 		return err
 	}

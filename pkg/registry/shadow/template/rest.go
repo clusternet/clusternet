@@ -176,33 +176,30 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	if err != nil {
 		return nil, false, err
 	}
+	result := newObj.(*unstructured.Unstructured)
 
-	// dry-run
-	result, err := r.dryRunCreate(ctx, newObj, createValidation, &metav1.CreateOptions{})
-	if err != nil {
-		return nil, false, err
-	}
-
-	manifest.Template.Reset()
 	// in case labels get changed
-	if manifest.Labels == nil {
-		manifest.Labels = map[string]string{}
+	manifestCopy := manifest.DeepCopy()
+	if manifestCopy.Labels == nil {
+		manifestCopy.Labels = map[string]string{}
 	}
 	for k, v := range result.GetLabels() {
-		manifest.Labels[k] = v
+		manifestCopy.Labels[k] = v
 	}
-	manifest.Labels[known.ConfigGroupLabel] = r.group
-	manifest.Labels[known.ConfigVersionLabel] = r.version
-	manifest.Labels[known.ConfigKindLabel] = r.kind
-	manifest.Labels[known.ConfigNameLabel] = result.GetName()
-	manifest.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
-	manifest.Template.Object = result
-	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifest, *options)
+	manifestCopy.Labels[known.ConfigGroupLabel] = r.group
+	manifestCopy.Labels[known.ConfigVersionLabel] = r.version
+	manifestCopy.Labels[known.ConfigKindLabel] = r.kind
+	manifestCopy.Labels[known.ConfigNameLabel] = result.GetName()
+	manifestCopy.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
+	manifestCopy.Template.Reset()
+	manifestCopy.Template.Object = result
+	// save the updates
+	manifestCopy, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifestCopy, *options)
 	if err != nil {
 		return nil, false, err
 	}
 
-	result, err = transformManifest(manifest)
+	result, err = transformManifest(manifestCopy)
 	return result, err != nil, err
 }
 
@@ -494,6 +491,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	if r.kind != "Namespace" && r.namespaced {
 		u.SetNamespace(appsapi.ReservedNamespace)
 	}
+	// use reserved namespace "clusternet-reserved" to avoid error "namespaces not found"
 	dryRunNamespace := appsapi.ReservedNamespace
 	if r.kind == "Namespace" {
 		dryRunNamespace = ""
@@ -515,21 +513,12 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 		VersionedParams(options, r.parameterCodec).
 		Body(body)
 	err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
-	if err != nil && errors.IsAlreadyExists(err) {
-		// TODO: security risk
-		// get existing object
-		req := client.Get().
-			Name(u.GetName()).
-			Resource(resource).
-			VersionedParams(options, r.parameterCodec).
-			Body(body)
-		err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
-	}
 	if err != nil {
 		return nil, err
 	}
 
 	if r.kind != "Namespace" && r.namespaced {
+		// set original namespace back
 		result.SetNamespace(objNamespace)
 	}
 	return result, nil

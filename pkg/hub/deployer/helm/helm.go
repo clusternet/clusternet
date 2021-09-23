@@ -240,8 +240,9 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 			return fmt.Errorf("waiting for HelmRelease belongs to Description %s getting deleted", klog.KObj(desc))
 		}
 
-		desc.Finalizers = utils.RemoveString(desc.Finalizers, known.AppFinalizer)
-		_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(), desc, metav1.UpdateOptions{})
+		descCopy := desc.DeepCopy()
+		descCopy.Finalizers = utils.RemoveString(descCopy.Finalizers, known.AppFinalizer)
+		_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(descCopy.Namespace).Update(context.TODO(), descCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
 				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(desc), err))
@@ -264,9 +265,10 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 		}
 
 		// remove finalizers
-		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.AppFinalizer)
-		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.FeedProtectionFinalizer)
-		_, err := deployer.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(), chart, metav1.UpdateOptions{})
+		chartCopy := chart.DeepCopy()
+		chartCopy.Finalizers = utils.RemoveString(chartCopy.Finalizers, known.AppFinalizer)
+		chartCopy.Finalizers = utils.RemoveString(chartCopy.Finalizers, known.FeedProtectionFinalizer)
+		_, err := deployer.clusternetClient.AppsV1alpha1().HelmCharts(chartCopy.Namespace).Update(context.TODO(), chartCopy, metav1.UpdateOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil
@@ -381,22 +383,23 @@ func (deployer *Deployer) syncHelmRelease(desc *appsapi.Description, helmRelease
 
 		// update it
 		if !reflect.DeepEqual(hr.Spec, helmRelease.Spec) {
-			if hr.Labels == nil {
-				hr.Labels = make(map[string]string)
+			hrCopy := hr.DeepCopy()
+			if hrCopy.Labels == nil {
+				hrCopy.Labels = make(map[string]string)
 			}
 			for key, value := range helmRelease.Labels {
-				hr.Labels[key] = value
+				hrCopy.Labels[key] = value
 			}
 
-			hr.Spec = helmRelease.Spec
-			if !utils.ContainsString(hr.Finalizers, known.AppFinalizer) {
-				hr.Finalizers = append(hr.Finalizers, known.AppFinalizer)
+			hrCopy.Spec = helmRelease.Spec
+			if !utils.ContainsString(hrCopy.Finalizers, known.AppFinalizer) {
+				hrCopy.Finalizers = append(hrCopy.Finalizers, known.AppFinalizer)
 			}
 
-			_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(),
-				hr, metav1.UpdateOptions{})
+			_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(hrCopy.Namespace).Update(context.TODO(),
+				hrCopy, metav1.UpdateOptions{})
 			if err == nil {
-				msg := fmt.Sprintf("HelmReleases %s is updated successfully", klog.KObj(hr))
+				msg := fmt.Sprintf("HelmReleases %s is updated successfully", klog.KObj(hrCopy))
 				klog.V(4).Info(msg)
 				deployer.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleaseUpdated", msg)
 			}
@@ -483,14 +486,15 @@ func (deployer *Deployer) handleSecret(secret *corev1.Secret) error {
 		return fmt.Errorf("waiting all HelmReleases in namespace %s get cleanedup", secret.Namespace)
 	}
 
-	secret.Finalizers = utils.RemoveString(secret.Finalizers, known.AppFinalizer)
-	_, err = deployer.kubeClient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+	secretCopy := secret.DeepCopy()
+	secretCopy.Finalizers = utils.RemoveString(secretCopy.Finalizers, known.AppFinalizer)
+	_, err = deployer.kubeClient.CoreV1().Secrets(secretCopy.Namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		klog.WarningDepth(4,
-			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secret), err))
+			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secretCopy), err))
 	}
 	return err
 }

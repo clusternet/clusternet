@@ -240,8 +240,9 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 			return err
 		}
 
-		sub.Finalizers = utils.RemoveString(sub.Finalizers, known.AppFinalizer)
-		_, err = deployer.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).Update(context.TODO(), sub, metav1.UpdateOptions{})
+		subCopy := sub.DeepCopy()
+		subCopy.Finalizers = utils.RemoveString(subCopy.Finalizers, known.AppFinalizer)
+		_, err = deployer.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).Update(context.TODO(), subCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
 				fmt.Sprintf("failed to remove finalizer %s from Subscription %s: %v", known.AppFinalizer, klog.KObj(sub), err))
@@ -356,22 +357,23 @@ func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base
 
 		// update it
 		if !reflect.DeepEqual(curBase.Spec, base.Spec) {
-			if curBase.Labels == nil {
-				curBase.Labels = make(map[string]string)
+			curBaseCopy := curBase.DeepCopy()
+			if curBaseCopy.Labels == nil {
+				curBaseCopy.Labels = make(map[string]string)
 			}
 			for key, value := range base.Labels {
-				curBase.Labels[key] = value
+				curBaseCopy.Labels[key] = value
 			}
 
-			curBase.Spec = base.Spec
-			if !utils.ContainsString(curBase.Finalizers, known.AppFinalizer) {
-				curBase.Finalizers = append(curBase.Finalizers, known.AppFinalizer)
+			curBaseCopy.Spec = base.Spec
+			if !utils.ContainsString(curBaseCopy.Finalizers, known.AppFinalizer) {
+				curBaseCopy.Finalizers = append(curBaseCopy.Finalizers, known.AppFinalizer)
 			}
 
-			_, err = deployer.clusternetClient.AppsV1alpha1().Bases(curBase.Namespace).Update(context.TODO(),
-				curBase, metav1.UpdateOptions{})
+			_, err = deployer.clusternetClient.AppsV1alpha1().Bases(curBaseCopy.Namespace).Update(context.TODO(),
+				curBaseCopy, metav1.UpdateOptions{})
 			if err == nil {
-				msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(curBase))
+				msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(curBaseCopy))
 				klog.V(4).Info(msg)
 				deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
 			}
@@ -450,8 +452,9 @@ func (deployer *Deployer) handleBase(base *appsapi.Base) error {
 			return fmt.Errorf("waiting for Descriptions belongs to Base %s getting deleted", klog.KObj(base))
 		}
 
-		base.Finalizers = utils.RemoveString(base.Finalizers, known.AppFinalizer)
-		_, err = deployer.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Update(context.TODO(), base, metav1.UpdateOptions{})
+		baseCopy := base.DeepCopy()
+		baseCopy.Finalizers = utils.RemoveString(baseCopy.Finalizers, known.AppFinalizer)
+		_, err = deployer.clusternetClient.AppsV1alpha1().Bases(baseCopy.Namespace).Update(context.TODO(), baseCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
 				fmt.Sprintf("failed to remove finalizer %s from Base %s: %v", known.AppFinalizer, klog.KObj(base), err))
@@ -625,39 +628,40 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) syncDescriptions(base *appsapi.Base, description *appsapi.Description) error {
+func (deployer *Deployer) syncDescriptions(base *appsapi.Base, desc *appsapi.Description) error {
 	// apply overrides
-	if err := deployer.localizer.ApplyOverridesToDescription(description); err != nil {
-		msg := fmt.Sprintf("Failed to apply overrides for Description %s: %v", klog.KObj(description), err)
+	if err := deployer.localizer.ApplyOverridesToDescription(desc); err != nil {
+		msg := fmt.Sprintf("Failed to apply overrides for Description %s: %v", klog.KObj(desc), err)
 		klog.ErrorDepth(5, msg)
 		deployer.recorder.Event(base, corev1.EventTypeWarning, "FailedApplyingOverrides", msg)
 		return err
 	}
 
-	desc, err := deployer.descLister.Descriptions(description.Namespace).Get(description.Name)
+	curDesc, err := deployer.descLister.Descriptions(desc.Namespace).Get(desc.Name)
 	if err == nil {
-		if desc.DeletionTimestamp != nil {
-			return fmt.Errorf("Description %s is deleting, will resync later", klog.KObj(desc))
+		if curDesc.DeletionTimestamp != nil {
+			return fmt.Errorf("Description %s is deleting, will resync later", klog.KObj(curDesc))
 		}
 
 		// update it
-		if !reflect.DeepEqual(desc.Spec, description.Spec) {
-			if desc.Labels == nil {
-				desc.Labels = make(map[string]string)
+		if !reflect.DeepEqual(curDesc.Spec, desc.Spec) {
+			curDescCopy := curDesc.DeepCopy()
+			if curDescCopy.Labels == nil {
+				curDescCopy.Labels = make(map[string]string)
 			}
-			for key, value := range description.Labels {
-				desc.Labels[key] = value
-			}
-
-			desc.Spec = description.Spec
-			if !utils.ContainsString(desc.Finalizers, known.AppFinalizer) {
-				desc.Finalizers = append(desc.Finalizers, known.AppFinalizer)
+			for key, value := range desc.Labels {
+				curDescCopy.Labels[key] = value
 			}
 
-			_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(),
-				desc, metav1.UpdateOptions{})
+			curDescCopy.Spec = desc.Spec
+			if !utils.ContainsString(curDescCopy.Finalizers, known.AppFinalizer) {
+				curDescCopy.Finalizers = append(curDescCopy.Finalizers, known.AppFinalizer)
+			}
+
+			_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(curDescCopy.Namespace).Update(context.TODO(),
+				curDescCopy, metav1.UpdateOptions{})
 			if err == nil {
-				msg := fmt.Sprintf("Description %s is updated successfully", klog.KObj(description))
+				msg := fmt.Sprintf("Description %s is updated successfully", klog.KObj(desc))
 				klog.V(4).Info(msg)
 				deployer.recorder.Event(base, corev1.EventTypeNormal, "DescriptionUpdated", msg)
 			}
@@ -666,10 +670,10 @@ func (deployer *Deployer) syncDescriptions(base *appsapi.Base, description *apps
 		return nil
 	}
 
-	_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(description.Namespace).Create(context.TODO(),
-		description, metav1.CreateOptions{})
+	_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Create(context.TODO(),
+		desc, metav1.CreateOptions{})
 	if err == nil {
-		msg := fmt.Sprintf("Description %s is created successfully", klog.KObj(description))
+		msg := fmt.Sprintf("Description %s is created successfully", klog.KObj(desc))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(base, corev1.EventTypeNormal, "DescriptionCreated", msg)
 	}
@@ -701,9 +705,10 @@ func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 		}
 
 		// remove finalizers
-		manifest.Finalizers = utils.RemoveString(manifest.Finalizers, known.AppFinalizer)
-		manifest.Finalizers = utils.RemoveString(manifest.Finalizers, known.FeedProtectionFinalizer)
-		_, err := deployer.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(), manifest, metav1.UpdateOptions{})
+		manifestCopy := manifest.DeepCopy()
+		manifestCopy.Finalizers = utils.RemoveString(manifestCopy.Finalizers, known.AppFinalizer)
+		manifestCopy.Finalizers = utils.RemoveString(manifestCopy.Finalizers, known.FeedProtectionFinalizer)
+		_, err := deployer.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(), manifestCopy, metav1.UpdateOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil

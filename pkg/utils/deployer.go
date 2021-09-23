@@ -117,8 +117,9 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, cluster
 			return err
 		}
 
-		hr.Finalizers = RemoveString(hr.Finalizers, known.AppFinalizer)
-		_, err = clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).Update(context.TODO(), hr, metav1.UpdateOptions{})
+		hrCopy := hr.DeepCopy()
+		hrCopy.Finalizers = RemoveString(hrCopy.Finalizers, known.AppFinalizer)
+		_, err = clusternetClient.AppsV1alpha1().HelmReleases(hrCopy.Namespace).Update(context.TODO(), hrCopy, metav1.UpdateOptions{})
 		return err
 	}
 
@@ -402,11 +403,12 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 		recorder.Event(desc, corev1.EventTypeWarning, "FailedDeletingDescription", msg)
 	} else {
 		klog.V(5).Infof("Description %s is deleted successfully", klog.KObj(desc))
-		desc.Finalizers = RemoveString(desc.Finalizers, known.AppFinalizer)
-		_, err = clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(), desc, metav1.UpdateOptions{})
+		descCopy := desc.DeepCopy()
+		descCopy.Finalizers = RemoveString(descCopy.Finalizers, known.AppFinalizer)
+		_, err = clusternetClient.AppsV1alpha1().Descriptions(descCopy.Namespace).Update(context.TODO(), descCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(desc), err))
+				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(descCopy), err))
 
 		}
 	}
