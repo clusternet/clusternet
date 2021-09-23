@@ -43,7 +43,7 @@ type ClusterRegistrationOptions struct {
 	// ClusterSyncMode specifies the sync mode between parent cluster and child cluster
 	ClusterSyncMode string
 
-	// ClusterStatusReportFrequency is the frequency at which the agent updates current cluster's status
+	// ClusterStatusReportFrequency is the frequency at which the agent reports current cluster's status
 	ClusterStatusReportFrequency metav1.Duration
 	// ClusterStatusCollectFrequency is the frequency at which the agent updates current cluster's status
 	ClusterStatusCollectFrequency metav1.Duration

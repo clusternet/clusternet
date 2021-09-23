@@ -31,13 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -99,12 +96,12 @@ type Deployer struct {
 
 	localizer *localizer.Localizer
 
-	broadcaster record.EventBroadcaster
-	recorder    record.EventRecorder
+	recorder record.EventRecorder
 }
 
 func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
-	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory) (*Deployer, error) {
+	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
+	recorder record.EventRecorder) (*Deployer, error) {
 	feedInUseProtection := utilfeature.DefaultFeatureGate.Enabled(features.FeedInUseProtection)
 
 	deployer := &Deployer{
@@ -123,20 +120,8 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 		subSynced:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
 		kubeClient:       kubeclient,
 		clusternetClient: clusternetclient,
-		broadcaster:      record.NewBroadcaster(),
+		recorder:         recorder,
 	}
-
-	//deployer.broadcaster.StartStructuredLogging(5)
-	if deployer.kubeClient != nil {
-		klog.Infof("sending events to api server")
-		deployer.broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
-			Interface: deployer.kubeClient.CoreV1().Events(""),
-		})
-	} else {
-		klog.Warningf("no api server defined - no events will be sent to API server.")
-	}
-	utilruntime.Must(appsapi.AddToScheme(scheme.Scheme))
-	deployer.recorder = deployer.broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-hub"})
 
 	helmDeployer, err := helm.NewDeployer(ctx, clusternetclient, kubeclient, clusternetInformerFactory,
 		kubeInformerFactory, feedInUseProtection, deployer.recorder)

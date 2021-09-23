@@ -64,7 +64,7 @@ func NewStatusManager(ctx context.Context, apiserverURL string, regOpts *Cluster
 	return &Manager{
 		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
 		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL, regOpts.ParentURL,
-			kubeClient, regOpts.ClusterStatusCollectFrequency),
+			kubeClient, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
 	}
 }
 
