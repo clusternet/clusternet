@@ -69,8 +69,6 @@ const (
 
 // Deployer defines configuration for the application deployer
 type Deployer struct {
-	ctx context.Context
-
 	chartLister   applisters.HelmChartLister
 	chartSynced   cache.InformerSynced
 	descLister    applisters.DescriptionLister
@@ -84,7 +82,6 @@ type Deployer struct {
 	clusterLister clusterlisters.ManagedClusterLister
 	clusterSynced cache.InformerSynced
 
-	kubeClient       *kubernetes.Clientset
 	clusternetClient *clusternetclientset.Clientset
 
 	subsController *subscription.Controller
@@ -99,46 +96,43 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
+func NewDeployer(kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
 	feedInUseProtection := utilfeature.DefaultFeatureGate.Enabled(features.FeedInUseProtection)
 
 	deployer := &Deployer{
-		ctx:              ctx,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
 		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
 		descSynced:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
-		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
-		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		baseLister:       clusternetInformerFactory.Apps().V1alpha1().Bases().Lister(),
 		baseSynced:       clusternetInformerFactory.Apps().V1alpha1().Bases().Informer().HasSynced,
 		mfstLister:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
 		mfstSynced:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
 		subLister:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
 		subSynced:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
-		kubeClient:       kubeclient,
+		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		clusternetClient: clusternetclient,
 		recorder:         recorder,
 	}
 
-	helmDeployer, err := helm.NewDeployer(ctx, clusternetclient, kubeclient, clusternetInformerFactory,
+	helmDeployer, err := helm.NewDeployer(clusternetclient, kubeclient, clusternetInformerFactory,
 		kubeInformerFactory, feedInUseProtection, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
 	deployer.helmDeployer = helmDeployer
 
-	genericDeployer, err := generic.NewDeployer(ctx, clusternetclient, clusternetInformerFactory,
+	genericDeployer, err := generic.NewDeployer(clusternetclient, clusternetInformerFactory,
 		kubeInformerFactory, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
 	deployer.genericDeployer = genericDeployer
 
-	subsController, err := subscription.NewController(ctx,
-		clusternetclient,
+	subsController, err := subscription.NewController(clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().Bases(),
 		clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
@@ -149,8 +143,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	}
 	deployer.subsController = subsController
 
-	mfstController, err := manifest.NewController(ctx,
-		clusternetclient,
+	mfstController, err := manifest.NewController(clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
 		feedInUseProtection,
 		deployer.recorder,
@@ -160,8 +153,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	}
 	deployer.mfstController = mfstController
 
-	baseController, err := base.NewController(ctx,
-		clusternetclient,
+	baseController, err := base.NewController(clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Bases(),
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		deployer.recorder,
@@ -171,7 +163,7 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	}
 	deployer.baseController = baseController
 
-	l, err := localizer.NewLocalizer(ctx, clusternetclient, clusternetInformerFactory, deployer.recorder)
+	l, err := localizer.NewLocalizer(clusternetclient, clusternetInformerFactory, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
@@ -180,12 +172,12 @@ func NewDeployer(ctx context.Context, kubeclient *kubernetes.Clientset, clustern
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int) {
+func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Infof("starting Clusternet deployer ...")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(deployer.ctx.Done(),
+	if !cache.WaitForNamedCacheSync("clusternet-deployer",
+		stopCh,
 		deployer.chartSynced,
 		deployer.descSynced,
 		deployer.baseSynced,
@@ -196,14 +188,14 @@ func (deployer *Deployer) Run(workers int) {
 		return
 	}
 
-	go deployer.helmDeployer.Run(workers)
-	go deployer.genericDeployer.Run(workers)
-	go deployer.subsController.Run(workers, deployer.ctx.Done())
-	go deployer.mfstController.Run(workers, deployer.ctx.Done())
-	go deployer.baseController.Run(workers, deployer.ctx.Done())
-	go deployer.localizer.Run(workers)
+	go deployer.helmDeployer.Run(workers, stopCh)
+	go deployer.genericDeployer.Run(workers, stopCh)
+	go deployer.subsController.Run(workers, stopCh)
+	go deployer.mfstController.Run(workers, stopCh)
+	go deployer.baseController.Run(workers, stopCh)
+	go deployer.localizer.Run(workers, stopCh)
 
-	<-deployer.ctx.Done()
+	<-stopCh
 }
 
 func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {

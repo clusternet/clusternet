@@ -60,8 +60,6 @@ var (
 )
 
 type Deployer struct {
-	ctx context.Context
-
 	helmChartController   *helmchart.Controller
 	helmReleaseController *helmrelease.Controller
 	descriptionController *description.Controller
@@ -88,14 +86,12 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(ctx context.Context,
-	clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
+func NewDeployer(clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	kubeInformerFactory kubeinformers.SharedInformerFactory,
 	feedInUseProtection bool, recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		kubeClient:       kubeClient,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
@@ -113,7 +109,7 @@ func NewDeployer(ctx context.Context,
 		recorder:         recorder,
 	}
 
-	helmChartController, err := helmchart.NewController(ctx, clusternetClient,
+	helmChartController, err := helmchart.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		feedInUseProtection,
 		deployer.recorder, deployer.handleHelmChart)
@@ -122,8 +118,7 @@ func NewDeployer(ctx context.Context,
 	}
 	deployer.helmChartController = helmChartController
 
-	hrController, err := helmrelease.NewController(ctx,
-		clusternetClient,
+	hrController, err := helmrelease.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
@@ -133,8 +128,7 @@ func NewDeployer(ctx context.Context,
 	}
 	deployer.helmReleaseController = hrController
 
-	secretController, err := secret.NewController(ctx,
-		kubeClient,
+	secretController, err := secret.NewController(kubeClient,
 		kubeInformerFactory.Core().V1().Secrets(),
 		deployer.recorder,
 		deployer.handleSecret)
@@ -143,8 +137,7 @@ func NewDeployer(ctx context.Context,
 	}
 	deployer.secretController = secretController
 
-	descController, err := description.NewController(ctx,
-		clusternetClient,
+	descController, err := description.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
@@ -157,13 +150,13 @@ func NewDeployer(ctx context.Context,
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int) {
+func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(deployer.ctx.Done(),
+	if !cache.WaitForNamedCacheSync("helm-deployer",
+		stopCh,
 		deployer.chartSynced,
 		deployer.hrSynced,
 		deployer.descSynced,
@@ -174,13 +167,13 @@ func (deployer *Deployer) Run(workers int) {
 		return
 	}
 
-	go deployer.helmChartController.Run(workers, deployer.ctx.Done())
-	go deployer.helmReleaseController.Run(workers, deployer.ctx.Done())
-	go deployer.descriptionController.Run(workers, deployer.ctx.Done())
+	go deployer.helmChartController.Run(workers, stopCh)
+	go deployer.helmReleaseController.Run(workers, stopCh)
+	go deployer.descriptionController.Run(workers, stopCh)
 	// 1 worker may get hang up, so we set minimum 2 workers here
-	go deployer.secretController.Run(2, deployer.ctx.Done())
+	go deployer.secretController.Run(2, stopCh)
 
-	<-deployer.ctx.Done()
+	<-stopCh
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
@@ -462,7 +455,7 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return err
 	}
 
-	return utils.ReconcileHelmRelease(deployer.ctx, deployCtx, deployer.clusternetClient,
+	return utils.ReconcileHelmRelease(context.TODO(), deployCtx, deployer.clusternetClient,
 		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
 }
 

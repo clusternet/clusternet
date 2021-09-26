@@ -122,18 +122,18 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
 		clusternetInformerFactory.Start(ctx.Done())
 
-		genericDeployer, err := generic.NewDeployer(ctx, d.syncMode, d.appPusherEnabled, appDeployerConfig,
+		genericDeployer, err := generic.NewDeployer(d.syncMode, d.appPusherEnabled, appDeployerConfig,
 			clusternetclient, clusternetInformerFactory, parentRecorder)
 		if err != nil {
 			return err
 		}
-		helmDeployer, err := helm.NewDeployer(ctx, d.syncMode, d.appPusherEnabled, childKubeClient,
+		helmDeployer, err := helm.NewDeployer(d.syncMode, d.appPusherEnabled, childKubeClient,
 			clusternetclient, deployCtx, clusternetInformerFactory, parentRecorder)
 		if err != nil {
 			return err
 		}
-		go genericDeployer.Run(workers)
-		go helmDeployer.Run(workers)
+		go genericDeployer.Run(workers, ctx.Done())
+		go helmDeployer.Run(workers, ctx.Done())
 	}
 
 	<-ctx.Done()

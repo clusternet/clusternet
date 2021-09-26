@@ -50,8 +50,6 @@ type SyncHandlerFunc func(base *appsapi.Base) error
 
 // Controller is a controller that handle Base
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -69,7 +67,7 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	baseInformer appinformers.BaseInformer, descInformer appinformers.DescriptionInformer,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
@@ -77,7 +75,6 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 	}
 
 	c := &Controller{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "base"),
 		baseLister:       baseInformer.Lister(),
@@ -112,8 +109,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down base controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.baseSynced) {
+	if !cache.WaitForNamedCacheSync("base-controller", stopCh, c.baseSynced) {
 		return
 	}
 

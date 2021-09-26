@@ -47,8 +47,6 @@ const (
 
 // Controller is a controller that manages cluster's lifecycle
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetClientSet.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -64,10 +62,9 @@ type Controller struct {
 	recorder record.EventRecorder
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
+func NewController(clusternetClient clusternetClientSet.Interface,
 	clusterInformer clusterinformers.ManagedClusterInformer, recorder record.EventRecorder) *Controller {
 	c := &Controller{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "managedCluster"),
 		clusterLister:    clusterInformer.Lister(),
@@ -224,7 +221,7 @@ func (c *Controller) syncHandler(key string) (time.Duration, error) {
 		return time.Duration(0), err
 	}
 
-	err = c.updateClusterToLostIfNeeded(c.ctx, mcls)
+	err = c.updateClusterToLostIfNeeded(context.TODO(), mcls)
 	if err != nil {
 		return time.Duration(0), err
 	}

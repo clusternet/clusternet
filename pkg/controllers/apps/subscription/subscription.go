@@ -56,8 +56,6 @@ type SyncHandlerFunc func(subscription *appsapi.Subscription) error
 
 // Controller is a controller that handle Subscription
 type Controller struct {
-	ctx context.Context
-
 	lock           sync.RWMutex
 	subscribersMap map[string][]appsapi.Subscriber
 
@@ -81,7 +79,7 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	subsInformer appinformers.SubscriptionInformer, baseInformer appinformers.BaseInformer,
 	clusterInformer clusterinformers.ManagedClusterInformer, recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
@@ -89,7 +87,6 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 	}
 
 	c := &Controller{
-		ctx:              ctx,
 		subscribersMap:   make(map[string][]appsapi.Subscriber),
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "subscription"),
@@ -134,8 +131,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down subscription controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh,
+	if !cache.WaitForNamedCacheSync("subscription-controller", stopCh,
 		c.subsSynced,
 		c.baseSynced,
 		c.clusterSynced,
@@ -437,7 +433,7 @@ func (c *Controller) UpdateSubscriptionStatus(sub *appsapi.Subscription, status 
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		sub.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(c.ctx, sub, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(context.TODO(), sub, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil

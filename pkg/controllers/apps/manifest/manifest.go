@@ -47,8 +47,6 @@ type SyncHandlerFunc func(manifest *appsapi.Manifest) error
 
 // Controller is a controller that handle Manifest
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -67,7 +65,7 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	manifestInformer appinformers.ManifestInformer, feedInUseProtection bool,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
@@ -75,7 +73,6 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 	}
 
 	c := &Controller{
-		ctx:                 ctx,
 		clusternetClient:    clusternetClient,
 		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "manifest"),
 		manifestLister:      manifestInformer.Lister(),
@@ -107,8 +104,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down manifest controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.manifestSynced) {
+	if !cache.WaitForNamedCacheSync("manifest-controller", stopCh, c.manifestSynced) {
 		return
 	}
 

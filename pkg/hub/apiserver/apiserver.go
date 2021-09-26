@@ -137,6 +137,11 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 		return nil, err
 	}
 
+	// let informers get registered before hook starts
+	if utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
+		clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer()
+	}
+
 	s.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-shadowapis", func(context genericapiserver.PostStartHookContext) error {
 		if s.GenericAPIServer.OpenAPIVersionedService != nil && s.GenericAPIServer.StaticOpenAPISpec != nil {
 			//openapiController := openapi.NewController(hub.crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions())
@@ -150,7 +155,7 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 					c.GenericConfig.AdmissionControl,
 					kubeclient,
 					clusternetclient,
-					clusternetInformerFactory)
+					clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister())
 				return ss.InstallShadowAPIGroups(kubeclient.DiscoveryClient)
 			}
 		}

@@ -48,8 +48,6 @@ type SyncHandlerFunc func(description *appsapi.Description) error
 
 // Controller is a controller that handle Description
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetClientSet.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -68,7 +66,7 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
+func NewController(clusternetClient clusternetClientSet.Interface,
 	descInformer appInformers.DescriptionInformer, hrInformer appInformers.HelmReleaseInformer,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
@@ -76,7 +74,6 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 	}
 
 	c := &Controller{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "description"),
 		descLister:       descInformer.Lister(),
@@ -96,7 +93,6 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 	hrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: c.deleteHelmRelease,
 	})
-
 	return c, nil
 }
 
@@ -112,8 +108,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down description controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.descSynced, c.hrSynced) {
+	if !cache.WaitForNamedCacheSync("description-controller", stopCh, c.descSynced, c.hrSynced) {
 		return
 	}
 
@@ -344,7 +339,7 @@ func (c *Controller) UpdateDescriptionStatus(desc *appsapi.Description, status *
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		desc.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(c.ctx, desc, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
