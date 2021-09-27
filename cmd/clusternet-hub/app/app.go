@@ -58,11 +58,11 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 				klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 			})
 
-			hub, err := hub.NewHub(ctx, opts)
+			hub, err := hub.NewHub(opts)
 			if err != nil {
 				klog.Exit(err)
 			}
-			if err := hub.Run(); err != nil {
+			if err := hub.Run(ctx); err != nil {
 				klog.Exit(err)
 			}
 

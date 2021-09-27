@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
@@ -51,9 +50,6 @@ type SyncHandlerFunc func(*clusterapi.ClusterRegistrationRequest) error
 
 // Controller is a controller that handle edge cluster registration requests
 type Controller struct {
-	ctx context.Context
-
-	kubeClient       kubernetes.Interface
 	clusternetClient clusternetClientSet.Interface
 
 	crrsLister crrsListers.ClusterRegistrationRequestLister
@@ -70,15 +66,13 @@ type Controller struct {
 }
 
 // NewController creates and initializes a new Controller
-func NewController(ctx context.Context, kubeClient kubernetes.Interface, clusternetClient clusternetClientSet.Interface,
+func NewController(clusternetClient clusternetClientSet.Interface,
 	crrsInformer crrsInformers.ClusterRegistrationRequestInformer, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
-		kubeClient:       kubeClient,
 		clusternetClient: clusternetClient,
 		crrsLister:       crrsInformer.Lister(),
 		crrsSynced:       crrsInformer.Informer().HasSynced,
@@ -108,8 +102,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down cluster-registration-requests controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.crrsSynced) {
+	if !cache.WaitForNamedCacheSync("cluster-registration-request-controller", stopCh, c.crrsSynced) {
 		return
 	}
 
@@ -280,7 +273,7 @@ func (c *Controller) UpdateCRRStatus(crr *clusterapi.ClusterRegistrationRequest,
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		crr.Status = *status
-		_, err := c.clusternetClient.ClustersV1beta1().ClusterRegistrationRequests().UpdateStatus(c.ctx, crr, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.ClustersV1beta1().ClusterRegistrationRequests().UpdateStatus(context.TODO(), crr, metav1.UpdateOptions{})
 		if err == nil {
 			klog.V(4).Infof("successfully update status of ClusterRegistrationRequest %q to %q", crr.Name, status.Result)
 			return nil

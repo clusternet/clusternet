@@ -34,8 +34,6 @@ import (
 )
 
 type Deployer struct {
-	ctx context.Context
-
 	// syncMode indicates current sync mode
 	syncMode clusterapi.ClusterSyncMode
 	// whether AppPusher feature gate is enabled
@@ -58,12 +56,11 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
+func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	childKubeClient *kubernetes.Clientset, clusternetClient *clusternetclientset.Clientset, deployCtx *utils.DeployContext,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
-		ctx:              ctx,
 		syncMode:         syncMode,
 		appPusherEnabled: appPusherEnabled,
 		childKubeClient:  childKubeClient,
@@ -76,8 +73,7 @@ func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPu
 		recorder:         recorder,
 	}
 
-	hrController, err := helmrelease.NewController(ctx,
-		clusternetClient,
+	hrController, err := helmrelease.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
@@ -90,22 +86,18 @@ func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPu
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int) {
+func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(deployer.ctx.Done(),
-		deployer.descSynced,
-		deployer.hrSynced,
-	) {
+	if !cache.WaitForNamedCacheSync("helm-deployer", stopCh, deployer.descSynced, deployer.hrSynced) {
 		return
 	}
 
-	go deployer.helmReleaseController.Run(workers, deployer.ctx.Done())
+	go deployer.helmReleaseController.Run(workers, stopCh)
 
-	<-deployer.ctx.Done()
+	<-stopCh
 }
 
 func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
@@ -116,6 +108,6 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	return utils.ReconcileHelmRelease(deployer.ctx, deployer.deployCtx, deployer.clusternetClient,
+	return utils.ReconcileHelmRelease(context.TODO(), deployer.deployCtx, deployer.clusternetClient,
 		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
 }

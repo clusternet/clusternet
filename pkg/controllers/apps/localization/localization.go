@@ -52,8 +52,6 @@ type SyncHandlerFunc func(loc *appsapi.Localization) error
 
 // Controller is a controller that handle Localization
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -77,7 +75,7 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	locInformer appinformers.LocalizationInformer,
 	chartInformer appinformers.HelmChartInformer, manifestInformer appinformers.ManifestInformer,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
@@ -86,7 +84,6 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 	}
 
 	c := &Controller{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "localization"),
 		locLister:        locInformer.Lister(),
@@ -121,8 +118,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down localization controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.locSynced, c.chartSynced, c.manifestSynced) {
+	if !cache.WaitForNamedCacheSync("localization-controller", stopCh, c.locSynced, c.chartSynced, c.manifestSynced) {
 		return
 	}
 

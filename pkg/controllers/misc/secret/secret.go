@@ -46,8 +46,6 @@ type SyncHandlerFunc func(secret *corev1.Secret) error
 // Controller is a controller that handle Secret
 // here we only focus on Secret "child-cluster-deployer" !!!
 type Controller struct {
-	ctx context.Context
-
 	kubeclient kubernetes.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -64,15 +62,13 @@ type Controller struct {
 	SyncHandler SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, kubeclient kubernetes.Interface,
-	secretInformer coreInformers.SecretInformer,
+func NewController(kubeclient kubernetes.Interface, secretInformer coreInformers.SecretInformer,
 	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
 	if syncHandler == nil {
 		return nil, fmt.Errorf("syncHandler must be set")
 	}
 
 	c := &Controller{
-		ctx:          ctx,
 		kubeclient:   kubeclient,
 		workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "secret"),
 		secretLister: secretInformer.Lister(),
@@ -104,8 +100,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down Secret controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.secretSynced) {
+	if !cache.WaitForNamedCacheSync("secret-controller", stopCh, c.secretSynced) {
 		return
 	}
 

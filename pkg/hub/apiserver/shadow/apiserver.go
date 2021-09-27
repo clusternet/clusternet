@@ -43,7 +43,7 @@ import (
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/registry/shadow/template"
 )
 
@@ -94,22 +94,22 @@ type ShadowAPIServer struct {
 	kubeclient       *kubernetes.Clientset
 	clusternetclient *clusternet.Clientset
 
-	clusternetInformerFactory informers.SharedInformerFactory
+	manifestLister applisters.ManifestLister
 }
 
 func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 	maxRequestBodyBytes int64, minRequestTimeout int,
 	admissionControl admission.Interface,
 	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset,
-	clusternetInformerFactory informers.SharedInformerFactory) *ShadowAPIServer {
+	manifestLister applisters.ManifestLister) *ShadowAPIServer {
 	return &ShadowAPIServer{
-		GenericAPIServer:          apiserver,
-		maxRequestBodyBytes:       maxRequestBodyBytes,
-		minRequestTimeout:         minRequestTimeout,
-		admissionControl:          admissionControl,
-		kubeclient:                kubeclient,
-		clusternetclient:          clusternetclient,
-		clusternetInformerFactory: clusternetInformerFactory,
+		GenericAPIServer:    apiserver,
+		maxRequestBodyBytes: maxRequestBodyBytes,
+		minRequestTimeout:   minRequestTimeout,
+		admissionControl:    admissionControl,
+		kubeclient:          kubeclient,
+		clusternetclient:    clusternetclient,
+		manifestLister:      manifestLister,
 	}
 }
 
@@ -139,7 +139,7 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(cl discovery.DiscoveryInterfac
 			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: preferredVersion}.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
-			resourceRest := template.NewREST(ss.kubeclient, ss.clusternetclient, ParameterCodec, ss.clusternetInformerFactory)
+			resourceRest := template.NewREST(ss.kubeclient, ss.clusternetclient, ParameterCodec, ss.manifestLister)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)

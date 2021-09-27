@@ -48,8 +48,6 @@ type SyncHandlerFunc func(chart *appsapi.HelmChart) error
 
 // Controller is a controller that handle HelmChart
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -68,7 +66,7 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	helmChartInformer appinformers.HelmChartInformer, feedInUseProtection bool,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
@@ -76,7 +74,6 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 	}
 
 	c := &Controller{
-		ctx:                 ctx,
 		clusternetClient:    clusternetClient,
 		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmChart"),
 		helmChartLister:     helmChartInformer.Lister(),
@@ -108,8 +105,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down helmchart controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.helmChartSynced) {
+	if !cache.WaitForNamedCacheSync("helmchart-controller", stopCh, c.helmChartSynced) {
 		return
 	}
 
@@ -311,7 +307,7 @@ func (c *Controller) UpdateChartStatus(chart *appsapi.HelmChart, status *appsapi
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		chart.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).UpdateStatus(c.ctx, chart, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).UpdateStatus(context.TODO(), chart, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil

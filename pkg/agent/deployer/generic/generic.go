@@ -39,8 +39,6 @@ import (
 )
 
 type Deployer struct {
-	ctx context.Context
-
 	// syncMode indicates current sync mode
 	syncMode clusterapi.ClusterSyncMode
 	// whether AppPusher feature gate is enabled
@@ -61,7 +59,7 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
+func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	appDeployerConfig *rest.Config, clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
@@ -75,7 +73,6 @@ func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPu
 	}
 
 	deployer := &Deployer{
-		ctx:                 ctx,
 		syncMode:            syncMode,
 		appPusherEnabled:    appPusherEnabled,
 		dynamicClient:       dynamicClient,
@@ -86,8 +83,7 @@ func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPu
 		recorder:            recorder,
 	}
 
-	descController, err := description.NewController(ctx,
-		clusternetClient,
+	descController, err := description.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
@@ -100,19 +96,18 @@ func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPu
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int) {
+func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Info("starting generic deployer...")
 	defer klog.Info("shutting generic deployer")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(deployer.ctx.Done(), deployer.descSynced) {
+	if !cache.WaitForNamedCacheSync("generic-deployer", stopCh, deployer.descSynced) {
 		return
 	}
 
-	go deployer.descController.Run(workers, deployer.ctx.Done())
+	go deployer.descController.Run(workers, stopCh)
 
-	<-deployer.ctx.Done()
+	<-stopCh
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
@@ -127,10 +122,10 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	}
 
 	if desc.DeletionTimestamp != nil {
-		return utils.OffloadDescription(deployer.ctx, deployer.clusternetClient, deployer.dynamicClient,
+		return utils.OffloadDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
 			deployer.discoveryRESTMapper, desc, deployer.recorder)
 	}
 
-	return utils.ApplyDescription(deployer.ctx, deployer.clusternetClient, deployer.dynamicClient,
+	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
 		deployer.discoveryRESTMapper, desc, deployer.recorder)
 }

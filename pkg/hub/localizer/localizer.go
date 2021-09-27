@@ -49,8 +49,6 @@ var (
 
 // Localizer defines configuration for the application localization
 type Localizer struct {
-	ctx context.Context
-
 	clusternetClient *clusternetclientset.Clientset
 
 	locLister      applisters.LocalizationLister
@@ -68,13 +66,11 @@ type Localizer struct {
 	recorder record.EventRecorder
 }
 
-func NewLocalizer(ctx context.Context,
-	clusternetClient *clusternetclientset.Clientset,
+func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Localizer, error) {
 
 	localizer := &Localizer{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		locLister:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Lister(),
 		locSynced:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer().HasSynced,
@@ -87,7 +83,7 @@ func NewLocalizer(ctx context.Context,
 		recorder:         recorder,
 	}
 
-	locController, err := localization.NewController(ctx, clusternetClient,
+	locController, err := localization.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Localizations(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
@@ -98,8 +94,7 @@ func NewLocalizer(ctx context.Context,
 	}
 	localizer.locController = locController
 
-	globController, err := globalization.NewController(ctx,
-		clusternetClient,
+	globController, err := globalization.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Globalizations(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
@@ -113,12 +108,12 @@ func NewLocalizer(ctx context.Context,
 	return localizer, nil
 }
 
-func (l *Localizer) Run(workers int) {
+func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Info("starting Clusternet localizer ...")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(l.ctx.Done(),
+	if !cache.WaitForNamedCacheSync("localizer-controller",
+		stopCh,
 		l.locSynced,
 		l.globSynced,
 		l.chartSynced,
@@ -127,20 +122,21 @@ func (l *Localizer) Run(workers int) {
 		return
 	}
 
-	go l.locController.Run(workers, l.ctx.Done())
-	go l.globController.Run(workers, l.ctx.Done())
+	go l.locController.Run(workers, stopCh)
+	go l.globController.Run(workers, stopCh)
 
-	<-l.ctx.Done()
+	<-stopCh
 }
 
 func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 	if loc.DeletionTimestamp != nil {
 		// remove finalizer
-		loc.Finalizers = utils.RemoveString(loc.Finalizers, known.AppFinalizer)
-		_, err := l.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Update(context.TODO(), loc, metav1.UpdateOptions{})
+		locCopy := loc.DeepCopy()
+		locCopy.Finalizers = utils.RemoveString(locCopy.Finalizers, known.AppFinalizer)
+		_, err := l.clusternetClient.AppsV1alpha1().Localizations(locCopy.Namespace).Update(context.TODO(), locCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(loc), err))
+				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(locCopy), err))
 		}
 		return err
 	}
@@ -151,11 +147,12 @@ func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 	if glob.DeletionTimestamp != nil {
 		// remove finalizer
-		glob.Finalizers = utils.RemoveString(glob.Finalizers, known.AppFinalizer)
-		_, err := l.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(), glob, metav1.UpdateOptions{})
+		globCopy := glob.DeepCopy()
+		globCopy.Finalizers = utils.RemoveString(globCopy.Finalizers, known.AppFinalizer)
+		_, err := l.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(), globCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Globalization %s: %v", known.AppFinalizer, klog.KObj(glob), err))
+				fmt.Sprintf("failed to remove finalizer %s from Globalization %s: %v", known.AppFinalizer, klog.KObj(globCopy), err))
 		}
 		return err
 	}

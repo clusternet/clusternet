@@ -43,7 +43,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 )
 
@@ -73,9 +73,9 @@ type REST struct {
 
 	parameterCodec runtime.ParameterCodec
 
-	dryRunClient              *kubernetes.Clientset
-	clusternetClient          *clusternet.Clientset
-	clusternetInformerFactory informers.SharedInformerFactory
+	dryRunClient     *kubernetes.Clientset
+	clusternetClient *clusternet.Clientset
+	manifestLister   applisters.ManifestLister
 
 	// deleteCollectionWorkers is the maximum number of workers in a single
 	// DeleteCollection call. Delete requests for the items in a collection
@@ -126,8 +126,7 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
-		manifest, err = r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).
-			Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
+		manifest, err = r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
 	} else {
 		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
 			Get(ctx, r.generateNameForManifest(request.NamespaceValue(ctx), name), *options)
@@ -157,8 +156,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, err
 	}
 
-	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).
-		Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
+	manifest, err := r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -176,33 +174,30 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	if err != nil {
 		return nil, false, err
 	}
+	result := newObj.(*unstructured.Unstructured)
 
-	// dry-run
-	result, err := r.dryRunCreate(ctx, newObj, createValidation, &metav1.CreateOptions{})
-	if err != nil {
-		return nil, false, err
-	}
-
-	manifest.Template.Reset()
 	// in case labels get changed
-	if manifest.Labels == nil {
-		manifest.Labels = map[string]string{}
+	manifestCopy := manifest.DeepCopy()
+	if manifestCopy.Labels == nil {
+		manifestCopy.Labels = map[string]string{}
 	}
 	for k, v := range result.GetLabels() {
-		manifest.Labels[k] = v
+		manifestCopy.Labels[k] = v
 	}
-	manifest.Labels[known.ConfigGroupLabel] = r.group
-	manifest.Labels[known.ConfigVersionLabel] = r.version
-	manifest.Labels[known.ConfigKindLabel] = r.kind
-	manifest.Labels[known.ConfigNameLabel] = result.GetName()
-	manifest.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
-	manifest.Template.Object = result
-	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifest, *options)
+	manifestCopy.Labels[known.ConfigGroupLabel] = r.group
+	manifestCopy.Labels[known.ConfigVersionLabel] = r.version
+	manifestCopy.Labels[known.ConfigKindLabel] = r.kind
+	manifestCopy.Labels[known.ConfigNameLabel] = result.GetName()
+	manifestCopy.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
+	manifestCopy.Template.Reset()
+	manifestCopy.Template.Object = result
+	// save the updates
+	manifestCopy, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifestCopy, *options)
 	if err != nil {
 		return nil, false, err
 	}
 
-	result, err = transformManifest(manifest)
+	result, err = transformManifest(manifestCopy)
 	return result, err != nil, err
 }
 
@@ -494,6 +489,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	if r.kind != "Namespace" && r.namespaced {
 		u.SetNamespace(appsapi.ReservedNamespace)
 	}
+	// use reserved namespace "clusternet-reserved" to avoid error "namespaces not found"
 	dryRunNamespace := appsapi.ReservedNamespace
 	if r.kind == "Namespace" {
 		dryRunNamespace = ""
@@ -515,21 +511,12 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 		VersionedParams(options, r.parameterCodec).
 		Body(body)
 	err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
-	if err != nil && errors.IsAlreadyExists(err) {
-		// TODO: security risk
-		// get existing object
-		req := client.Get().
-			Name(u.GetName()).
-			Resource(resource).
-			VersionedParams(options, r.parameterCodec).
-			Body(body)
-		err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
-	}
 	if err != nil {
 		return nil, err
 	}
 
 	if r.kind != "Namespace" && r.namespaced {
+		// set original namespace back
 		result.SetNamespace(objNamespace)
 	}
 	return result, nil
@@ -597,12 +584,12 @@ func (r *REST) getListKind() string {
 
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(dryRunClient *kubernetes.Clientset, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
-	clusternetInformerFactory informers.SharedInformerFactory) *REST {
+	manifestLister applisters.ManifestLister) *REST {
 	return &REST{
-		dryRunClient:              dryRunClient,
-		clusternetClient:          clusternetclient,
-		clusternetInformerFactory: clusternetInformerFactory,
-		parameterCodec:            parameterCodec,
+		dryRunClient:     dryRunClient,
+		clusternetClient: clusternetclient,
+		manifestLister:   manifestLister,
+		parameterCodec:   parameterCodec,
 		// currently we only set a default value for deleteCollectionWorkers
 		// TODO: make it configurable?
 		deleteCollectionWorkers: DefaultDeleteCollectionWorkers,
