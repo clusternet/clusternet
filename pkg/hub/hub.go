@@ -164,7 +164,9 @@ func (hub *Hub) Run(ctx context.Context) error {
 			// waits for all started informers' cache got synced
 			hub.kubeInformerFactory.WaitForCacheSync(ctx.Done())
 			hub.clusternetInformerFactory.WaitForCacheSync(ctx.Done())
-			config.GenericConfig.SharedInformerFactory.WaitForCacheSync(ctx.Done())
+			// TODO: uncomment this when module "k8s.io/apiserver" gets bumped to a higher version.
+			// 		supports k8s.io/apiserver version skew
+			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(ctx.Done())
 
 			go func() {
 				hub.crrApprover.Run(DefaultThreadiness, context.StopCh)
