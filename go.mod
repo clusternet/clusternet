@@ -30,6 +30,7 @@ require (
 )
 
 replace (
+	github.com/dgrijalva/jwt-go => github.com/dgrijalva/jwt-go v3.2.1-0.20210802184156-9742bd7fca1c+incompatible
 	github.com/spf13/afero => github.com/spf13/afero v1.5.1
 	google.golang.org/grpc => google.golang.org/grpc v1.27.1
 	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210814084831-4aafc1ec60f6
