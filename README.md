@@ -620,3 +620,8 @@ $ helm ls -n abc
 NAME               	NAMESPACE	REVISION	UPDATED                             	STATUS  	CHART            	APP VERSION
 helm-demo-mysql    	abc      	1       	2021-07-06 14:34:44.188938 +0800 CST	deployed	mysql-8.6.2      	8.0.25
 ```
+> :pushpin: :pushpin: Note:
+>
+> Admission webhooks could be configured in parent cluster, but please make sure that [dry-run](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#side-effects) mode is supported in these webhooks. At the same time, a webhook must explicitly indicate that it will not have side-effects when running with `dryRun`. That is [`sideEffects`](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#side-effects) must be set to `None` or `NoneOnDryRun`.
+>
+> While, these webhooks could be configured per child cluster without above limitations as well.
