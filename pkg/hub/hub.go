@@ -23,11 +23,12 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	kubeInformers "k8s.io/client-go/informers"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -53,10 +54,11 @@ type Hub struct {
 	options *options.HubServerOptions
 
 	clusternetInformerFactory informers.SharedInformerFactory
-	kubeInformerFactory       kubeInformers.SharedInformerFactory
+	kubeInformerFactory       kubeinformers.SharedInformerFactory
 
-	kubeclient       *kubernetes.Clientset
-	clusternetclient *clusternet.Clientset
+	kubeClient       *kubernetes.Clientset
+	clusternetClient *clusternet.Clientset
+	clientBuilder    clientbuilder.ControllerClientBuilder
 
 	crrApprover *approver.CRRApprover
 	deployer    *deployer.Deployer
@@ -80,15 +82,18 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	}
 
 	// creating the clientset
-	kubeclient := kubernetes.NewForConfigOrDie(config)
-	clusternetclient := clusternet.NewForConfigOrDie(config)
+	rootClientBuilder := clientbuilder.SimpleControllerClientBuilder{
+		ClientConfig: config,
+	}
+	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("kube-client"))
+	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-client"))
 
 	//deployer.broadcaster.StartStructuredLogging(5)
 	broadcaster := record.NewBroadcaster()
-	if kubeclient != nil {
+	if kubeClient != nil {
 		klog.Infof("sending events to api server")
 		broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
-			Interface: kubeclient.CoreV1().Events(""),
+			Interface: kubeClient.CoreV1().Events(""),
 		})
 	} else {
 		klog.Warningf("no api server defined - no events will be sent to API server.")
@@ -98,9 +103,9 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-hub"})
 
 	// creates the informer factory
-	kubeInformerFactory := kubeInformers.NewSharedInformerFactory(kubeclient, known.DefaultResync)
-	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetclient, known.DefaultResync)
-	approver, err := approver.NewCRRApprover(kubeclient, clusternetclient, clusternetInformerFactory,
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
+	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetClient, known.DefaultResync)
+	approver, err := approver.NewCRRApprover(kubeClient, clusternetClient, clusternetInformerFactory,
 		kubeInformerFactory, socketConnection)
 	if err != nil {
 		return nil, err
@@ -108,19 +113,20 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 
 	var d *deployer.Deployer
 	if deployerEnabled {
-		d, err = deployer.NewDeployer(kubeclient, clusternetclient, clusternetInformerFactory, kubeInformerFactory, recorder)
+		d, err = deployer.NewDeployer(kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory, recorder)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	clusterLifecycle := clusterlifecycle.NewController(clusternetclient, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(), recorder)
+	clusterLifecycle := clusterlifecycle.NewController(clusternetClient, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(), recorder)
 
 	hub := &Hub{
 		crrApprover:               approver,
 		options:                   opts,
-		kubeclient:                kubeclient,
-		clusternetclient:          clusternetclient,
+		kubeClient:                kubeClient,
+		clusternetClient:          clusternetClient,
+		clientBuilder:             rootClientBuilder,
 		clusternetInformerFactory: clusternetInformerFactory,
 		kubeInformerFactory:       kubeInformerFactory,
 		socketConnection:          socketConnection,
@@ -140,11 +146,14 @@ func (hub *Hub) Run(ctx context.Context) error {
 		return err
 	}
 
-	server, err := config.Complete().New(hub.options.TunnelLogging, hub.socketConnection,
+	server, err := config.Complete().New(
+		hub.options.TunnelLogging,
+		hub.socketConnection,
 		hub.options.RecommendedOptions.Authentication.RequestHeader.ExtraHeaderPrefixes,
-		hub.kubeclient,
-		hub.clusternetclient,
-		hub.clusternetInformerFactory)
+		hub.kubeClient,
+		hub.clusternetClient,
+		hub.clusternetInformerFactory,
+		hub.clientBuilder)
 	if err != nil {
 		return err
 	}
@@ -162,11 +171,11 @@ func (hub *Hub) Run(ctx context.Context) error {
 
 			klog.Infof("starting Clusternet controllers ...")
 			// waits for all started informers' cache got synced
-			hub.kubeInformerFactory.WaitForCacheSync(ctx.Done())
-			hub.clusternetInformerFactory.WaitForCacheSync(ctx.Done())
+			hub.kubeInformerFactory.WaitForCacheSync(context.StopCh)
+			hub.clusternetInformerFactory.WaitForCacheSync(context.StopCh)
 			// TODO: uncomment this when module "k8s.io/apiserver" gets bumped to a higher version.
-			// 		supports k8s.io/apiserver version skew
-			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(ctx.Done())
+			// 		supports k8s.io/apiserver version skew (clusternet/clusternet#137)
+			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(context.StopCh)
 
 			go func() {
 				hub.crrApprover.Run(DefaultThreadiness, context.StopCh)
@@ -181,6 +190,10 @@ func (hub *Hub) Run(ctx context.Context) error {
 			go func() {
 				hub.clusterLifecycle.Run(DefaultThreadiness, context.StopCh)
 			}()
+
+			select {
+			case <-context.StopCh:
+			}
 
 			return nil
 		},

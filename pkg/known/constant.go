@@ -52,3 +52,7 @@ const (
 	// default retry period
 	DefaultRetryPeriod = 5 * time.Second
 )
+
+const (
+	Category = "clusternet.shadow"
+)
