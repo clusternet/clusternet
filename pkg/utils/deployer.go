@@ -381,7 +381,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 				defer wg.Done()
 				klog.V(5).Infof("deleting %s %s defined in Description %s", resource.GetKind(),
 					klog.KObj(resource), klog.KObj(desc))
-				err := deleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+				err := DeleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
 				if err != nil {
 					errCh <- err
 				}
@@ -478,7 +478,7 @@ func applyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 	return lastError
 }
 
-func deleteResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
+func DeleteResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
 	deletePropagationBackground := metav1.DeletePropagationBackground
 
 	var lastError error

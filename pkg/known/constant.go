@@ -46,10 +46,10 @@ const (
 )
 
 const (
-	// default resync time
+	// DefaultResync means the default resync time
 	DefaultResync = time.Hour * 12
 
-	// default retry period
+	// DefaultRetryPeriod means the default retry period
 	DefaultRetryPeriod = 5 * time.Second
 )
 

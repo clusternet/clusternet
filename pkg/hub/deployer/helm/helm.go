@@ -243,7 +243,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 		return err
 	}
 
-	if err := deployer.PopulateHelmRelease(desc); err != nil {
+	if err := deployer.populateHelmRelease(desc); err != nil {
 		return err
 	}
 
@@ -287,7 +287,7 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 	})
 }
 
-func (deployer *Deployer) PopulateHelmRelease(desc *appsapi.Description) error {
+func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 	allExistingHelmReleases, err := deployer.hrLister.List(labels.SelectorFromSet(labels.Set{
 		known.ConfigKindLabel:      desc.Kind,
 		known.ConfigNameLabel:      desc.Name,
