@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	autoscalingapiv1 "k8s.io/api/autoscaling/v1"
 	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	apiextensionsv1lister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -84,6 +85,10 @@ func init() {
 		&metav1.APIGroup{},
 		&metav1.APIResourceList{},
 		&metav1.List{},
+	)
+
+	Scheme.AddUnversionedTypes(autoscalingapiv1.SchemeGroupVersion,
+		&autoscalingapiv1.Scale{},
 	)
 }
 
@@ -183,7 +188,12 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			resourceRest.SetKind(apiresource.Kind)
 			resourceRest.SetGroup(apiGroupResource.Group.Name)
 			resourceRest.SetVersion(preferredVersion)
-			shadowv1alpha1storage[apiresource.Name] = resourceRest
+			switch {
+			case strings.HasSuffix(apiresource.Name, "/scale"):
+				shadowv1alpha1storage[apiresource.Name] = template.NewScaleREST(resourceRest)
+			default:
+				shadowv1alpha1storage[apiresource.Name] = resourceRest
+			}
 		}
 	}
 
