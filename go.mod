@@ -3,7 +3,7 @@ module github.com/clusternet/clusternet
 go 1.14
 
 require (
-	github.com/containerd/containerd v1.4.8 // indirect
+	github.com/containerd/containerd v1.4.11 // indirect
 	github.com/emicklei/go-restful v2.9.5+incompatible
 	github.com/evanphx/json-patch v4.9.0+incompatible
 	github.com/go-openapi/spec v0.19.5
