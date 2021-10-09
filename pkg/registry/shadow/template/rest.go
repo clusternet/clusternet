@@ -50,7 +50,7 @@ const (
 	CoreGroupPrefix  = "api"
 	NamedGroupPrefix = "apis"
 
-	// default value for deleteCollectionWorkers
+	// DefaultDeleteCollectionWorkers defines the default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
 )
 
@@ -145,6 +145,8 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo,
 	createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc,
 	forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
+	// We are explicitly taking forceAllowCreate as false.
+	// TODO: forceAllowCreate could be true
 	resource, subresource := r.getResourceName()
 	if len(subresource) > 0 && !supportedSubresources.Has(subresource) {
 		// all these shadow apis are considered as templates, updating subresources, such as 'status' makes no sense.
@@ -167,10 +169,15 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, errors.NewInternalError(err)
 	}
 
-	// TODO: validate update
 	newObj, err := objInfo.UpdatedObject(ctx, oldObj)
 	if err != nil {
 		return nil, false, err
+	}
+	// Now we've got a fully formed object. Validators that apiserver handling chain wants to enforce can be called.
+	if updateValidation != nil {
+		if err := updateValidation(ctx, newObj.DeepCopyObject(), oldObj.DeepCopyObject()); err != nil {
+			return nil, false, err
+		}
 	}
 	result := newObj.(*unstructured.Unstructured)
 
@@ -443,10 +450,13 @@ func (r *REST) New() runtime.Object {
 
 func (r *REST) GroupVersionKind(_ schema.GroupVersion) schema.GroupVersionKind {
 	// use original GVK
-	return schema.GroupVersionKind{
+	return r.GroupVersion().WithKind(r.kind)
+}
+
+func (r *REST) GroupVersion() schema.GroupVersion {
+	return schema.GroupVersion{
 		Group:   r.group,
 		Version: r.version,
-		Kind:    r.kind,
 	}
 }
 
