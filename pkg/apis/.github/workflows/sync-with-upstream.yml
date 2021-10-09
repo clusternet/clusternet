@@ -1,0 +1,29 @@
+name: Synchronization
+on:
+  repository_dispatch:
+    types: [ sync-upstream ]
+jobs:
+  sync-with-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Upstream clusternet/clusternet
+        uses: actions/checkout@v2
+        with:
+          repository: clusternet/clusternet
+          fetch-depth: 0
+      - name: Update changes
+        run: |
+          git subtree split -P pkg/apis -b subrepo-apis
+          git init ../tmp-apis
+          git remote add tmp-apis ../tmp-apis
+          git push -u tmp-apis subrepo-apis:main
+          cd ../tmp-apis
+          git checkout main
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+          force: true
+          tags: true
+          directory: ../tmp-apis
