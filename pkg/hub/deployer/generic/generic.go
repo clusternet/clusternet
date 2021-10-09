@@ -18,9 +18,12 @@ package generic
 
 import (
 	"context"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	kubeinformers "k8s.io/client-go/informers"
@@ -156,4 +159,65 @@ func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.I
 
 	return dynamicClient, discoveryRESTMapper, nil
 
+}
+
+func (deployer *Deployer) PruneFeedsInDescription(ctx context.Context, current, desired *appsapi.Description) error {
+	// for helm deployer, redundant HelmReleases will be deleted after re-calculating.
+	// Here we only need to focus on generic deployer.
+	if desired.Spec.Deployer == appsapi.DescriptionHelmDeployer {
+		return nil
+	}
+
+	dynamicClient, discoveryRESTMapper, err := deployer.getDynamicClient(desired)
+	if err != nil {
+		return err
+	}
+
+	resourceNameFunc := func(resource *unstructured.Unstructured) string {
+		return fmt.Sprintf("%s/%s/%s", resource.GetKind(), resource.GetNamespace(), resource.GetName())
+	}
+
+	var allErrs []error
+	var resourcesToBeDeleted []*unstructured.Unstructured
+	var desiredResources []string
+	for idx, object := range desired.Spec.Raw {
+		resource := &unstructured.Unstructured{}
+		err = resource.UnmarshalJSON(object)
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to unmarshal object at index %d from desired Description %s: %v", idx, klog.KObj(desired), err))
+			allErrs = append(allErrs, err)
+			continue
+		}
+		desiredResources = append(desiredResources, resourceNameFunc(resource))
+	}
+	for idx, object := range current.Spec.Raw {
+		resource := &unstructured.Unstructured{}
+		err = resource.UnmarshalJSON(object)
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to unmarshal object at index %d from current Description %s: %v", idx, klog.KObj(current), err))
+			allErrs = append(allErrs, err)
+			continue
+		}
+		if !utils.ContainsString(desiredResources, resourceNameFunc(resource)) {
+			resourcesToBeDeleted = append(resourcesToBeDeleted, resource)
+		}
+	}
+
+	// prune unused feeds
+	for _, resource := range resourcesToBeDeleted {
+		err = utils.DeleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("Failed to prune %s %s: %v", resource.GetKind(), klog.KObj(resource), err)
+			klog.ErrorDepth(5, msg)
+			deployer.recorder.Event(current, corev1.EventTypeWarning, "UnsuccessfullyPruningFeed", msg)
+			continue
+		}
+
+		msg := fmt.Sprintf("Successfully pruning %s %s", resource.GetKind(), klog.KObj(resource))
+		klog.V(5).Info(msg)
+		deployer.recorder.Event(current, corev1.EventTypeNormal, "SuccessfullyPruningFeed", msg)
+	}
+
+	return utilerrors.NewAggregate(allErrs)
 }

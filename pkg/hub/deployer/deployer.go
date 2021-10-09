@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -58,9 +59,10 @@ import (
 )
 
 var (
-	helmChartKind    = appsapi.SchemeGroupVersion.WithKind("HelmChart")
-	subscriptionKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
-	baseKind         = appsapi.SchemeGroupVersion.WithKind("Base")
+	helmChartKind               = appsapi.SchemeGroupVersion.WithKind("HelmChart")
+	subscriptionKind            = appsapi.SchemeGroupVersion.WithKind("Subscription")
+	baseKind                    = appsapi.SchemeGroupVersion.WithKind("Base")
+	deletePropagationBackground = metav1.DeletePropagationBackground
 )
 
 const (
@@ -404,7 +406,6 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 		return err
 	}
 
-	deletePropagationBackground := metav1.DeletePropagationBackground
 	err = deployer.clusternetClient.AppsV1alpha1().Bases(ns).Delete(ctx, name, metav1.DeleteOptions{
 		PropagationPolicy: &deletePropagationBackground,
 	})
@@ -540,6 +541,9 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	// Descriptions to be deleted
 	descsToBeDeleted := sets.String{}
 	for _, desc := range allExistingDescriptions {
+		if desc.DeletionTimestamp != nil {
+			continue
+		}
 		descsToBeDeleted.Insert(klog.KObj(desc).String())
 	}
 
@@ -629,14 +633,31 @@ func (deployer *Deployer) syncDescriptions(base *appsapi.Base, desc *appsapi.Des
 		return err
 	}
 
+	// delete Description with empty feeds
+	if len(base.Spec.Feeds) == 0 {
+		// in fact, this piece of codes will never be run. Just leave it here for the last protection.
+		return deployer.deleteDescription(context.TODO(), klog.KObj(desc).String())
+	}
+
 	curDesc, err := deployer.descLister.Descriptions(desc.Namespace).Get(desc.Name)
 	if err == nil {
 		if curDesc.DeletionTimestamp != nil {
-			return fmt.Errorf("Description %s is deleting, will resync later", klog.KObj(curDesc))
+			return fmt.Errorf("description %s is deleting, will resync later", klog.KObj(curDesc))
 		}
 
 		// update it
 		if !reflect.DeepEqual(curDesc.Spec, desc.Spec) {
+			// prune feeds that are not subscribed any longer from description
+			// for helm deployer, redundant HelmReleases will be deleted after re-calculating.
+			// Here we only need to focus on generic deployer.
+			pruneCtx, cancel := context.WithCancel(context.TODO())
+			go wait.JitterUntilWithContext(pruneCtx, func(ctx context.Context) {
+				if err := deployer.genericDeployer.PruneFeedsInDescription(ctx, curDesc.DeepCopy(), desc.DeepCopy()); err == nil {
+					cancel()
+					return
+				}
+			}, known.DefaultRetryPeriod, 0.3, true)
+
 			curDescCopy := curDesc.DeepCopy()
 			if curDescCopy.Labels == nil {
 				curDescCopy.Labels = make(map[string]string)
@@ -679,7 +700,6 @@ func (deployer *Deployer) deleteDescription(ctx context.Context, namespacedKey s
 		return err
 	}
 
-	deletePropagationBackground := metav1.DeletePropagationBackground
 	err = deployer.clusternetClient.AppsV1alpha1().Descriptions(ns).Delete(ctx, name, metav1.DeleteOptions{
 		PropagationPolicy: &deletePropagationBackground,
 	})
@@ -778,9 +798,6 @@ func (deployer *Deployer) addLabelsToReferredFeeds(b *appsapi.Base) error {
 	}
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
-	}
-	if len(allHelmCharts) == 0 && len(allManifests) == 0 {
-		return fmt.Errorf("feed sources declared in Base %s do not exist", klog.KObj(b))
 	}
 
 	labelsToPatch := map[string]*string{
