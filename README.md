@@ -27,10 +27,8 @@ the edge, or behind a firewall.
 Clusternet also provides a Kubernetes-styled API, where you can continue using the Kubernetes way, such as KubeConfig,
 to visit a certain Managed Kubernetes cluster, or a Kubernetes service.
 
-Clusternet is multiple platforms supported now, including
-
-- `darwin/amd64` and `darwin/arm64`;
-- `linux/amd64`, `linux/arm64`, `linux/ppc64le`, `linux/s390x`, `linux/386` and `linux/arm`;
+Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/arm64`, `linux/ppc64le`, `linux/s390x`
+, `linux/386` and `linux/arm`;
 
 ----
 
