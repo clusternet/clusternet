@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 
+	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/repo"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +46,7 @@ import (
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
+	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/manifest"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/subscription"
 	"github.com/clusternet/clusternet/pkg/features"
@@ -86,9 +89,10 @@ type Deployer struct {
 
 	clusternetClient *clusternetclientset.Clientset
 
-	subsController *subscription.Controller
-	mfstController *manifest.Controller
-	baseController *base.Controller
+	subsController  *subscription.Controller
+	mfstController  *manifest.Controller
+	baseController  *base.Controller
+	chartController *helmchart.Controller
 
 	helmDeployer    *helm.Deployer
 	genericDeployer *generic.Deployer
@@ -120,8 +124,17 @@ func NewDeployer(kubeclient *kubernetes.Clientset, clusternetclient *clusternetc
 		recorder:         recorder,
 	}
 
+	helmChartController, err := helmchart.NewController(clusternetclient,
+		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
+		feedInUseProtection,
+		deployer.recorder, deployer.handleHelmChart)
+	if err != nil {
+		return nil, err
+	}
+	deployer.chartController = helmChartController
+
 	helmDeployer, err := helm.NewDeployer(clusternetclient, kubeclient, clusternetInformerFactory,
-		kubeInformerFactory, feedInUseProtection, deployer.recorder)
+		kubeInformerFactory, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +178,8 @@ func NewDeployer(kubeclient *kubernetes.Clientset, clusternetclient *clusternetc
 	}
 	deployer.baseController = baseController
 
-	l, err := localizer.NewLocalizer(clusternetclient, clusternetInformerFactory, deployer.recorder)
+	l, err := localizer.NewLocalizer(clusternetclient, clusternetInformerFactory,
+		deployer.handleHelmChart, deployer.handleManifest, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
@@ -190,6 +204,7 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
+	go deployer.chartController.Run(workers, stopCh)
 	go deployer.helmDeployer.Run(workers, stopCh)
 	go deployer.genericDeployer.Run(workers, stopCh)
 	go deployer.subsController.Run(workers, stopCh)
@@ -739,6 +754,59 @@ func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 		}
 	}
 
+	return deployer.resyncBase(baseUIDs...)
+}
+
+func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
+	klog.V(5).Infof("handle HelmChart %s", klog.KObj(chart))
+	if chart.DeletionTimestamp != nil {
+		if err := deployer.protectHelmChartFeed(chart); err != nil {
+			return err
+		}
+
+		// remove finalizers
+		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.AppFinalizer)
+		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.FeedProtectionFinalizer)
+		_, err := deployer.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(), chart, metav1.UpdateOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizers from HelmChart %s: %v", klog.KObj(chart), err))
+		}
+		return err
+	}
+
+	_, err := repo.FindChartInRepoURL(chart.Spec.Repository, chart.Spec.Chart, chart.Spec.ChartVersion,
+		"", "", "",
+		getter.All(utils.Settings))
+	if err != nil {
+		// failed to find chart
+		return deployer.chartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
+			Phase:  appsapi.HelmChartNotFound,
+			Reason: err.Error(),
+		})
+	}
+	err = deployer.chartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
+		Phase: appsapi.HelmChartFound,
+	})
+	if err != nil {
+		return err
+	}
+
+	// find all referred Base UIDs
+	var baseUIDs []string
+	for key, val := range chart.Labels {
+		if val == baseKind.Kind {
+			baseUIDs = append(baseUIDs, key)
+		}
+	}
+
+	return deployer.resyncBase(baseUIDs...)
+}
+
+func (deployer *Deployer) resyncBase(baseUIDs ...string) error {
 	wg := sync.WaitGroup{}
 	wg.Add(len(baseUIDs))
 	errCh := make(chan error, len(baseUIDs))
@@ -904,46 +972,10 @@ func (deployer *Deployer) removeLabelsFromReferredFeeds(uid types.UID, kind stri
 }
 
 func (deployer *Deployer) protectManifestFeed(manifest *appsapi.Manifest) error {
-	// search all Subscriptions UID that referring this manifest
-	subUIDs := sets.String{}
-	for key, val := range manifest.Labels {
-		// normally the length of a uuid is 36
-		if len(key) != 36 || strings.Contains(key, "/") {
-			continue
-		}
-		if val == subscriptionKind.Kind {
-			subUIDs.Insert(key)
-		}
-	}
-
-	var allRelatedSubscriptions []*appsapi.Subscription
-	var allSubInfos []string
-	// we just list all Subscriptions and filter them with matching UID,
-	// since using label selector one by one does not improve too much performance
-	subscriptions, err := deployer.subLister.List(labels.Everything())
+	// find all Subscriptions that referring this manifest
+	allRelatedSubscriptions, allSubInfos, err := findAllMatchingSubscriptions(deployer.subLister, manifest.Labels)
 	if err != nil {
 		return err
-	}
-	for _, sub := range subscriptions {
-		// in case some subscriptions do not exist anymore, while labels still persist
-		if subUIDs.Has(string(sub.UID)) && sub.DeletionTimestamp == nil {
-			// perform strictly check
-			// whether this Manifest is still referred as a feed in Subscription
-			for _, feed := range sub.Spec.Feeds {
-				if feed.Kind != manifest.Labels[known.ConfigKindLabel] {
-					continue
-				}
-				if feed.Namespace != manifest.Labels[known.ConfigNamespaceLabel] {
-					continue
-				}
-				if feed.Name != manifest.Labels[known.ConfigNameLabel] {
-					continue
-				}
-				allRelatedSubscriptions = append(allRelatedSubscriptions, sub)
-				allSubInfos = append(allSubInfos, klog.KObj(sub).String())
-				break
-			}
-		}
 	}
 
 	// block Manifest deletion until all Subscriptions that refer this Feed get deleted
@@ -964,27 +996,33 @@ func (deployer *Deployer) protectManifestFeed(manifest *appsapi.Manifest) error 
 
 	// finalizer FeedProtectionFinalizer does not exist,
 	// so we just remove this feed from all Subscriptions
-	wg := sync.WaitGroup{}
-	wg.Add(len(allRelatedSubscriptions))
-	errCh := make(chan error, len(allRelatedSubscriptions))
-	for _, sub := range allRelatedSubscriptions {
-		go func(sub *appsapi.Subscription) {
-			defer wg.Done()
+	return removeFeedFromAllMatchingSubscriptions(deployer.clusternetClient, allRelatedSubscriptions, manifest.Labels)
+}
 
-			if err := utils.RemoveFeedFromSubscription(context.TODO(),
-				deployer.clusternetClient, manifest.GetLabels(), sub); err != nil {
-				errCh <- err
-			}
-		}(sub)
+func (deployer *Deployer) protectHelmChartFeed(chart *appsapi.HelmChart) error {
+	// find all Subscriptions that referring this manifest
+	allRelatedSubscriptions, allSubInfos, err := findAllMatchingSubscriptions(deployer.subLister, chart.Labels)
+	if err != nil {
+		return err
 	}
 
-	wg.Wait()
+	// block HelmChart deletion until all Subscriptions that refer this Feed get deleted
+	if utils.ContainsString(chart.Finalizers, known.FeedProtectionFinalizer) && len(allRelatedSubscriptions) > 0 {
+		msg := fmt.Sprintf("block deleting current HelmChart until all Subscriptions (including %s) that refer this as a feed get deleted",
+			strings.Join(allSubInfos, ", "))
+		klog.WarningDepth(5, msg)
 
-	// collect errors
-	close(errCh)
-	var allErrs []error
-	for err := range errCh {
-		allErrs = append(allErrs, err)
+		annotationsToPatch := map[string]*string{}
+		annotationsToPatch[known.FeedProtectionAnnotation] = utilpointer.StringPtr(msg)
+		if err := utils.PatchHelmChartLabelsAndAnnotations(deployer.clusternetClient, chart,
+			nil, annotationsToPatch); err != nil {
+			return err
+		}
+
+		return errors.New(msg)
 	}
-	return utilerrors.NewAggregate(allErrs)
+
+	// finalizer FeedProtectionFinalizer does not exist,
+	// so we just remove this feed from all Subscriptions
+	return removeFeedFromAllMatchingSubscriptions(deployer.clusternetClient, allRelatedSubscriptions, chart.Labels)
 }

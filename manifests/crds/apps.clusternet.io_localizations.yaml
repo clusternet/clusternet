@@ -64,6 +64,9 @@ spec:
               overridePolicy:
                 default: ApplyLater
                 description: OverridePolicy specifies the override policy for this Localization.
+                enum:
+                - ApplyNow
+                - ApplyLater
                 type: string
               overrides:
                 description: Overrides holds all the OverrideConfig.

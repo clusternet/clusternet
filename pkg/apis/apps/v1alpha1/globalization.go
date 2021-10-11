@@ -42,6 +42,7 @@ type GlobalizationSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Enum=ApplyNow;ApplyLater
 	// +kubebuilder:default=ApplyLater
 	OverridePolicy OverridePolicy `json:"overridePolicy,omitempty"`
 
