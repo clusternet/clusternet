@@ -191,7 +191,9 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 	manifestCopy.Labels[known.ConfigGroupLabel] = r.group
 	manifestCopy.Labels[known.ConfigVersionLabel] = r.version
-	manifestCopy.Labels[known.ConfigKindLabel] = r.kind
+	if r.kind != "Scale" {
+		manifestCopy.Labels[known.ConfigKindLabel] = r.kind
+	}
 	manifestCopy.Labels[known.ConfigNameLabel] = result.GetName()
 	manifestCopy.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
 	manifestCopy.Template.Reset()
