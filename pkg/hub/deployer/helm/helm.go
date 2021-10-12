@@ -313,31 +313,33 @@ func (deployer *Deployer) syncHelmRelease(desc *appsapi.Description, helmRelease
 			return fmt.Errorf("HelmRelease %s is deleting, will resync later", klog.KObj(hr))
 		}
 
-		// update it
-		if !reflect.DeepEqual(hr.Spec, helmRelease.Spec) {
-			hrCopy := hr.DeepCopy()
-			if hrCopy.Labels == nil {
-				hrCopy.Labels = make(map[string]string)
-			}
-			for key, value := range helmRelease.Labels {
-				hrCopy.Labels[key] = value
-			}
-
-			hrCopy.Spec = helmRelease.Spec
-			if !utils.ContainsString(hrCopy.Finalizers, known.AppFinalizer) {
-				hrCopy.Finalizers = append(hrCopy.Finalizers, known.AppFinalizer)
-			}
-
-			_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(hrCopy.Namespace).Update(context.TODO(),
-				hrCopy, metav1.UpdateOptions{})
-			if err == nil {
-				msg := fmt.Sprintf("HelmReleases %s is updated successfully", klog.KObj(hrCopy))
-				klog.V(4).Info(msg)
-				deployer.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleaseUpdated", msg)
-			}
-			return err
+		if reflect.DeepEqual(hr.Spec, helmRelease.Spec) {
+			// seems to get overrides changed
+			return deployer.handleHelmRelease(hr)
 		}
-		return nil
+
+		// update it
+		hrCopy := hr.DeepCopy()
+		if hrCopy.Labels == nil {
+			hrCopy.Labels = make(map[string]string)
+		}
+		for key, value := range helmRelease.Labels {
+			hrCopy.Labels[key] = value
+		}
+
+		hrCopy.Spec = helmRelease.Spec
+		if !utils.ContainsString(hrCopy.Finalizers, known.AppFinalizer) {
+			hrCopy.Finalizers = append(hrCopy.Finalizers, known.AppFinalizer)
+		}
+
+		_, err = deployer.clusternetClient.AppsV1alpha1().HelmReleases(hrCopy.Namespace).Update(context.TODO(),
+			hrCopy, metav1.UpdateOptions{})
+		if err == nil {
+			msg := fmt.Sprintf("HelmReleases %s is updated successfully", klog.KObj(hrCopy))
+			klog.V(4).Info(msg)
+			deployer.recorder.Event(desc, corev1.EventTypeNormal, "HelmReleaseUpdated", msg)
+		}
+		return err
 	}
 	if !apierrors.IsNotFound(err) {
 		return err
