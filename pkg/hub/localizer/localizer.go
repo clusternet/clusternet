@@ -136,41 +136,37 @@ func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
 }
 
 func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
-	if loc.DeletionTimestamp != nil {
-		// remove finalizer
-		locCopy := loc.DeepCopy()
-		locCopy.Finalizers = utils.RemoveString(locCopy.Finalizers, known.AppFinalizer)
-		_, err := l.clusternetClient.AppsV1alpha1().Localizations(locCopy.Namespace).Update(context.TODO(), locCopy, metav1.UpdateOptions{})
-		if err != nil {
-			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(locCopy), err))
-		}
-		return err
-	}
-
 	switch loc.Spec.OverridePolicy {
 	case appsapi.ApplyNow:
-		klog.V(5).Infof("the OverridePolicy of localization %s is %s, apply it now", klog.KObj(loc), appsapi.ApplyNow)
+		klog.V(5).Infof("apply Localization %s now", klog.KObj(loc))
 		if loc.Spec.Kind == chartKind.Kind {
 			chart, err := l.chartLister.HelmCharts(loc.Spec.Namespace).Get(loc.Spec.Name)
-			if err == nil {
-				return l.chartCallback(chart)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
+					break
+				}
+				return err
 			}
-			if apierrors.IsNotFound(err) {
-				klog.V(5).Infof("skipping apply localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
-				return nil
+
+			err = l.chartCallback(chart)
+			if err != nil {
+				return err
 			}
-			return err
+			break
 		}
 		manifests, err := utils.ListManifestsBySelector(l.manifestLister, loc.Spec.Feed)
 		if err != nil {
 			return err
 		}
 		if manifests == nil {
-			klog.V(5).Infof("skipping apply localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
-			return nil
+			klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
+			break
 		}
-		return l.manifestCallback(manifests[0])
+		err = l.manifestCallback(manifests[0])
+		if err != nil {
+			return err
+		}
 	case appsapi.ApplyLater:
 	default:
 		msg := fmt.Sprintf("unsupported OverridePolicy %s", loc.Spec.OverridePolicy)
@@ -180,10 +176,62 @@ func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 		return nil
 	}
 
+	// remove finalizer
+	if loc.DeletionTimestamp != nil {
+		// remove finalizer
+		locCopy := loc.DeepCopy()
+		locCopy.Finalizers = utils.RemoveString(locCopy.Finalizers, known.AppFinalizer)
+		_, err := l.clusternetClient.AppsV1alpha1().Localizations(locCopy.Namespace).Update(context.TODO(), locCopy, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(locCopy), err))
+			return err
+		}
+	}
 	return nil
 }
 
 func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
+	switch glob.Spec.OverridePolicy {
+	case appsapi.ApplyNow:
+		klog.V(5).Infof("apply Globalization %s now", klog.KObj(glob), appsapi.ApplyNow)
+		if glob.Spec.Kind == chartKind.Kind {
+			chart, err := l.chartLister.HelmCharts(glob.Spec.Namespace).Get(glob.Spec.Name)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(glob), utils.FormatFeed(glob.Spec.Feed))
+					break
+				}
+				return err
+			}
+
+			err = l.chartCallback(chart)
+			if err != nil {
+				return err
+			}
+			break
+		}
+		manifests, err := utils.ListManifestsBySelector(l.manifestLister, glob.Spec.Feed)
+		if err != nil {
+			return err
+		}
+		if manifests == nil {
+			klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(glob), utils.FormatFeed(glob.Spec.Feed))
+			break
+		}
+		err = l.manifestCallback(manifests[0])
+		if err != nil {
+			return err
+		}
+	case appsapi.ApplyLater:
+	default:
+		msg := fmt.Sprintf("unsupported OverridePolicy %s", glob.Spec.OverridePolicy)
+		l.recorder.Event(glob, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
+		klog.ErrorDepth(2, msg)
+		// will not sync such invalid objects again until the spec gets changed
+		return nil
+	}
+
 	if glob.DeletionTimestamp != nil {
 		// remove finalizer
 		globCopy := glob.DeepCopy()
@@ -195,19 +243,6 @@ func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 		}
 		return err
 	}
-
-	switch glob.Spec.OverridePolicy {
-	case appsapi.ApplyNow:
-		// TODO
-	case appsapi.ApplyLater:
-	default:
-		msg := fmt.Sprintf("unsupported OverridePolicy %s", glob.Spec.OverridePolicy)
-		l.recorder.Event(glob, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
-		klog.ErrorDepth(2, msg)
-		// will not sync such invalid objects again until the spec gets changed
-		return nil
-	}
-
 	return nil
 }
 
