@@ -10,8 +10,12 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: clusternet/clusternet
+          ref: ${{ github.event.client_payload.ref }}
           fetch-depth: 0
       - name: Update changes
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git subtree split -P pkg/apis -b subrepo-apis
           git init ../tmp-apis
@@ -19,11 +23,13 @@ jobs:
           git push -u tmp-apis subrepo-apis:main
           cd ../tmp-apis
           git checkout main
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
-          force: true
-          tags: true
-          directory: ../tmp-apis
+          git remote add origin "https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/clusternet/apis.git"
+          GITHUB_REF=${{ github.event.client_payload.ref }}
+          if [[ $GITHUB_REF == refs/tags/* ]]
+          then
+              TAG=${GITHUB_REF/refs\/tags\//}
+              git tag $TAG
+              git push --tags origin $TAG
+          else
+              git push origin main
+          fi
