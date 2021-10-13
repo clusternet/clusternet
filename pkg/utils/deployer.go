@@ -196,7 +196,7 @@ func GetOverrides(descLister applisters.DescriptionLister, hr *appsapi.HelmRelea
 		var found bool
 		var index int
 		for idx, chart := range desc.Spec.Charts {
-			if chart.Namespace == hr.Namespace && chart.Name == hr.Name {
+			if GenerateHelmReleaseName(desc.Name, chart) == hr.Name {
 				found = true
 				index = idx
 				break
@@ -221,6 +221,10 @@ func GetOverrides(descLister applisters.DescriptionLister, hr *appsapi.HelmRelea
 		return overrideValues, err
 	}
 	return overrideValues, nil
+}
+
+func GenerateHelmReleaseName(descName string, chartRef appsapi.ChartReference) string {
+	return fmt.Sprintf("%s-%s-%s", descName, chartRef.Namespace, chartRef.Name)
 }
 
 func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetclientset.Clientset,

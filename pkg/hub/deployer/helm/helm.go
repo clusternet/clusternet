@@ -251,7 +251,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 
 		hr := &appsapi.HelmRelease{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s", desc.Name, chartRef.Name),
+				Name:      utils.GenerateHelmReleaseName(desc.Name, chartRef),
 				Namespace: desc.Namespace,
 				Labels: map[string]string{
 					known.ObjectCreatedByLabel: known.ClusternetHubName,
