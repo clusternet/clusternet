@@ -24,7 +24,7 @@ REGISTRY ?= ghcr.io
 # Run tests
 .PHONY: test
 test: generated vet
-	go test ./... -coverprofile cover.out
+	go test -race -coverprofile coverage.out -covermode=atomic ./...
 
 # Generate CRDs
 .PHONY: crds
