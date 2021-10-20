@@ -143,8 +143,6 @@ jobs:
           key: ${{ matrix.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ matrix.os }}-go-
-      - name: Golang fmt
-        run: make fmt
       - name: Run tests
         run: make test
       - name: Upload coverage to Codecov
