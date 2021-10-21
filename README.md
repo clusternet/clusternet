@@ -122,12 +122,26 @@ You need to deploy `clusternet-agent` and `clusternet-hub` in child cluster and 
 $ kubectl apply -f deploy/hub
 ```
 
-And then create a bootstrap token for `clusternet-agent`,
+Next, you need to create a token for cluster registration, which will be used later by
+`clusternet-agent`. Either a bootstrap token or a service account token is okay.
 
-```bash
-$ # this will create a bootstrap token 07401b.f395accd246ae52d
-$ kubectl apply -f manifests/samples/cluster_bootstrap_token.yaml
-```
+- If bootstrapping authentication is supported, i.e. `--enable-bootstrap-token-auth=true` is explicitly set in the
+  kube-apiserver running in parent cluster,
+
+  ```bash
+  $ # this will create a bootstrap token 07401b.f395accd246ae52d
+  $ kubectl apply -f manifests/samples/cluster_bootstrap_token.yaml
+  ```
+
+- If bootstrapping authentication is not supported by the kube-apiserver in parent cluster (like [k3s](https://k3s.io/))
+  , i.e. `--enable-bootstrap-token-auth=false` (which defaults to be `false`), please use serviceaccount token instead.
+
+  ```bash
+  $ # this will create a serviceaccount token
+  $ kubectl apply -f manifests/samples/cluster_serviceaccount_token.yaml
+  $ kubectl get secret -n clusternet-system -o=jsonpath='{.items[?(@.metadata.annotations.kubernetes\.io/service-account\.name=="cluster-bootstrap-use")].data.token}' | base64 --decode; echo
+  HERE WILL OUTPUTS A LONG STRING. PLEASE REMEMBER THIS.
+  ```
 
 ### Deploying `clusternet-agent` in child cluster
 
@@ -164,6 +178,11 @@ $ kubectl create ns clusternet-system
 $ # here we use the token created above
 $ PARENTURL=https://192.168.10.10 REGTOKEN=07401b.f395accd246ae52d envsubst < ./deploy/templates/clusternet_agent_secret.yaml | kubectl apply -f -
 ```
+
+> :pushpin: :pushpin: Note:
+>
+> If you're creating service account token above, please replace `07401b.f395accd246ae52d` with above long string
+> token that outputs.
 
 The `PARENTURL` above is the apiserver address of the parent cluster that you want to register to, the `https` scheme
 must be specified and it is the only one supported at the moment. If the apiserver is not listening on the standard
