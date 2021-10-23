@@ -18,4 +18,4 @@ limitations under the License.
 // +groupName=proxies.clusternet.io
 
 // Package proxies is the internal version of the API.
-package proxies // import "github.com/clusternet/clusternet/pkg/apis/proxies"
+package proxies
