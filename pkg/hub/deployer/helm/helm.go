@@ -73,14 +73,18 @@ type Deployer struct {
 	secretSynced cache.InformerSynced
 
 	recorder record.EventRecorder
+
+	// apiserver url of parent cluster
+	apiserverURL string
 }
 
-func NewDeployer(clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
+func NewDeployer(apiserverURL string, clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	kubeInformerFactory kubeinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
+		apiserverURL:     apiserverURL,
 		clusternetClient: clusternetClient,
 		kubeClient:       kubeClient,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
@@ -386,7 +390,7 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, hr.Namespace, hr.Labels[known.ClusterIDLabel])
+	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, hr.Namespace, hr.Labels[known.ClusterIDLabel], deployer.apiserverURL)
 	if err != nil {
 		return err
 	}

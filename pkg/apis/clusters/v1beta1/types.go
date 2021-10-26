@@ -235,6 +235,7 @@ type ManagedClusterStatus struct {
 	// +optional
 	UseSocket bool `json:"useSocket,omitempty"`
 
+	// DEPRECATED: will be removed in future release.
 	// ParentAPIServerURL is the advertising url/address of managed Kubernetes cluster registering to
 	//
 	// +optional

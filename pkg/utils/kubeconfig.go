@@ -134,7 +134,8 @@ func applyDefaultRateLimiter(config *rest.Config, flowRate int) *rest.Config {
 	return config
 }
 
-func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister, namespace string, clusterID string) (*clientcmdapi.Config, error) {
+func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister,
+	namespace, clusterID, parentAPIServerURL string) (*clientcmdapi.Config, error) {
 	childClusterSecret, err := secretLister.Secrets(namespace).Get(known.ChildClusterSecretName)
 	if err != nil {
 		return nil, err
@@ -159,7 +160,7 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", namespace)
 	}
 	if mcls[0].Status.UseSocket {
-		childClusterAPIServer, err := getChildAPIServerProxyURL(mcls[0])
+		childClusterAPIServer, err := getChildAPIServerProxyURL(parentAPIServerURL, mcls[0])
 		if err != nil {
 			return nil, err
 		}
@@ -177,13 +178,17 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 	return config, nil
 }
 
-func getChildAPIServerProxyURL(mcls *clusterapi.ManagedCluster) (string, error) {
+func getChildAPIServerProxyURL(parentAPIServerURL string, mcls *clusterapi.ManagedCluster) (string, error) {
 	if mcls == nil {
 		return "", errors.New("unable to generate child cluster apiserver proxy url from nil ManagedCluster object")
 	}
 
+	if len(parentAPIServerURL) == 0 {
+		return "", errors.New("got empty parent apiserver url")
+	}
+
 	return strings.Join([]string{
-		strings.TrimRight(mcls.Status.ParentAPIServerURL, "/"),
+		strings.TrimRight(parentAPIServerURL, "/"),
 		"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls.Spec.ClusterID),
 		"proxy/direct"}, "/"), nil
 }

@@ -113,7 +113,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 
 	var d *deployer.Deployer
 	if deployerEnabled {
-		d, err = deployer.NewDeployer(kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory, recorder)
+		d, err = deployer.NewDeployer(config.Host, kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory, recorder)
 		if err != nil {
 			return nil, err
 		}
