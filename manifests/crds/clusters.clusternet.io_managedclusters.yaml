@@ -189,7 +189,7 @@ spec:
                     type: integer
                 type: object
               parentAPIServerURL:
-                description: ParentAPIServerURL is the advertising url/address of managed Kubernetes cluster registering to
+                description: 'DEPRECATED: will be removed in future release. ParentAPIServerURL is the advertising url/address of managed Kubernetes cluster registering to'
                 type: string
               platform:
                 description: platform indicates the running platform of the cluster

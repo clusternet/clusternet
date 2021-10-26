@@ -100,14 +100,18 @@ type Deployer struct {
 	localizer *localizer.Localizer
 
 	recorder record.EventRecorder
+
+	// apiserver url of parent cluster
+	apiserverURL string
 }
 
-func NewDeployer(kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
+func NewDeployer(apiserverURL string, kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
 	feedInUseProtection := utilfeature.DefaultFeatureGate.Enabled(features.FeedInUseProtection)
 
 	deployer := &Deployer{
+		apiserverURL:     apiserverURL,
 		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
 		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
@@ -133,14 +137,14 @@ func NewDeployer(kubeclient *kubernetes.Clientset, clusternetclient *clusternetc
 	}
 	deployer.chartController = helmChartController
 
-	helmDeployer, err := helm.NewDeployer(clusternetclient, kubeclient, clusternetInformerFactory,
+	helmDeployer, err := helm.NewDeployer(apiserverURL, clusternetclient, kubeclient, clusternetInformerFactory,
 		kubeInformerFactory, deployer.recorder)
 	if err != nil {
 		return nil, err
 	}
 	deployer.helmDeployer = helmDeployer
 
-	genericDeployer, err := generic.NewDeployer(clusternetclient, clusternetInformerFactory,
+	genericDeployer, err := generic.NewDeployer(apiserverURL, clusternetclient, clusternetInformerFactory,
 		kubeInformerFactory, deployer.recorder)
 	if err != nil {
 		return nil, err

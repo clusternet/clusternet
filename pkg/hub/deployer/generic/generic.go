@@ -55,13 +55,17 @@ type Deployer struct {
 	descController *description.Controller
 
 	recorder record.EventRecorder
+
+	// apiserver url of parent cluster
+	apiserverURL string
 }
 
-func NewDeployer(clusternetClient *clusternetclientset.Clientset,
+func NewDeployer(apiserverURL string, clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
+		apiserverURL:     apiserverURL,
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
 		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
@@ -132,7 +136,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 }
 
 func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.Interface, meta.RESTMapper, error) {
-	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, desc.Namespace, desc.Labels[known.ClusterIDLabel])
+	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, desc.Namespace, desc.Labels[known.ClusterIDLabel], deployer.apiserverURL)
 	if err != nil {
 		return nil, nil, err
 	}
