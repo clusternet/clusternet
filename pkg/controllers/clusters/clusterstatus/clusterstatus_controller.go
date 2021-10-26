@@ -50,14 +50,13 @@ type Controller struct {
 	apiserverURL       string
 	appPusherEnabled   bool
 	useSocket          bool
-	parentAPIServer    string
 	nodeLister         corev1lister.NodeLister
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
 }
 
-func NewController(ctx context.Context, apiserverURL, parentAPIServerURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
+func NewController(ctx context.Context, apiserverURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
 	kubeInformerFactory.Core().V1().Nodes().Informer()
 	kubeInformerFactory.Core().V1().Pods().Informer()
@@ -71,7 +70,6 @@ func NewController(ctx context.Context, apiserverURL, parentAPIServerURL string,
 		apiserverURL:       apiserverURL,
 		appPusherEnabled:   utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		useSocket:          utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
-		parentAPIServer:    parentAPIServerURL,
 		nodeLister:         kubeInformerFactory.Core().V1().Nodes().Lister(),
 		nodeSynced:         kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
 		podLister:          kubeInformerFactory.Core().V1().Pods().Lister(),
@@ -126,7 +124,6 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
 	status.AppPusher = c.appPusherEnabled
 	status.UseSocket = c.useSocket
-	status.ParentAPIServerURL = c.parentAPIServer
 	status.ClusterCIDR = clusterCIDR
 	status.ServiceCIDR = serviceCIDR
 	status.NodeStatistics = nodeStatistics
