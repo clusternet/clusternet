@@ -46,6 +46,7 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	metricsapi "k8s.io/metrics/pkg/apis/metrics"
 
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
@@ -166,6 +167,13 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 
 		// skip shadow group to avoid getting nested
 		if apiGroupResource.Group.Name == shadowapi.GroupName {
+			continue
+		}
+
+		// ignore "metrics.k8s.io" group
+		// where PodMetrics uses pods as resource name, NodeMetrics uses nodes as resource name
+		// which conflicts with corev1.Pod and corev1.Node
+		if apiGroupResource.Group.Name == metricsapi.GroupName {
 			continue
 		}
 
