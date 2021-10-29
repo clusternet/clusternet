@@ -15,6 +15,8 @@ explicitly.
 
 Below is a simple snippet to show how to list namespaces in a child cluster with `curl`.
 
+If you're using tokens,
+
 ```bash
 $ # Here the token is base64 decoded and from your child cluster.
 $ CHILDCLUSTERTOKEN="TOKEN-BASE64-DECODED-IN-YOUR-CHILD-CLUSTER"
@@ -22,7 +24,30 @@ $ # specify the child cluster id
 $ CHILDCLUSTERID="dc91021d-2361-4f6d-a404-7c33b9e01118"
 $ # The Parent Cluster APIServer Address
 $ APISERVER="https://10.0.0.10:6443"
-$ curl -k -XGET  -H "Accept: application/json" -H "Impersonate-User: clusternet" -H "Impersonate-Extra-Clusternet-Token: ${CHILDCLUSTERTOKEN}" -H "Authorization: Basic system:anonymous" "${APISERVER}/apis/proxies.clusternet.io/v1alpha1/sockets/${CHILDCLUSTERID}/proxy/direct/api/v1/namespaces"
+$ curl -k -XGET  -H "Accept: application/json" \
+  -H "Impersonate-User: clusternet" \
+  -H "Authorization: Basic system:anonymous" \
+  -H "Impersonate-Extra-Clusternet-Token: ${CHILDCLUSTERTOKEN}" \
+  "${APISERVER}/apis/proxies.clusternet.io/v1alpha1/sockets/${CHILDCLUSTERID}/proxy/direct/api/v1/namespaces"
+```
+
+If you're using TLS certificates,
+
+```bash
+$ # base64 encoded certificate from your child cluster.
+$ CHILDCLUSTERCERT="CERTIFICATE-BASE64-ENCODED-IN-YOUR-CHILD-CLUSTER"
+$ # base64 encoded privatekey from your child cluster.
+$ CHILDCLUSTERKEY="PRIVATEKEY-BASE64-ENCODED-IN-YOUR-CHILD-CLUSTER"
+$ # specify the child cluster id
+$ CHILDCLUSTERID="dc91021d-2361-4f6d-a404-7c33b9e01118"
+$ # The Parent Cluster APIServer Address
+$ APISERVER="https://10.0.0.10:6443"
+$ curl -k -XGET  -H "Accept: application/json" \
+  -H "Impersonate-User: clusternet" \
+  -H "Authorization: Basic system:anonymous" \
+  -H "Impersonate-Extra-Clusternet-Certificate: ${CHILDCLUSTERCERT}" \
+  -H "Impersonate-Extra-Clusternet-PrivateKey: ${CHILDCLUSTERKEY}" \
+  "${APISERVER}/apis/proxies.clusternet.io/v1alpha1/sockets/${CHILDCLUSTERID}/proxy/direct/api/v1/namespaces"
 ```
 
 ## Using KubeConfig
