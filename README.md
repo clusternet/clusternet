@@ -6,6 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/clusternet/clusternet)](https://goreportcard.com/report/github.com/clusternet/clusternet)
 ![build](https://github.com/clusternet/clusternet/actions/workflows/ci.yml/badge.svg)
 [![Version](https://img.shields.io/github/v/release/clusternet/clusternet)](https://github.com/clusternet/clusternet/releases)
+[![codecov](https://codecov.io/gh/clusternet/clusternet/branch/main/graph/badge.svg)](https://codecov.io/gh/clusternet/clusternet)
 
 ----
 
