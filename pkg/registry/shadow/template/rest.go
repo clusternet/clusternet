@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/internalversion"
@@ -180,6 +182,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		}
 	}
 	result := newObj.(*unstructured.Unstructured)
+	r.trimResult(result)
 
 	// in case labels get changed
 	manifestCopy := manifest.DeepCopy()
@@ -528,7 +531,22 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 		// set original namespace back
 		result.SetNamespace(objNamespace)
 	}
+
+	// trim metadata
+	r.trimResult(result)
 	return result, nil
+}
+
+func (r *REST) trimResult(result *unstructured.Unstructured) {
+	// trim common metadata
+	trimCommonMetadata(result)
+
+	switch r.GroupVersionKind(schema.GroupVersion{}).GroupKind() {
+	case schema.GroupKind{Kind: "Job", Group: batchv1.GroupName}:
+		trimBatchJob(result)
+	case schema.GroupKind{Kind: "Service", Group: corev1.GroupName}:
+		trimCoreService(result)
+	}
 }
 
 func (r *REST) convertListOptionsToLabels(ctx context.Context, options *internalversion.ListOptions) (labels.Selector, error) {
