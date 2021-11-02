@@ -182,11 +182,10 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			continue
 		}
 
-		preferredVersion := apiGroupResource.Group.PreferredVersion.Version
-		for _, apiresource := range apiGroupResource.VersionedResources[preferredVersion] {
+		for _, apiresource := range normalizeAPIGroupResources(apiGroupResource) {
 			ss.crdHandler.AddNonCRDAPIResource(apiresource)
 			// register scheme for original GVK
-			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: preferredVersion}.WithKind(apiresource.Kind),
+			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
 			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister)
@@ -194,8 +193,8 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)
 			resourceRest.SetKind(apiresource.Kind)
-			resourceRest.SetGroup(apiGroupResource.Group.Name)
-			resourceRest.SetVersion(preferredVersion)
+			resourceRest.SetGroup(apiresource.Group)
+			resourceRest.SetVersion(apiresource.Version)
 			switch {
 			case strings.HasSuffix(apiresource.Name, "/scale"):
 				shadowv1alpha1storage[apiresource.Name] = template.NewScaleREST(resourceRest)
