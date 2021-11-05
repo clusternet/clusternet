@@ -41,6 +41,9 @@ const (
 	// ClusterSyncMode flag specifies the sync mode between parent cluster and child cluster
 	ClusterSyncMode = "cluster-sync-mode"
 
+	// ClusterLabels flag specifies the labels for the cluster
+	ClusterLabels = "cluster-labels"
+
 	// ClusterStatusReportFrequency flag specifies the child cluster status updating frequency
 	ClusterStatusReportFrequency = "cluster-status-update-frequency"
 
