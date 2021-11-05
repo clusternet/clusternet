@@ -82,6 +82,12 @@ type ClusterRegistrationRequestSpec struct {
 	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	ClusterName string `json:"clusterName,omitempty"`
 
+	// ClusterLabels is the labels of the child cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=object
+	ClusterLabels map[string]string `json:"clusterLabels,omitempty"`
+
 	// SyncMode decides how to sync resources from parent cluster to child cluster.
 	//
 	// +optional

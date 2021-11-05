@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -243,7 +244,7 @@ func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) er
 	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
 		newClusterRegistrationRequest(*agent.ClusterID, agent.Options.ClusterType,
 			generateClusterName(agent.Options.ClusterName, agent.Options.ClusterNamePrefix),
-			agent.Options.ClusterSyncMode),
+			agent.Options.ClusterSyncMode, agent.Options.ClusterLabels),
 		metav1.CreateOptions{})
 
 	if err != nil {
@@ -397,7 +398,7 @@ func newLeaderElectionConfigWithDefaultValue(identity string, clientset kubernet
 	}
 }
 
-func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterSyncMode string) *clusterapi.ClusterRegistrationRequest {
+func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterSyncMode, clusterLabels string) *clusterapi.ClusterRegistrationRequest {
 	return &clusterapi.ClusterRegistrationRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: generateClusterRegistrationRequestName(clusterID),
@@ -408,12 +409,27 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 			},
 		},
 		Spec: clusterapi.ClusterRegistrationRequestSpec{
-			ClusterID:   clusterID,
-			ClusterType: clusterapi.ClusterType(clusterType),
-			ClusterName: clusterName,
-			SyncMode:    clusterapi.ClusterSyncMode(clusterSyncMode),
+			ClusterID:     clusterID,
+			ClusterType:   clusterapi.ClusterType(clusterType),
+			ClusterName:   clusterName,
+			SyncMode:      clusterapi.ClusterSyncMode(clusterSyncMode),
+			ClusterLabels: parseClusterLabels(clusterLabels),
 		},
 	}
+}
+
+func parseClusterLabels(clusterLabels string) map[string]string {
+	clusterLabelsMap := make(map[string]string)
+	clusterLabelsArray := strings.Split(clusterLabels, ",")
+	for _, labelString := range clusterLabelsArray {
+		labelArray := strings.Split(labelString, "=")
+		if len(labelArray) != 2 {
+			klog.Warningf("invalid cluster label %s", labelString)
+			continue
+		}
+		clusterLabelsMap[labelArray[0]] = labelArray[1]
+	}
+	return clusterLabelsMap
 }
 
 func generateClusterRegistrationRequestName(clusterID types.UID) string {
