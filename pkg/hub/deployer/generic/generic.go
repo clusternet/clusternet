@@ -22,6 +22,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
@@ -119,6 +120,16 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	if !deployable {
 		klog.V(5).Infof("Description %s is not deployable by hub, skipping syncing", klog.KObj(desc))
 		return nil
+	}
+
+	if desc.DeletionTimestamp != nil {
+		// if the cluster got lost
+		if utils.IsClusterLost(desc.Labels[known.ClusterIDLabel], desc.Namespace, deployer.clusterLister) {
+			descCopy := desc.DeepCopy()
+			descCopy.Finalizers = utils.RemoveString(descCopy.Finalizers, known.AppFinalizer)
+			_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(descCopy.Namespace).Update(context.TODO(), descCopy, metav1.UpdateOptions{})
+			return err
+		}
 	}
 
 	dynamicClient, discoveryRESTMapper, err := deployer.getDynamicClient(desc)
