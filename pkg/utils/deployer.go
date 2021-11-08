@@ -56,7 +56,7 @@ func DeployableByHub(clusterLister clusterlisters.ManagedClusterLister, clusterI
 		return false, fmt.Errorf("empty clusterID from label %s", known.ClusterIDLabel)
 	}
 	if len(dedicatedNamespace) == 0 {
-		return false, errors.New("namesapce is empty")
+		return false, errors.New("namespace is empty")
 	}
 
 	mcls, err := clusterLister.ManagedClusters(dedicatedNamespace).List(
@@ -565,4 +565,29 @@ func GetDeployerCredentials(ctx context.Context, childKubeClientSet kubernetes.I
 
 	klog.V(4).Info("successfully get credentials populated for deployer")
 	return secret
+}
+
+func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.ManagedClusterLister) bool {
+	labelSet := labels.Set{}
+	if len(clusterID) > 0 {
+		labelSet[known.ClusterIDLabel] = clusterID
+	}
+	mcls, err := clusterLister.ManagedClusters(namespace).List(
+		labels.SelectorFromSet(labelSet))
+	if err != nil {
+		klog.ErrorDepth(4, fmt.Sprintf("failed to list ManagedCluster in namespace %s: %v", namespace, err))
+		return false
+	}
+	if len(mcls) == 0 {
+		klog.WarningDepth(4, fmt.Sprintf("no ManagedCluster found in namespace %s", namespace))
+		return true
+	}
+
+	for _, condition := range mcls[0].Status.Conditions {
+		if condition.Type == clusterapi.ClusterReady {
+			return condition.Status == metav1.ConditionUnknown
+		}
+	}
+
+	return false
 }

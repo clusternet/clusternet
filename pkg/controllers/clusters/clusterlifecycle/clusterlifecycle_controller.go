@@ -87,7 +87,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Infof("Shutting down cluster lifecycle controller")
 
 	// Wait for the caches to be synced before starting monitor lifecycle
-	klog.V(5).Info("waiting for informer caches to sync")
 	if !cache.WaitForNamedCacheSync("cluster-lifecycle-controller", stopCh, c.clusterSynced) {
 		return
 	}
@@ -221,7 +220,7 @@ func (c *Controller) syncHandler(key string) (time.Duration, error) {
 		return time.Duration(0), err
 	}
 
-	err = c.updateClusterToLostIfNeeded(context.TODO(), mcls)
+	err = c.updateClusterCondition(context.TODO(), mcls.DeepCopy())
 	if err != nil {
 		return time.Duration(0), err
 	}
@@ -242,27 +241,28 @@ func (c *Controller) enqueue(cluster *clusterapi.ManagedCluster) {
 	c.workqueue.Add(key)
 }
 
-func (c *Controller) updateClusterToLostIfNeeded(ctx context.Context, cluster *clusterapi.ManagedCluster) error {
+func (c *Controller) updateClusterCondition(ctx context.Context, cluster *clusterapi.ManagedCluster) error {
 	currentReadyCondition := GetClusterCondition(&cluster.Status, clusterapi.ClusterReady)
 	observedReadyCondition := c.generateClusterReadyCondition(cluster)
+	if observedReadyCondition == nil || equality.Semantic.DeepEqual(currentReadyCondition, observedReadyCondition) {
+		return nil
+	}
 
-	if observedReadyCondition != nil && !equality.Semantic.DeepEqual(currentReadyCondition, observedReadyCondition) {
-		// update Readyz,Livez,Healthz to false when cluster status is unknown
-		if observedReadyCondition.Status == metav1.ConditionUnknown {
-			cluster.Status.Readyz = false
-			cluster.Status.Livez = false
-			cluster.Status.Healthz = false
-		}
+	// update Readyz,Livez,Healthz to false when cluster status is unknown
+	if observedReadyCondition.Status == metav1.ConditionUnknown {
+		cluster.Status.Readyz = false
+		cluster.Status.Livez = false
+		cluster.Status.Healthz = false
+	}
 
-		cluster.Status.Conditions = []metav1.Condition{*observedReadyCondition}
-
-		_, err := c.clusternetClient.ClustersV1beta1().ManagedClusters(cluster.Namespace).UpdateStatus(ctx, cluster, metav1.UpdateOptions{})
-		if err != nil {
-			msg := fmt.Sprintf("failed to update conditions of ManagedCluster status: %v", err)
-			klog.WarningDepth(2, msg)
-			c.recorder.Event(cluster, corev1.EventTypeWarning, "FailedUpdatingClusterStatus", msg)
-			return err
-		}
+	// TODO: multiple cluster conditions
+	cluster.Status.Conditions = []metav1.Condition{*observedReadyCondition}
+	_, err := c.clusternetClient.ClustersV1beta1().ManagedClusters(cluster.Namespace).UpdateStatus(ctx, cluster, metav1.UpdateOptions{})
+	if err != nil {
+		msg := fmt.Sprintf("failed to update conditions of ManagedCluster status: %v", err)
+		klog.WarningDepth(2, msg)
+		c.recorder.Event(cluster, corev1.EventTypeWarning, "FailedUpdatingClusterStatus", msg)
+		return err
 	}
 
 	return nil
@@ -270,43 +270,36 @@ func (c *Controller) updateClusterToLostIfNeeded(ctx context.Context, cluster *c
 
 // generateClusterReadyCondition return cluster unknown condition based on cluster status and grace period.
 func (c *Controller) generateClusterReadyCondition(cluster *clusterapi.ManagedCluster) *metav1.Condition {
-	var readyCondition *metav1.Condition
-	var probeTimestamp metav1.Time
-
-	gracePeriod := getClusterMonitorGracePeriod(cluster.Status)
-
 	lastObservedTime := cluster.Status.LastObservedTime
+	probeTimestamp := lastObservedTime
 	if lastObservedTime.IsZero() {
 		// If lastObservedTime is zero means Clusternet agent never posted cluster status.
 		// We treat this cluster to be a new cluster and use cluster.CreationTimestamp to be probeTimestamp.
 		probeTimestamp = cluster.CreationTimestamp
-	} else {
-		probeTimestamp = lastObservedTime
 	}
 
-	if metav1.Now().After(probeTimestamp.Add(gracePeriod)) {
-		if lastObservedTime.IsZero() {
-			// Clusternet agent never posted cluster status and reach grace period
-			return &metav1.Condition{
-				Type:               clusterapi.ClusterReady,
-				Status:             metav1.ConditionUnknown,
-				LastTransitionTime: metav1.Now(),
-				Reason:             "ClusterStatusNeverUpdated",
-				Message:            "Clusternet agent never posted cluster status.",
-			}
-		} else {
-			// Clusternet agent is stopping posting cluster status
-			return &metav1.Condition{
-				Type:               clusterapi.ClusterReady,
-				Status:             metav1.ConditionUnknown,
-				LastTransitionTime: metav1.Now(),
-				Reason:             "ClusterStatusUnknown",
-				Message:            "Clusternet agent stopped posting cluster status.",
-			}
+	if !metav1.Now().After(probeTimestamp.Add(getClusterMonitorGracePeriod(cluster.Status))) {
+		return nil
+	}
+
+	if lastObservedTime.IsZero() {
+		// Clusternet agent never posted cluster status and reach grace period
+		return &metav1.Condition{
+			Type:               clusterapi.ClusterReady,
+			Status:             metav1.ConditionUnknown,
+			LastTransitionTime: metav1.Now(),
+			Reason:             "ClusterStatusNeverUpdated",
+			Message:            "Clusternet agent never posted cluster status.",
 		}
 	}
-
-	return readyCondition
+	// Clusternet agent is stopping posting cluster status
+	return &metav1.Condition{
+		Type:               clusterapi.ClusterReady,
+		Status:             metav1.ConditionUnknown,
+		LastTransitionTime: metav1.Now(),
+		Reason:             "ClusterStatusUnknown",
+		Message:            "Clusternet agent stopped posting cluster status.",
+	}
 }
 
 // GetClusterCondition extracts the provided condition from the given status and returns that.

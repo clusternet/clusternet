@@ -379,6 +379,16 @@ func (deployer *Deployer) deleteHelmRelease(ctx context.Context, namespacedKey s
 func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
 
+	if hr.DeletionTimestamp != nil {
+		// if the cluster got lost
+		if utils.IsClusterLost(hr.Labels[known.ClusterIDLabel], hr.Namespace, deployer.clusterLister) {
+			hrCopy := hr.DeepCopy()
+			hrCopy.Finalizers = utils.RemoveString(hrCopy.Finalizers, known.AppFinalizer)
+			_, err := deployer.clusternetClient.AppsV1alpha1().HelmReleases(hrCopy.Namespace).Update(context.TODO(), hrCopy, metav1.UpdateOptions{})
+			return err
+		}
+	}
+
 	deployable, err := utils.DeployableByHub(deployer.clusterLister, hr.Labels[known.ClusterIDLabel], hr.Namespace)
 	if err != nil {
 		klog.ErrorDepth(4, err)
