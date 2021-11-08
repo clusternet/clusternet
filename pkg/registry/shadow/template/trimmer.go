@@ -25,7 +25,8 @@ import (
 )
 
 func trimCommonMetadata(result *unstructured.Unstructured) {
-	unstructured.RemoveNestedField(result.Object, "metadata", "uid")
+	// metadata.uid cannot be trimmed, which will be used for checking when patching.
+	// metadata.uid is set to empty when deploying to child clusters.
 	unstructured.RemoveNestedField(result.Object, "metadata", "creationTimestamp")
 	unstructured.RemoveNestedField(result.Object, "metadata", "managedFields")
 	unstructured.RemoveNestedField(result.Object, "metadata", "resourceVersion")

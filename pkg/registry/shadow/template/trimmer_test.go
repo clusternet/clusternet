@@ -87,6 +87,7 @@ func TestTrimCoreService(t *testing.T) {
 						},
 						"name":      "my-test-nodeport-svc",
 						"namespace": "nginx-test",
+						"uid":       "28f5ae38-9eea-431c-918b-68ffdf263c24",
 					},
 					"spec": map[string]interface{}{
 						"clusterIP": "10.98.177.115",
@@ -209,6 +210,7 @@ func TestTrimBatchJob(t *testing.T) {
 						},
 						"name":      "pi",
 						"namespace": "default",
+						"uid":       "dc8ca8aa-268c-4634-b1f7-6bf67e3af6cb",
 					},
 					"spec": map[string]interface{}{
 						"backoffLimit": 4,
