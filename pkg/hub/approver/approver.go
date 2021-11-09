@@ -229,7 +229,7 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 
 	// 2. create ManagedCluster object
 	klog.V(5).Infof("create corresponding MangedCluster for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	mc, err := crrApprover.createManagedClusterIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID, crr.Spec.ClusterType, crr.Spec.SyncMode)
+	mc, err := crrApprover.createManagedClusterIfNeeded(ns.Name, crr.Spec.ClusterName, crr.Spec.ClusterID, crr.Spec.ClusterType, crr.Spec.SyncMode, crr.Spec.ClusterLabels)
 	if err != nil {
 		return err
 	}
@@ -314,7 +314,7 @@ func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID
 }
 
 func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterName string, clusterID types.UID,
-	clusterType clusterapi.ClusterType, clusterSyncMode clusterapi.ClusterSyncMode) (*clusterapi.ManagedCluster, error) {
+	clusterType clusterapi.ClusterType, clusterSyncMode clusterapi.ClusterSyncMode, clusterLabels map[string]string) (*clusterapi.ManagedCluster, error) {
 	// checks for an existed ManagedCluster object
 	// the clusterName here may vary, we use clusterID as the identifier
 	mcs, err := crrApprover.mclsLister.List(labels.SelectorFromSet(labels.Set{
@@ -345,6 +345,11 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 			ClusterType: clusterType,
 			SyncMode:    clusterSyncMode,
 		},
+	}
+
+	//add additional labels
+	for key, value := range clusterLabels {
+		managedCluster.Labels[key] = value
 	}
 
 	mc, err := crrApprover.clusternetclient.ClustersV1beta1().ManagedClusters(namespace).Create(context.TODO(), managedCluster, metav1.CreateOptions{})

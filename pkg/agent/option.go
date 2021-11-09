@@ -42,6 +42,8 @@ type ClusterRegistrationOptions struct {
 	ClusterType string
 	// ClusterSyncMode specifies the sync mode between parent cluster and child cluster
 	ClusterSyncMode string
+	// ClusterLabels specifies the labels for the cluster
+	ClusterLabels string
 
 	// ClusterStatusReportFrequency is the frequency at which the agent reports current cluster's status
 	ClusterStatusReportFrequency metav1.Duration
@@ -86,6 +88,8 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 		"Specify the cluster type")
 	fs.StringVar(&opts.ClusterSyncMode, ClusterSyncMode, opts.ClusterSyncMode,
 		"Specify the sync mode 'Pull', 'Push' and 'Dual' between parent cluster and child cluster")
+	fs.StringVar(&opts.ClusterLabels, ClusterLabels, opts.ClusterLabels,
+		"Specify the labels for the child cluster, split by `,`")
 	fs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
 		"Specifies how often the agent posts current child cluster status to parent cluster")
 	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
