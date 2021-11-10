@@ -361,6 +361,14 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 	desc.Status.Phase = statusPhase
 	desc.Status.Reason = reason
 	_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+
+	if len(allErrs) > 0 {
+		return utilerrors.NewAggregate(allErrs)
+	}
+
+	if err != nil {
+		klog.ErrorDepth(5, err)
+	}
 	return err
 }
 
