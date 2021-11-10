@@ -365,10 +365,6 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
 	}
-
-	if err != nil {
-		klog.ErrorDepth(5, err)
-	}
 	return err
 }
 

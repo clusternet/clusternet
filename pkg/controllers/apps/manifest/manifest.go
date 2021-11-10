@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -58,6 +59,8 @@ type Controller struct {
 
 	manifestLister applisters.ManifestLister
 	manifestSynced cache.InformerSynced
+	baseLister     applisters.BaseLister
+	baseSynced     cache.InformerSynced
 
 	feedInUseProtection bool
 
@@ -66,8 +69,8 @@ type Controller struct {
 }
 
 func NewController(clusternetClient clusternetclientset.Interface,
-	manifestInformer appinformers.ManifestInformer, feedInUseProtection bool,
-	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	manifestInformer appinformers.ManifestInformer, baseInformer appinformers.BaseInformer,
+	feedInUseProtection bool, recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
@@ -77,6 +80,8 @@ func NewController(clusternetClient clusternetclientset.Interface,
 		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "manifest"),
 		manifestLister:      manifestInformer.Lister(),
 		manifestSynced:      manifestInformer.Informer().HasSynced,
+		baseLister:          baseInformer.Lister(),
+		baseSynced:          baseInformer.Informer().HasSynced,
 		feedInUseProtection: feedInUseProtection,
 		recorder:            recorder,
 		syncHandlerFunc:     syncHandlerFunc,
@@ -87,6 +92,10 @@ func NewController(clusternetClient clusternetclientset.Interface,
 		AddFunc:    c.addManifest,
 		UpdateFunc: c.updateManifest,
 		DeleteFunc: c.deleteManifest,
+	})
+
+	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.updateBase,
 	})
 
 	return c, nil
@@ -104,7 +113,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down manifest controller")
 
 	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("manifest-controller", stopCh, c.manifestSynced) {
+	if !cache.WaitForNamedCacheSync("manifest-controller", stopCh, c.manifestSynced, c.baseSynced) {
 		return
 	}
 
@@ -158,6 +167,43 @@ func (c *Controller) deleteManifest(obj interface{}) {
 	}
 	klog.V(4).Infof("deleting Manifest %q", klog.KObj(manifest))
 	c.enqueue(manifest)
+}
+
+func (c *Controller) updateBase(old, cur interface{}) {
+	oldBase := old.(*appsapi.Base)
+	newBase := cur.(*appsapi.Base)
+
+	if newBase.DeletionTimestamp != nil {
+		// labels pruning had already been done when a Base got deleted.
+		return
+	}
+
+	// Decide whether discovery has reported a spec change.
+	if reflect.DeepEqual(oldBase.Spec.Feeds, newBase.Spec.Feeds) {
+		return
+	}
+
+	klog.V(6).Info("waiting for Manifest caches to sync before pruning labels")
+	if !cache.WaitForCacheSync(context.TODO().Done(), c.manifestSynced) {
+		return
+	}
+
+	for _, feed := range utils.FindObsoletedFeeds(oldBase.Spec.Feeds, newBase.Spec.Feeds) {
+		if feed.Kind == "HelmChart" {
+			continue
+		}
+
+		manifests, err := utils.ListManifestsBySelector(c.manifestLister, feed)
+		if err != nil {
+			klog.ErrorDepth(6, err)
+			continue
+		}
+
+		for _, manifest := range manifests {
+			klog.V(6).Infof("pruning labels of Manifest %q", klog.KObj(manifest))
+			c.workqueue.Add(klog.KObj(manifest).String())
+		}
+	}
 }
 
 // runWorker is a long-running function that will continually call the
@@ -261,6 +307,9 @@ func (c *Controller) syncHandler(key string) error {
 			updatedManifest.Finalizers = append(updatedManifest.Finalizers, known.FeedProtectionFinalizer)
 		}
 
+		// prune redundant labels
+		pruneLabels(updatedManifest, c.baseLister)
+
 		// only update on changed
 		if !reflect.DeepEqual(manifest, updatedManifest) {
 			if manifest, err = c.clusternetClient.AppsV1alpha1().Manifests(updatedManifest.Namespace).Update(context.TODO(),
@@ -297,4 +346,31 @@ func (c *Controller) enqueue(manifest *appsapi.Manifest) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+func pruneLabels(manifest *appsapi.Manifest, baseLister applisters.BaseLister) {
+	// find all Bases
+	baseUIDs := []string{}
+	for key, val := range manifest.Labels {
+		// normally the length of a uuid is 36
+		if len(key) != 36 || strings.Contains(key, "/") || val != "Base" {
+			continue
+		}
+		baseUIDs = append(baseUIDs, key)
+	}
+
+	for _, base := range utils.FindBasesFromUIDs(baseLister, baseUIDs) {
+		if utils.HasFeed(appsapi.Feed{
+			Kind:      manifest.Labels[known.ConfigKindLabel],
+			Namespace: manifest.Labels[known.ConfigNamespaceLabel],
+			Name:      manifest.Labels[known.ConfigNameLabel],
+		}, base.Spec.Feeds) {
+			continue
+		}
+
+		// prune labels
+		// since Base is not referring this resource anymore
+		delete(manifest.Labels, string(base.UID))
+		delete(manifest.Labels, base.Labels[known.ConfigUIDLabel]) // Subscription
+	}
 }

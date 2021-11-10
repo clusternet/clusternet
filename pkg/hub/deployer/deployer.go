@@ -130,6 +130,7 @@ func NewDeployer(apiserverURL string, kubeclient *kubernetes.Clientset, clustern
 
 	helmChartController, err := helmchart.NewController(clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
+		clusternetInformerFactory.Apps().V1alpha1().Bases(),
 		feedInUseProtection,
 		deployer.recorder, deployer.handleHelmChart)
 	if err != nil {
@@ -164,6 +165,7 @@ func NewDeployer(apiserverURL string, kubeclient *kubernetes.Clientset, clustern
 
 	mfstController, err := manifest.NewController(clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
+		clusternetInformerFactory.Apps().V1alpha1().Bases(),
 		feedInUseProtection,
 		deployer.recorder,
 		deployer.handleManifest)
