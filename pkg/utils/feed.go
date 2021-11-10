@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
@@ -116,4 +117,45 @@ func RemoveFeedFromSubscription(ctx context.Context, clusternetClient *clusterne
 		metav1.PatchOptions{},
 		"")
 	return err
+}
+
+func FindObsoletedFeeds(oldFeeds []appsapi.Feed, newFeeds []appsapi.Feed) []appsapi.Feed {
+	desiredFeedsMap := make(map[string]bool)
+	for _, feed := range newFeeds {
+		desiredFeedsMap[FormatFeed(feed)] = true
+	}
+
+	obsoleteFeeds := []appsapi.Feed{}
+	for _, feed := range oldFeeds {
+		if !desiredFeedsMap[FormatFeed(feed)] {
+			obsoleteFeeds = append(obsoleteFeeds, feed)
+		}
+	}
+	return obsoleteFeeds
+}
+
+func FindBasesFromUIDs(baseLister applisters.BaseLister, uids []string) []*appsapi.Base {
+	allBases := []*appsapi.Base{}
+	for _, uid := range uids {
+		bases, err := baseLister.List(labels.SelectorFromSet(labels.Set{
+			uid: "Base",
+		}))
+		if err != nil {
+			klog.ErrorDepth(5, err)
+			continue
+		}
+		allBases = append(allBases, bases...)
+	}
+
+	return allBases
+}
+
+func HasFeed(feed appsapi.Feed, feeds []appsapi.Feed) bool {
+	for _, f := range feeds {
+		if f.Kind == feed.Kind && f.Namespace == feed.Namespace && f.Name == feed.Name {
+			return true
+		}
+	}
+
+	return false
 }
