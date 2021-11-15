@@ -39,13 +39,14 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
 
 - [Architecture](#architecture)
 - [Concepts](#concepts)
-- [Contributing & Developing](#contributing--developing)
+- [Kubernetes Version Skew](#kubernetes-version-skew)
 - [Getting Started](#getting-started)
     - [Installing Clusternet](#installing-clusternet)
     - [Checking Cluster Registration](#checking-cluster-registration)
     - [Visiting Managed Clusters With RBAC](#visiting-managed-clusters-with-rbac)
     - [How to Interact with Clusternet](#how-to-interact-with-clusternet)
     - [Deploying Applications to Multiple Clusters](#deploying-applications-to-multiple-clusters)
+- [Contributing & Developing](#contributing--developing)
 
 ----
 
@@ -100,15 +101,21 @@ are registerring to, we call it **parent cluster**.
 
 <div align="center"><img src="./docs/images/clusternet-apps-concepts.png" style="width:900px;"/></div>
 
-# Contributing & Developing
+# Kubernetes Version Skew
 
-If you want to get participated and become a contributor to Clusternet, please don't hesitate to refer to our
-[CONTRIBUTING](CONTRIBUTING.md) document for details.
+`Clusternet` is compatible with multiple Kubernetes versions. For example, you could run `clusternet-hub` with
+Kubernetes v1.20.8, while the versions of child Kubernetes clusters could range from v1.18.x to v1.22.x.
 
-A [developer guide](./docs/developer-guide.md) is ready to help you
+| Version                  | Kubernetes v1.17.x | Kubernetes v1.18.x | Kubernetes v1.19.x | Kubernetes v1.20.x | Kubernetes v1.21.x | Kubernetes v1.22.x |
+| ------------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
+| Clusternet v0.5.0        | \*                 | \*                 | ✓                  | ✓                  | ✓                  | ✓                  |
+| Clusternet v0.6.0        | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
+| Clusternet HEAD (main)   | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
 
-- build binaries for all platforms, such as `darwin/amd64`, `linux/amd64`, `linux/arm64`, etc;
-- build docker images for multiple platforms, such as `linux/amd64`, `linux/arm64`, etc;
+Note:
+
+* `✓` Clusternet is compatible with this Kubernetes version.
+* `*` Clusternet has no guarantees to support this Kubernetes version. More compatible tests will be needed.
 
 # Getting Started
 
@@ -145,3 +152,13 @@ Clusternet supports deploying applications to multiple clusters from a single se
 
 Please follow [this guide](./docs/tutorials/deploying-applications-to-multiple-clusters.md) to deploy your applications
 to multiple clusters.
+
+# Contributing & Developing
+
+If you want to get participated and become a contributor to Clusternet, please don't hesitate to refer to our
+[CONTRIBUTING](CONTRIBUTING.md) document for details.
+
+A [developer guide](./docs/developer-guide.md) is ready to help you
+
+- build binaries for all platforms, such as `darwin/amd64`, `linux/amd64`, `linux/arm64`, etc;
+- build docker images for multiple platforms, such as `linux/amd64`, `linux/arm64`, etc;
