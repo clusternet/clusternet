@@ -7,44 +7,56 @@
 
 :thumbsup: ***Clusternet supports visiting all your managed clusters with RBAC directly from parent cluster.***
 
-There is one prerequisite here, that is `kube-apiserver` should **allow anonymous requests**. The
-flag `--anonymous-auth` is set to be `true` by default. So you can just ignore this unless this flag is set to `false`
-explicitly.
+Here we assume the `kube-apiserver` running in parent cluster allows **anonymous requests**. That is
+flag `--anonymous-auth` (default to be `true`) is not set to `false` explicitly.
+
+If not, an extra token from parent cluster is required.
 
 ## Using curl
 
 Below is a simple snippet to show how to list namespaces in a child cluster with `curl`.
 
-If you're using tokens,
+```bash
+$ PARENTCLUSTERAUTH="Basic system:anonymous"
+```
+
+If anonymous auth is not allowed, then
 
 ```bash
-$ # Here the token is base64 decoded and from your child cluster.
+$ PARENTCLUSTERTOKEN=`kubectl get secret -n clusternet-system -o=jsonpath='{.items[?(@.metadata.annotations.kubernetes\.io/service-account\.name=="clusternet-hub-proxy")].data.token}' | base64 --decode`
+$ PARENTCLUSTERAUTH="Bearer ${PARENTCLUSTERTOKEN}"
+```
+
+### If you're using tokens
+
+```bash
+$ # Here the token is base64 decoded and from your child cluster. (PLEASE CHANGE ME!!!)
 $ CHILDCLUSTERTOKEN="TOKEN-BASE64-DECODED-IN-YOUR-CHILD-CLUSTER"
-$ # specify the child cluster id
+$ # specify the child cluster id (PLEASE CHANGE ME!!!)
 $ CHILDCLUSTERID="dc91021d-2361-4f6d-a404-7c33b9e01118"
-$ # The Parent Cluster APIServer Address
+$ # The Parent Cluster APIServer Address (PLEASE CHANGE ME!!!)
 $ APISERVER="https://10.0.0.10:6443"
 $ curl -k -XGET  -H "Accept: application/json" \
   -H "Impersonate-User: clusternet" \
-  -H "Authorization: Basic system:anonymous" \
+  -H "Authorization: ${PARENTCLUSTERAUTH}" \
   -H "Impersonate-Extra-Clusternet-Token: ${CHILDCLUSTERTOKEN}" \
   "${APISERVER}/apis/proxies.clusternet.io/v1alpha1/sockets/${CHILDCLUSTERID}/proxy/direct/api/v1/namespaces"
 ```
 
-If you're using TLS certificates,
+### If you're using TLS certificates
 
 ```bash
-$ # base64 encoded certificate from your child cluster.
+$ # base64 encoded certificate from your child cluster. (PLEASE CHANGE ME!!!)
 $ CHILDCLUSTERCERT="CERTIFICATE-BASE64-ENCODED-IN-YOUR-CHILD-CLUSTER"
-$ # base64 encoded privatekey from your child cluster.
+$ # base64 encoded privatekey from your child cluster. (PLEASE CHANGE ME!!!)
 $ CHILDCLUSTERKEY="PRIVATEKEY-BASE64-ENCODED-IN-YOUR-CHILD-CLUSTER"
-$ # specify the child cluster id
+$ # specify the child cluster id (PLEASE CHANGE ME!!!)
 $ CHILDCLUSTERID="dc91021d-2361-4f6d-a404-7c33b9e01118"
-$ # The Parent Cluster APIServer Address
+$ # The Parent Cluster APIServer Address (PLEASE CHANGE ME!!!)
 $ APISERVER="https://10.0.0.10:6443"
 $ curl -k -XGET  -H "Accept: application/json" \
   -H "Impersonate-User: clusternet" \
-  -H "Authorization: Basic system:anonymous" \
+  -H "Authorization: ${PARENTCLUSTERAUTH}" \
   -H "Impersonate-Extra-Clusternet-Certificate: ${CHILDCLUSTERCERT}" \
   -H "Impersonate-Extra-Clusternet-PrivateKey: ${CHILDCLUSTERKEY}" \
   "${APISERVER}/apis/proxies.clusternet.io/v1alpha1/sockets/${CHILDCLUSTERID}/proxy/direct/api/v1/namespaces"
@@ -173,6 +185,15 @@ $ vim config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
 Please replace `BASE64-DECODED-PLEASE-CHANGE-ME` to a token that valid from **child cluster**. ***Please notice the
 tokens replaced here should be base64 decoded.***
 
+> :pushpin: :pushpin: Important Note:
+>
+> If anonymous auth is not allowed, please replace `username: system:anonymous` to `token: PARENT-CLUSTER-TOKEN`.
+> Here `PARENT-CLUSTER-TOKEN` can be retrieved with below command,
+>
+>```bash
+>kubectl get secret -n clusternet-system -o=jsonpath='{.items[?(@.metadata.annotations.kubernetes\.io/service-account\.name=="clusternet-hub-proxy")].data.token}' | base64 --decode; echo
+>```
+
 </details>
 
 <details>
@@ -220,5 +241,14 @@ $ vim config-cluster-dc91021d-2361-4f6d-a404-7c33b9e01118
 Please replace `CLIENT-CERTIFICATE-DATE-BASE64-ENCODED-PLEASE-CHANGE-ME`
 and `CLIENT-KEY-DATE-PLEASE-BASE64-ENCODED-CHANGE-ME` with certficate and private key from child cluster. **Please
 notice the tokens replaced here should be base64 encoded.**
+
+> :pushpin: :pushpin: Important Note:
+> 
+> If anonymous auth is not allowed, please replace `username: system:anonymous` to `token: PARENT-CLUSTER-TOKEN`.
+> Here `PARENT-CLUSTER-TOKEN` can be retrieved with below command,
+>
+>```bash
+>kubectl get secret -n clusternet-system -o=jsonpath='{.items[?(@.metadata.annotations.kubernetes\.io/service-account\.name=="clusternet-hub-proxy")].data.token}' | base64 --decode; echo
+>```
 
 </details>

@@ -3,11 +3,11 @@ kind: ClusterRole
 metadata:
   name: clusternet:hub
 rules:
-  - apiGroups: ['*']
-    resources: ['*']
-    verbs: ["*"]
-  - nonResourceURLs: ['*']
-    verbs: ["get"]
+  - apiGroups: [ "*" ]
+    resources: [ "*" ]
+    verbs: [ "*" ]
+  - nonResourceURLs: [ "*" ]
+    verbs: [ "get" ]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1

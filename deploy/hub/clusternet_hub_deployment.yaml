@@ -17,6 +17,13 @@ metadata:
   namespace: clusternet-system
 
 ---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: clusternet-hub-proxy
+  namespace: clusternet-system
+
+---
 apiVersion: v1
 kind: Service
 metadata:
