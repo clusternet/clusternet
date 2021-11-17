@@ -46,6 +46,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - [Visiting Managed Clusters With RBAC](#visiting-managed-clusters-with-rbac)
     - [How to Interact with Clusternet](#how-to-interact-with-clusternet)
     - [Deploying Applications to Multiple Clusters](#deploying-applications-to-multiple-clusters)
+- [Contact](#contact)
 - [Contributing & Developing](#contributing--developing)
 
 ----
@@ -152,6 +153,14 @@ Clusternet supports deploying applications to multiple clusters from a single se
 
 Please follow [this guide](./docs/tutorials/deploying-applications-to-multiple-clusters.md) to deploy your applications
 to multiple clusters.
+
+# Contact
+
+If you've got any questions, please feel free to contact us with following ways:
+
+- [open a github issue](https://github.com/clusternet/clusternet/issues/new/choose)
+- [mailing list](mailto:clusternet@googlegroups.com)
+- [join discussion group](https://groups.google.com/g/clusternet)
 
 # Contributing & Developing
 
