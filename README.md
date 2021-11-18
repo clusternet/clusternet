@@ -127,6 +127,11 @@ You can try below ways to
 - [install `Clusternet` with Helm](./docs/tutorials/installing-clusternet-with-helm.md)
 - [install `Clusternet` the Hard Way](./docs/tutorials/installing-clusternet-the-hard-way.md)
 
+> :whale: :whale: :whale: Note:
+>
+> The container images are hosted on both [ghcr.io](https://github.com/orgs/clusternet/packages) and [dockerhub](https://hub.docker.com/u/clusternet).
+> Please choose the fastest image registry to use.
+
 ## Checking Cluster Registration
 
 After `clusternet-hub` is successfully installed. You can try to install `clusternet-agent` to any Kubernetes clusters
