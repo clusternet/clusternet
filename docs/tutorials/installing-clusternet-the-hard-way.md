@@ -11,6 +11,11 @@ required to install `Clusternet`.
 
 You need to deploy `clusternet-agent` and `clusternet-hub` in child cluster and parent cluster respectively.
 
+> :whale: :whale: :whale: Note:
+>
+> The container images are hosted on both [ghcr.io](https://github.com/orgs/clusternet/packages) and [dockerhub](https://hub.docker.com/u/clusternet).
+> Please choose the fastest image registry to use.
+
 ## Deploying `clusternet-hub` in parent cluster
 
 ```console
