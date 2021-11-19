@@ -3,7 +3,7 @@ module github.com/clusternet/clusternet
 go 1.14
 
 require (
-	github.com/containerd/containerd v1.4.11 // indirect
+	github.com/containerd/containerd v1.4.12 // indirect
 	github.com/emicklei/go-restful v2.9.5+incompatible
 	github.com/evanphx/json-patch v4.9.0+incompatible
 	github.com/go-openapi/spec v0.19.5
@@ -32,6 +32,7 @@ require (
 
 replace (
 	github.com/dgrijalva/jwt-go => github.com/dgrijalva/jwt-go v3.2.1-0.20210802184156-9742bd7fca1c+incompatible
+	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2
 	github.com/spf13/afero => github.com/spf13/afero v1.5.1
 	google.golang.org/grpc => google.golang.org/grpc v1.27.1
 	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.21.3-rc.0.0.20210814084831-4aafc1ec60f6
