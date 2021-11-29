@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
 	"k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -36,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -520,6 +522,19 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	if !ok {
 		return nil, errors.NewBadRequest(fmt.Sprintf("not a Unstructured object: %T", obj))
 	}
+
+	// check whether the given namespace name is valid
+	if r.namespaced || r.kind == "Namespace" {
+		fieldPath := field.NewPath("metadata", "namespace")
+		if r.kind == "Namespace" {
+			fieldPath = field.NewPath("metadata", "name")
+		}
+		if errs := apimachineryvalidation.ValidateNamespaceName(objNamespace, false); len(errs) > 0 {
+			allErrs := field.ErrorList{field.Invalid(fieldPath, objNamespace, strings.Join(errs, ","))}
+			return nil, errors.NewInvalid(r.GroupVersionKind(schema.GroupVersion{}).GroupKind(), u.GetName(), allErrs)
+		}
+	}
+
 	labels := u.GetLabels()
 	if labels == nil {
 		labels = map[string]string{}
