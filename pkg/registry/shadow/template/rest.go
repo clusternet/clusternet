@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
 	"k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -36,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -94,7 +96,7 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 	// next we create manifest to store the result
 	manifest := &appsapi.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.generateNameForManifest(result.GetNamespace(), result.GetName()),
+			Name:      r.getNormalizedManifestName(result.GetNamespace(), result.GetName()),
 			Namespace: appsapi.ReservedNamespace,
 			Labels:    result.GetLabels(), // reuse labels from original object, which is useful for label selector
 		},
@@ -126,10 +128,10 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
-		manifest, err = r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
+		manifest, err = r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
 	} else {
 		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
-			Get(ctx, r.generateNameForManifest(request.NamespaceValue(ctx), name), *options)
+			Get(ctx, r.getNormalizedManifestName(request.NamespaceValue(ctx), name), *options)
 	}
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -158,7 +160,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, err
 	}
 
-	manifest, err := r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
+	manifest, err := r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -215,7 +217,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 // options can be mutated by rest.BeforeDelete due to a graceful deletion strategy.
 func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions) (runtime.Object, bool, error) {
 	err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
-		Delete(ctx, r.generateNameForManifest(request.NamespaceValue(ctx), name), *options)
+		Delete(ctx, r.getNormalizedManifestName(request.NamespaceValue(ctx), name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -477,7 +479,35 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 	return req
 }
 
+// getNormalizedManifestName will converge generateLegacyNameForManifest and generateNameForManifest
+func (r *REST) getNormalizedManifestName(namespace, name string) string {
+	legacyManifestName := r.generateLegacyNameForManifest(namespace, name)
+	// backward compatible
+	_, err := r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(legacyManifestName)
+	if err == nil {
+		return legacyManifestName
+	}
+
+	return r.generateNameForManifest(namespace, name)
+}
+
 func (r *REST) generateNameForManifest(namespace, name string) string {
+	resource, _ := r.getResourceName()
+	// resource is a word ("[a-z]([-a-z0-9]*[a-z0-9])?") without "."
+	// namespace is a word ("[a-z]([-a-z0-9]*[a-z0-9])?") without "."
+	// so we use "." for concatenation
+	if r.namespaced {
+		return fmt.Sprintf("%s.%s.%s", resource, namespace, name)
+	}
+	return fmt.Sprintf("%s.%s", resource, name)
+}
+
+// DEPRECATED
+// use hyphens for concatenation may lead to conflicts, such as
+// - resource "foos" with name "lovely-panda" in namespace "bar"
+// - resource "foos" with name "panda" in namespace "bar-lovely"
+// will map a same Manifest object with name "foos-bar-lovely-panda"
+func (r *REST) generateLegacyNameForManifest(namespace, name string) string {
 	resource, _ := r.getResourceName()
 	if r.namespaced {
 		return fmt.Sprintf("%s-%s-%s", resource, namespace, name)
@@ -492,6 +522,19 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	if !ok {
 		return nil, errors.NewBadRequest(fmt.Sprintf("not a Unstructured object: %T", obj))
 	}
+
+	// check whether the given namespace name is valid
+	if r.namespaced || r.kind == "Namespace" {
+		fieldPath := field.NewPath("metadata", "namespace")
+		if r.kind == "Namespace" {
+			fieldPath = field.NewPath("metadata", "name")
+		}
+		if errs := apimachineryvalidation.ValidateNamespaceName(objNamespace, false); len(errs) > 0 {
+			allErrs := field.ErrorList{field.Invalid(fieldPath, objNamespace, strings.Join(errs, ","))}
+			return nil, errors.NewInvalid(r.GroupVersionKind(schema.GroupVersion{}).GroupKind(), u.GetName(), allErrs)
+		}
+	}
+
 	labels := u.GetLabels()
 	if labels == nil {
 		labels = map[string]string{}
