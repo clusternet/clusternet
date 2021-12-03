@@ -25,6 +25,7 @@ import (
 	"sync"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
@@ -98,7 +99,8 @@ func DeployableByAgent(syncMode clusterapi.ClusterSyncMode, appPusherEnabled boo
 	}
 }
 
-func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, clusternetClient *clusternetclientset.Clientset,
+func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeClient *kubernetes.Clientset,
+	clusternetClient *clusternetclientset.Clientset,
 	hrLister applisters.HelmReleaseLister, descLister applisters.DescriptionLister,
 	hr *appsapi.HelmRelease, recorder record.EventRecorder) error {
 	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
@@ -124,7 +126,18 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, cluster
 	}
 
 	// install or upgrade helm release
-	chart, err := LocateHelmChart(hr.Spec.Repository, hr.Spec.Chart, hr.Spec.ChartVersion)
+	var (
+		chart    *chart.Chart
+		username string
+		password string
+	)
+	if hr.Spec.ChartPullSecret.Name != "" {
+		username, password, err = GetHelmRepoCredentials(kubeClient, hr.Spec.ChartPullSecret.Name, hr.Spec.ChartPullSecret.Namespace)
+		if err != nil {
+			return err
+		}
+	}
+	chart, err = LocateAuthHelmChart(hr.Spec.Repository, username, password, hr.Spec.Chart, hr.Spec.ChartVersion)
 	if err != nil {
 		recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
 		return err

@@ -39,6 +39,8 @@ type Deployer struct {
 	// whether AppPusher feature gate is enabled
 	appPusherEnabled bool
 
+	// kube client to parent cluster
+	parentKubeClient *kubernetes.Clientset
 	// kube client to current child cluster (with credentials in ServiceAccount "clusternet-app-deployer")
 	childKubeClient *kubernetes.Clientset
 	// clusternet client to parent cluster
@@ -56,13 +58,14 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
+func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool, parentKubeClient *kubernetes.Clientset,
 	childKubeClient *kubernetes.Clientset, clusternetClient *clusternetclientset.Clientset, deployCtx *utils.DeployContext,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
 		syncMode:         syncMode,
 		appPusherEnabled: appPusherEnabled,
+		parentKubeClient: parentKubeClient,
 		childKubeClient:  childKubeClient,
 		clusternetClient: clusternetClient,
 		deployCtx:        deployCtx,
@@ -108,6 +111,6 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	return utils.ReconcileHelmRelease(context.TODO(), deployer.deployCtx, deployer.clusternetClient,
+	return utils.ReconcileHelmRelease(context.TODO(), deployer.deployCtx, deployer.parentKubeClient, deployer.clusternetClient,
 		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
 }

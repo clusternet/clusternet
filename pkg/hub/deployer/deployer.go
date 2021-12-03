@@ -88,6 +88,7 @@ type Deployer struct {
 	clusterSynced cache.InformerSynced
 
 	clusternetClient *clusternetclientset.Clientset
+	kubeClient       *kubernetes.Clientset
 
 	subsController  *subscription.Controller
 	mfstController  *manifest.Controller
@@ -125,6 +126,7 @@ func NewDeployer(apiserverURL string, kubeclient *kubernetes.Clientset, clustern
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
 		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		clusternetClient: clusternetclient,
+		kubeClient:       kubeclient,
 		recorder:         recorder,
 	}
 
@@ -783,8 +785,18 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 		}
 		return err
 	}
-
-	_, err := repo.FindChartInRepoURL(chart.Spec.Repository, chart.Spec.Chart, chart.Spec.ChartVersion,
+	var (
+		err      error
+		username string
+		password string
+	)
+	if chart.Spec.ChartPullSecret.Name != "" {
+		username, password, err = utils.GetHelmRepoCredentials(deployer.kubeClient, chart.Spec.ChartPullSecret.Name, chart.Spec.ChartPullSecret.Namespace)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = repo.FindChartInAuthRepoURL(chart.Spec.Repository, username, password, chart.Spec.Chart, chart.Spec.ChartVersion,
 		"", "", "",
 		getter.All(utils.Settings))
 	if err != nil {

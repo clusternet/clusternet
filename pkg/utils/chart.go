@@ -17,6 +17,7 @@ limitations under the License.
 package utils
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/kubernetes"
@@ -41,15 +43,29 @@ import (
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
+const (
+	// UsernameKey is the key for username in the helm repo auth secret
+	UsernameKey = "username"
+	// PasswordKey is the key for password in the helm repo auth secret
+	PasswordKey = "password"
+)
+
 var (
 	Settings = cli.New()
 )
 
 // LocateHelmChart will looks for a chart from repository and load it.
 func LocateHelmChart(chartRepo, chartName, chartVersion string) (*chart.Chart, error) {
+	return LocateAuthHelmChart(chartRepo, "", "", chartName, chartVersion)
+}
+
+// LocateAuthHelmChart will looks for a chart from auth repository and load it.
+func LocateAuthHelmChart(chartRepo, username, password, chartName, chartVersion string) (*chart.Chart, error) {
 	client := action.NewInstall(nil)
 	client.ChartPathOptions.RepoURL = chartRepo
 	client.ChartPathOptions.Version = chartVersion
+	client.ChartPathOptions.Username = username
+	client.ChartPathOptions.Password = password
 
 	cp, err := client.ChartPathOptions.LocateChart(chartName, Settings)
 	if err != nil {
@@ -201,4 +217,24 @@ func (dctx *DeployContext) ToDiscoveryClient() (discovery.CachedDiscoveryInterfa
 
 func (dctx *DeployContext) ToRESTMapper() (meta.RESTMapper, error) {
 	return dctx.restMapper, nil
+}
+
+// GetHelmRepoCredentials get helm repo credentials from the given secret
+func GetHelmRepoCredentials(kubeclient *kubernetes.Clientset, secretName, namespace string) (string, string, error) {
+	secret, err := kubeclient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", "", err
+	}
+
+	username, ok := secret.Data[UsernameKey]
+	if !ok {
+		return "", "", fmt.Errorf("secret %s/%s does not contain username", namespace, secretName)
+	}
+
+	password, ok := secret.Data[PasswordKey]
+	if !ok {
+		return "", "", fmt.Errorf("secret %s/%s does not contain password", namespace, secretName)
+	}
+
+	return string(username), string(password), nil
 }

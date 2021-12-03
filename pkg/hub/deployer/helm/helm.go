@@ -410,7 +410,7 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return err
 	}
 
-	return utils.ReconcileHelmRelease(context.TODO(), deployCtx, deployer.clusternetClient,
+	return utils.ReconcileHelmRelease(context.TODO(), deployCtx, deployer.kubeClient, deployer.clusternetClient,
 		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
 }
 

@@ -176,6 +176,13 @@ func (crrApprover *CRRApprover) defaultClusterRoles(clusterID types.UID) []rbacv
 					"get",    // and get the created object, we don't allow to "list" operation due to security concerns
 				},
 			},
+			{
+				APIGroups: []string{corev1.GroupName},
+				Resources: []string{"secrets"},
+				Verbs: []string{
+					"get",
+				},
+			},
 		},
 	}
 
