@@ -419,6 +419,9 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 }
 
 func parseClusterLabels(clusterLabels string) map[string]string {
+	if strings.TrimSpace(clusterLabels) == "" {
+		return nil
+	}
 	clusterLabelsMap := make(map[string]string)
 	clusterLabelsArray := strings.Split(clusterLabels, ",")
 	for _, labelString := range clusterLabelsArray {
