@@ -59,6 +59,14 @@ spec:
               chart:
                 description: Chart is the name of a Helm Chart in the Repository.
                 type: string
+              chartPullSecret:
+                description: ChartPullSecret is the name of the secret that contains the auth information for the chart repository.
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                type: object
               repo:
                 description: a Helm Repository to be used. such as, https://charts.bitnami.com/bitnami
                 pattern: ^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&\(\)\*\+,;=.]+$

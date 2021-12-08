@@ -85,6 +85,11 @@ type HelmOptions struct {
 	// +kubebuilder:validation:Pattern=`^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&\(\)\*\+,;=.]+$`
 	Repository string `json:"repo"`
 
+	// ChartPullSecret is the name of the secret that contains the auth information for the chart repository.
+	//
+	// +optional
+	ChartPullSecret ChartPullSecret `json:"chartPullSecret,omitempty"`
+
 	// Chart is the name of a Helm Chart in the Repository.
 	//
 	// +required
@@ -97,6 +102,12 @@ type HelmOptions struct {
 	//
 	// +optional
 	ChartVersion string `json:"version,omitempty"`
+}
+
+// ChartPullSecret is the name of the secret that contains the auth information for the chart repository.
+type ChartPullSecret struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // +kubebuilder:object:root=true

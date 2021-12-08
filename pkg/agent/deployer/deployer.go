@@ -127,7 +127,7 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 		if err != nil {
 			return err
 		}
-		helmDeployer, err := helm.NewDeployer(d.syncMode, d.appPusherEnabled, childKubeClient,
+		helmDeployer, err := helm.NewDeployer(d.syncMode, d.appPusherEnabled, parentClientSet, childKubeClient,
 			clusternetclient, deployCtx, clusternetInformerFactory, parentRecorder)
 		if err != nil {
 			return err
