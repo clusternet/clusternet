@@ -38,6 +38,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corev1Lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -87,6 +88,9 @@ type Deployer struct {
 	clusterLister clusterlisters.ManagedClusterLister
 	clusterSynced cache.InformerSynced
 
+	nsLister corev1Lister.NamespaceLister
+	nsSynced cache.InformerSynced
+
 	clusternetClient *clusternetclientset.Clientset
 	kubeClient       *kubernetes.Clientset
 
@@ -125,6 +129,8 @@ func NewDeployer(apiserverURL string, kubeclient *kubernetes.Clientset, clustern
 		subSynced:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
 		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
 		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
+		nsLister:         kubeInformerFactory.Core().V1().Namespaces().Lister(),
+		nsSynced:         kubeInformerFactory.Core().V1().Namespaces().Informer().HasSynced,
 		clusternetClient: clusternetclient,
 		kubeClient:       kubeclient,
 		recorder:         recorder,
