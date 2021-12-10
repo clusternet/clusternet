@@ -78,6 +78,7 @@ func NewDeployer(apiserverURL string, clusternetClient *clusternetclientset.Clie
 	descController, err := description.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
+		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		deployer.recorder,
 		deployer.handleDescription)
 	if err != nil {

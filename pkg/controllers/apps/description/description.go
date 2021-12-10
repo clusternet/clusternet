@@ -25,6 +25,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -67,7 +69,9 @@ type Controller struct {
 }
 
 func NewController(clusternetClient clusternetClientSet.Interface,
-	descInformer appInformers.DescriptionInformer, hrInformer appInformers.HelmReleaseInformer,
+	descInformer appInformers.DescriptionInformer,
+	hrInformer appInformers.HelmReleaseInformer,
+	helmChartInformer appInformers.HelmChartInformer,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
@@ -92,6 +96,10 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 
 	hrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: c.deleteHelmRelease,
+	})
+
+	helmChartInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.updateHelmChart,
 	})
 	return c, nil
 }
@@ -190,6 +198,43 @@ func (c *Controller) deleteHelmRelease(obj interface{}) {
 	}
 	klog.V(4).Infof("deleting HelmRelease %q", klog.KObj(hr))
 	c.enqueue(desc)
+}
+
+func (c *Controller) updateHelmChart(old, cur interface{}) {
+	oldChart := old.(*appsapi.HelmChart)
+	newChart := cur.(*appsapi.HelmChart)
+
+	// Decide whether discovery has reported a spec change.
+	if reflect.DeepEqual(oldChart.Spec, newChart.Spec) {
+		return
+	}
+
+	baseUIDs := []string{}
+	for k, v := range newChart.GetLabels() {
+		if v == "Base" {
+			baseUIDs = append(baseUIDs, k)
+		}
+	}
+	if len(baseUIDs) == 0 {
+		return
+	}
+
+	klog.V(5).Infof("HelmChart %s/%s has bases: %s", newChart.Namespace, newChart.Name, baseUIDs)
+	requirement, err := labels.NewRequirement(known.ConfigUIDLabel, selection.In, baseUIDs)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to create label requirement: %v", err))
+		return
+	}
+	selector := labels.NewSelector().Add(*requirement)
+	descs, err := c.descLister.Descriptions("").List(selector)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list descriptions: %v", err))
+		return
+	}
+	for _, desc := range descs {
+		klog.V(4).Infof("updating Description %q", klog.KObj(desc))
+		c.workqueue.Add(klog.KObj(desc).String())
+	}
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
