@@ -20,6 +20,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -719,6 +720,13 @@ func (in *Subscriber) DeepCopyInto(out *Subscriber) {
 		in, out := &in.ClusterAffinity, &out.ClusterAffinity
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.ClusterTolerations != nil {
+		in, out := &in.ClusterTolerations, &out.ClusterTolerations
+		*out = make([]corev1.Toleration, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	return
 }
