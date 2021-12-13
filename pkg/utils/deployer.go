@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mattbaird/jsonpatch"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
@@ -34,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	pkgruntime "k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -43,8 +45,10 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
+	"github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
@@ -333,11 +337,17 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			klog.ErrorDepth(5, msg)
 			recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
 		} else {
+			labels := resource.GetLabels()
+			if labels == nil {
+				labels = map[string]string{}
+			}
+			labels[known.ObjectControlledByLabel] = desc.Namespace + "." + desc.Name
+			resource.SetLabels(labels)
 			wg.Add(1)
 			go func(resource *unstructured.Unstructured) {
 				defer wg.Done()
 
-				err := applyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+				err := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
 				if err != nil {
 					errCh <- err
 				}
@@ -436,7 +446,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 	return err
 }
 
-func applyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
+func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
 	// set UID as empty
 	resource.SetUID("")
 
@@ -457,38 +467,42 @@ func applyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 			return false, nil
 		}
 
-		// try  to update resource
-		_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
-			Update(context.TODO(), resource, metav1.UpdateOptions{})
-		if lastError == nil {
-			return true, nil
-		}
-		statusCauses, ok := getStatusCause(lastError)
-		if !ok {
-			lastError = fmt.Errorf("failed to get StatusCause for %s %s", resource.GetKind(), klog.KObj(resource))
-			return false, nil
-		}
-
 		curObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 			Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
 		if err != nil {
 			lastError = err
 			return false, nil
+		} else {
+			lastError = nil
 		}
-		resourceCopy := resource.DeepCopy()
-		for _, cause := range statusCauses {
-			if cause.Type != metav1.CauseTypeFieldValueInvalid {
-				continue
+
+		if ResourceNeedResync(resource, curObj) {
+			// try  to update resource
+			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+				Update(context.TODO(), resource, metav1.UpdateOptions{})
+			if lastError == nil {
+				return true, nil
 			}
-			// apply immutable value
-			fields := strings.Split(cause.Field, ".")
-			setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
-		}
-		// update with immutable values applied
-		_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
-			Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
-		if lastError == nil {
-			return true, nil
+			statusCauses, ok := getStatusCause(lastError)
+			if !ok {
+				lastError = fmt.Errorf("failed to get StatusCause for %s %s", resource.GetKind(), klog.KObj(resource))
+				return false, nil
+			}
+			resourceCopy := resource.DeepCopy()
+			for _, cause := range statusCauses {
+				if cause.Type != metav1.CauseTypeFieldValueInvalid {
+					continue
+				}
+				// apply immutable value
+				fields := strings.Split(cause.Field, ".")
+				setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
+			}
+			// update with immutable values applied
+			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
+				Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
+			if lastError == nil {
+				return true, nil
+			}
 		}
 		return false, nil
 	})
@@ -603,6 +617,61 @@ func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.Man
 	for _, condition := range mcls[0].Status.Conditions {
 		if condition.Type == clusterapi.ClusterReady {
 			return condition.Status == metav1.ConditionUnknown
+		}
+	}
+
+	return false
+}
+
+func ResolveDescriptionFromResource(clusternetClient *versioned.Clientset, obj interface{}) (*v1alpha1.Description, error) {
+	var descriptionNamespace, descriptionName string
+	newObj := obj.(*unstructured.Unstructured)
+	namespacedName := newObj.GetLabels()[known.ObjectControlledByLabel]
+	parts := strings.Split(namespacedName, ".")
+
+	if len(parts) == 2 {
+		descriptionNamespace = parts[0]
+		descriptionName = parts[1]
+	} else {
+		return nil, fmt.Errorf("unexpected key format: %q", namespacedName)
+	}
+	desc, err := clusternetClient.AppsV1alpha1().Descriptions(descriptionNamespace).Get(context.TODO(), descriptionName, metav1.GetOptions{})
+
+	if err != nil {
+		return nil, err
+	}
+	return desc, nil
+}
+
+func getFieldShouldIgnored() []string {
+	return []string{known.MetaGeneration, known.MetaUID, known.MetaSelflink}
+}
+
+//when compare leave alone with fields like *generation* and *uid*.
+func ResourceNeedResync(original pkgruntime.Object, current pkgruntime.Object) bool {
+	originBuf, err := json.Marshal(original)
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json %v", err.Error()))
+		return false
+	}
+
+	currentBuf, err := json.Marshal(current)
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json %v", err.Error()))
+		return false
+	}
+
+	patch, err := jsonpatch.CreatePatch(currentBuf, originBuf)
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("Error creating JSON patch:%v", err))
+		return false
+	}
+	for _, operation := range patch {
+		if operation.Operation == "replace" || operation.Operation == "add" {
+			if ContainsString(getFieldShouldIgnored(), operation.Path) {
+				continue
+			}
+			return true
 		}
 	}
 

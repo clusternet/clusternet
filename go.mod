@@ -5,9 +5,10 @@ go 1.14
 require (
 	github.com/containerd/containerd v1.4.12 // indirect
 	github.com/emicklei/go-restful v2.9.5+incompatible
-	github.com/evanphx/json-patch v4.9.0+incompatible
+	github.com/evanphx/json-patch v4.11.0+incompatible
 	github.com/go-openapi/spec v0.19.5
 	github.com/gorilla/websocket v1.4.2
+	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24
 	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/rancher/remotedialer v0.2.6-0.20210318171128-d1ebd5202be4
 	github.com/sirupsen/logrus v1.8.1
@@ -25,13 +26,14 @@ require (
 	k8s.io/klog/v2 v2.8.0
 	k8s.io/kube-openapi v0.0.0-20210305001622-591a79e4bda7
 	k8s.io/metrics v0.21.2
-	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
+	k8s.io/utils v0.0.0-20210527160623-6fdb442a123b
 	rsc.io/letsencrypt v0.0.3 // indirect
 	sigs.k8s.io/yaml v1.2.0
 )
 
 replace (
 	github.com/dgrijalva/jwt-go => github.com/dgrijalva/jwt-go v3.2.1-0.20210802184156-9742bd7fca1c+incompatible
+	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.4.1
 	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2
 	github.com/spf13/afero => github.com/spf13/afero v1.5.1
 	google.golang.org/grpc => google.golang.org/grpc v1.27.1
