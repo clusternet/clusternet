@@ -68,6 +68,13 @@ spec:
                 default: default
                 description: If specified, the Subscription will be handled by specified scheduler. If not specified, the Subscription will be handled by default scheduler.
                 type: string
+              schedulingStrategy:
+                default: Replication
+                description: If specified, the Subscription will be handled with specified SchedulingStrategy. Otherwise, with generic SchedulingStrategy.
+                enum:
+                - Replication
+                - Balancing
+                type: string
               subscribers:
                 description: Subscribers subscribes
                 items:
@@ -114,6 +121,11 @@ spec:
           status:
             description: SubscriptionStatus defines the observed state of Subscription
             properties:
+              bindingNamespaces:
+                description: Namespaces of targeted clusters that Subscription binds to.
+                items:
+                  type: string
+                type: array
               completedReleases:
                 description: Total number of completed releases targeted by this deployment.
                 format: int32

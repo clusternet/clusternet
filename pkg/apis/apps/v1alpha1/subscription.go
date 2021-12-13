@@ -46,6 +46,15 @@ type SubscriptionSpec struct {
 	// +kubebuilder:default=default
 	SchedulerName string `json:"schedulerName,omitempty"`
 
+	// If specified, the Subscription will be handled with specified SchedulingStrategy.
+	// Otherwise, with generic SchedulingStrategy.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Enum=Replication;Balancing
+	// +kubebuilder:default=Replication
+	SchedulingStrategy SchedulingStrategyType `json:"schedulingStrategy,omitempty"`
+
 	// Subscribers subscribes
 	//
 	// +required
@@ -61,6 +70,11 @@ type SubscriptionSpec struct {
 
 // SubscriptionStatus defines the observed state of Subscription
 type SubscriptionStatus struct {
+	// Namespaces of targeted clusters that Subscription binds to.
+	//
+	// +optional
+	BindingNamespaces []string `json:"bindingNamespaces,omitempty"`
+
 	// Total number of Helm releases desired by this Subscription.
 	//
 	// +optional
@@ -110,6 +124,17 @@ type Feed struct {
 	// +kubebuilder:validation:Type=string
 	Name string `json:"name"`
 }
+
+type SchedulingStrategyType string
+
+const (
+	// ReplicaSchedulingStrategy places and maintains a copy of this Subscription on each matched clusters.
+	ReplicaSchedulingStrategy SchedulingStrategyType = "Replication"
+
+	// BalancingSchedulingStrategy balances and divides the replicas of a Subscription to several matching clusters.
+	// TODO
+	BalancingSchedulingStrategy SchedulingStrategyType = "Balancing"
+)
 
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
