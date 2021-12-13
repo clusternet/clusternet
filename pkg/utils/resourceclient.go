@@ -14,7 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This file was copied from sigs.k8s.io/kubefed/pkg/controller/util/resourceclient.go
+// This file was copied from sigs.k8s.io/kubefed/pkg/controller/util/resourceclient.go and modified.
+
 package utils
 
 import (
@@ -35,19 +36,17 @@ type resourceClient struct {
 	kind        string
 }
 
-func NewResourceClient(client dynamic.Interface, apiResource *metav1.APIResource) (ResourceClient, error) {
-	resource := schema.GroupVersionResource{
-		Group:    apiResource.Group,
-		Version:  apiResource.Version,
-		Resource: apiResource.Name,
-	}
-
+func NewResourceClient(client dynamic.Interface, apiResource *metav1.APIResource) ResourceClient {
 	return &resourceClient{
-		client:      client,
-		apiResource: resource,
-		namespaced:  apiResource.Namespaced,
-		kind:        apiResource.Kind,
-	}, nil
+		client: client,
+		apiResource: schema.GroupVersionResource{
+			Group:    apiResource.Group,
+			Version:  apiResource.Version,
+			Resource: apiResource.Name,
+		},
+		namespaced: apiResource.Namespaced,
+		kind:       apiResource.Kind,
+	}
 }
 
 func (c *resourceClient) Resources(namespace string) dynamic.ResourceInterface {

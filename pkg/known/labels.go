@@ -23,8 +23,8 @@ const (
 	ClusterNameLabel          = "clusters.clusternet.io/cluster-name"
 	ClusterBootstrappingLabel = "clusters.clusternet.io/bootstrapping"
 
-	ObjectCreatedByLabel    = "clusternet.io/created-by"
-	ObjectControlledByLabel = "apps.clusternet.io/owned-by"
+	ObjectCreatedByLabel          = "clusternet.io/created-by"
+	ObjectOwnedByDescriptionLabel = "apps.clusternet.io/owned-by-description"
 
 	// the source info where this object belongs to or controlled by
 	ConfigGroupLabel     = "apps.clusternet.io/config.group"

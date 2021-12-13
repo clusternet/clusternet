@@ -54,7 +54,8 @@ const (
 
 	// Providing 0 duration to an informer indicates that resync should be delayed as long as possible
 	NoResyncPeriod = 0 * time.Second
-	// default number of threads
+
+	// DefaultThreadiness defines default number of threads
 	DefaultThreadiness = 2
 )
 

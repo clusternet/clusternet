@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func TestEqualLeftFieldEmpty(t *testing.T) {
+func TestResourceNeedResync(t *testing.T) {
 
 	barX := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -110,19 +110,27 @@ func TestEqualLeftFieldEmpty(t *testing.T) {
 		y        *unstructured.Unstructured
 		wantSync bool   // Whether the inputs are equal
 		reason   string // The reason for the expected outcome
-	}{{
-		label:    "RightsideHasMoreField",
-		x:        barX,
-		y:        barY,
-		wantSync: false,
-		reason:   "won't sync because right side has more field",
-	},
+	}{
 		{
-			label:    "RightsideHasDiffValue",
+			label:    "fields-populated",
+			x:        barX,
+			y:        barY,
+			wantSync: false,
+			reason:   "won't re-sync because fields are auto populated",
+		},
+		{
+			label:    "fields-removed",
+			x:        barY,
+			y:        barX,
+			wantSync: true,
+			reason:   "should re-sync because fields are removed",
+		},
+		{
+			label:    "fields-changed",
 			x:        barX,
 			y:        barZ,
 			wantSync: true,
-			reason:   "will sync because right side has different value on the same field",
+			reason:   "should re-sync because fields get changed",
 		},
 	}
 

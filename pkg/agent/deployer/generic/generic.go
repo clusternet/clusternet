@@ -19,14 +19,14 @@ package generic
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
-	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -46,26 +46,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
-
-func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool {
-	deployer.lock.RLock()
-	defer deployer.lock.RUnlock()
-	if _, ok := deployer.rsControllers[gvk]; ok {
-		return true
-	} else {
-		return false
-	}
-}
-
-func (deployer *Deployer) AddController(resource schema.GroupVersionKind, controller *resourcecontroller.Controller) {
-	deployer.lock.Lock()
-	defer deployer.lock.Unlock()
-	if _, ok := deployer.rsControllers[resource]; ok {
-		return
-	} else {
-		deployer.rsControllers[resource] = controller
-	}
-}
 
 type Deployer struct {
 	lock sync.RWMutex
@@ -159,150 +139,76 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 			deployer.discoveryRESTMapper, desc, deployer.recorder)
 	}
 
-	return deployer.ApplyDescriptionWithInformer(context.TODO(), desc)
+	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+		deployer.discoveryRESTMapper, desc, deployer.recorder, deployer.ResourceCallbackHandler)
 }
 
-func (deployer *Deployer) ApplyDescriptionWithInformer(ctx context.Context, desc *appsapi.Description) error {
-	var allErrs []error
-	wg := sync.WaitGroup{}
-	objectsToBeDeployed := desc.Spec.Raw
-	errCh := make(chan error, len(objectsToBeDeployed))
-	for _, object := range objectsToBeDeployed {
-		resource := &unstructured.Unstructured{}
-		err := resource.UnmarshalJSON(object)
-		if err != nil {
-			allErrs = append(allErrs, err)
-			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
-			klog.ErrorDepth(5, msg)
-			deployer.recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
-			continue
-		} else {
-			labels := resource.GetLabels()
-			if labels == nil {
-				labels = map[string]string{}
-			}
-			labels[known.ObjectControlledByLabel] = desc.Namespace + "." + desc.Name
-			resource.SetLabels(labels)
+func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstructured) error {
+	gvk := resource.GroupVersionKind()
 
-			wg.Add(1)
-			go func(resource *unstructured.Unstructured) {
-				defer wg.Done()
-
-				err := utils.ApplyResourceWithRetry(ctx, deployer.dynamicClient, deployer.discoveryRESTMapper, resource)
-				if err != nil {
-					errCh <- err
-				}
-				gvk := resource.GroupVersionKind()
-
-				if !deployer.ControllerHasStarted(gvk) {
-					restMapping, _ := deployer.discoveryRESTMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
-					//add informer
-					apiResource := &metav1.APIResource{
-						Group:      resource.GroupVersionKind().Group,
-						Version:    resource.GroupVersionKind().Version,
-						Kind:       resource.GroupVersionKind().Kind,
-						Name:       restMapping.Resource.Resource,
-						Namespaced: resource.GetNamespace() != "" || restMapping.Scope.Name() != meta.RESTScopeNameRoot,
-					}
-
-					descController, err := resourcecontroller.NewController(apiResource, resource.GetNamespace(),
-						deployer.clusternetClient, deployer.dynamicClient, deployer.handleResource)
-					if err != nil {
-						errCh <- err
-					}
-					//TODO when to recycle resource controller or make they live forever as resource controller cache?
-					stopChan := make(chan struct{})
-					descController.Run(known.DefaultThreadiness, stopChan)
-					deployer.AddController(gvk, descController)
-				}
-			}(resource)
+	if !deployer.ControllerHasStarted(gvk) {
+		restMapping, _ := deployer.discoveryRESTMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		//add informer
+		apiResource := &metav1.APIResource{
+			Group:      resource.GroupVersionKind().Group,
+			Version:    resource.GroupVersionKind().Version,
+			Kind:       resource.GroupVersionKind().Kind,
+			Name:       restMapping.Resource.Resource,
+			Namespaced: false, // set to false for all namespaces
 		}
+
+		resourceController, err := resourcecontroller.NewController(apiResource,
+			deployer.clusternetClient, deployer.dynamicClient, deployer.handleResource)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		//TODO when to recycle resource controller or make they live forever as resource controller cache?
+		stopChan := make(chan struct{})
+		resourceController.Run(known.DefaultThreadiness, stopChan)
+		deployer.AddController(gvk, resourceController)
 	}
-	wg.Wait()
-
-	// collect errors
-	close(errCh)
-	for err := range errCh {
-		allErrs = append(allErrs, err)
-	}
-
-	var statusPhase appsapi.DescriptionPhase
-	var reason string
-	if len(allErrs) > 0 {
-		statusPhase = appsapi.DescriptionPhaseFailure
-		reason = utilerrors.NewAggregate(allErrs).Error()
-
-		msg := fmt.Sprintf("failed to deploying Description %s: %s", klog.KObj(desc), reason)
-		klog.ErrorDepth(5, msg)
-		deployer.recorder.Event(desc, corev1.EventTypeWarning, "UnSuccessfullyDeployed", msg)
-	} else {
-		statusPhase = appsapi.DescriptionPhaseSuccess
-		reason = ""
-
-		msg := fmt.Sprintf("Description %s is deployed successfully", klog.KObj(desc))
-		klog.V(5).Info(msg)
-		deployer.recorder.Event(desc, corev1.EventTypeNormal, "SuccessfullyDeployed", msg)
-	}
-
-	// update status
-	desc.Status.Phase = statusPhase
-	desc.Status.Reason = reason
-	_, err := deployer.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
-
-	if len(allErrs) > 0 {
-		return utilerrors.NewAggregate(allErrs)
-	}
-	return err
+	return nil
 }
 
-func (deployer *Deployer) handleResource(obj interface{}) error {
-	unStr := obj.(*unstructured.Unstructured)
-	desc, err := utils.ResolveDescriptionFromResource(deployer.clusternetClient, obj)
+func (deployer *Deployer) handleResource(ownedByValue string) error {
+	// get description ns and name
+	parts := strings.Split(ownedByValue, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("unexpected value for label %s: %s", known.ObjectOwnedByDescriptionLabel, ownedByValue)
+	}
+	// namespace contains no ".", while name does
+	namespace := parts[0]
+	name := strings.TrimPrefix(ownedByValue, namespace+".")
+
+	desc, err := deployer.descLister.Descriptions(namespace).Get(name)
 	if err != nil {
 		return err
 	}
-	var allErrs []error
-	wg := sync.WaitGroup{}
-	objectsToBeDeployed := desc.Spec.Raw
-	errCh := make(chan error, 1)
-	for _, object := range objectsToBeDeployed {
-		resource := &unstructured.Unstructured{}
-		err := resource.UnmarshalJSON(object)
-		if err != nil {
-			allErrs = append(allErrs, err)
-			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
-			klog.ErrorDepth(5, msg)
-			deployer.recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
-		} else {
-			labels := resource.GetLabels()
-			if labels == nil {
-				labels = map[string]string{}
-			}
-			labels[known.ObjectControlledByLabel] = desc.Namespace + "." + desc.Name
-			resource.SetLabels(labels)
-			rawResource := resource.GroupVersionKind().String() + resource.GetNamespace() + resource.GetName()
-			currentResource := unStr.GroupVersionKind().String() + unStr.GetNamespace() + unStr.GetName()
-			if rawResource == currentResource {
-				wg.Add(1)
-				go func(resource *unstructured.Unstructured) {
-					defer wg.Done()
-					err := utils.ApplyResourceWithRetry(context.TODO(), deployer.dynamicClient, deployer.discoveryRESTMapper, resource)
-					if err != nil {
-						errCh <- err
-					}
-				}(resource)
-				break
-			}
-		}
+
+	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+		deployer.discoveryRESTMapper, desc, deployer.recorder, nil)
+}
+
+func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool {
+	deployer.lock.RLock()
+	defer deployer.lock.RUnlock()
+	if _, ok := deployer.rsControllers[gvk]; ok {
+		return true
+	} else {
+		return false
 	}
-	wg.Wait()
-	// collect errors
-	close(errCh)
-	for err := range errCh {
-		allErrs = append(allErrs, err)
+}
+
+func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller *resourcecontroller.Controller) {
+	deployer.lock.Lock()
+	defer deployer.lock.Unlock()
+	if _, ok := deployer.rsControllers[gvk]; ok {
+		return
+	} else {
+		deployer.rsControllers[gvk] = controller
 	}
-	if len(allErrs) > 0 {
-		return utilerrors.NewAggregate(allErrs)
-	}
-	return nil
 }

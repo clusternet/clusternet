@@ -144,7 +144,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	}
 
 	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, dynamicClient,
-		discoveryRESTMapper, desc, deployer.recorder)
+		discoveryRESTMapper, desc, deployer.recorder, nil)
 }
 
 func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.Interface, meta.RESTMapper, error) {

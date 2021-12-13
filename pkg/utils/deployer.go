@@ -45,10 +45,8 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
-	"github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	"github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
@@ -322,8 +320,10 @@ func resolveControllerRef(descLister applisters.DescriptionLister, namespace str
 	return desc
 }
 
+type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
+
 func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
-	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder) error {
+	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder, callbackHandler ResourceCallbackHandler) error {
 	var allErrs []error
 	wg := sync.WaitGroup{}
 	objectsToBeDeployed := desc.Spec.Raw
@@ -336,23 +336,33 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
 			klog.ErrorDepth(5, msg)
 			recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
-		} else {
-			labels := resource.GetLabels()
-			if labels == nil {
-				labels = map[string]string{}
-			}
-			labels[known.ObjectControlledByLabel] = desc.Namespace + "." + desc.Name
-			resource.SetLabels(labels)
-			wg.Add(1)
-			go func(resource *unstructured.Unstructured) {
-				defer wg.Done()
-
-				err := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
-				if err != nil {
-					errCh <- err
-				}
-			}(resource)
+			continue
 		}
+
+		labels := resource.GetLabels()
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels[known.ObjectOwnedByDescriptionLabel] = desc.Namespace + "." + desc.Name
+		resource.SetLabels(labels)
+		wg.Add(1)
+		go func(resource *unstructured.Unstructured) {
+			defer wg.Done()
+
+			retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+			if retryErr != nil {
+				errCh <- retryErr
+				return
+			}
+			if callbackHandler != nil {
+				callbackErr := callbackHandler(resource)
+				if callbackErr != nil {
+					errCh <- callbackErr
+					return
+				}
+			}
+		}(resource)
+
 	}
 	wg.Wait()
 
@@ -477,7 +487,7 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 		}
 
 		if ResourceNeedResync(resource, curObj) {
-			// try  to update resource
+			// try to update resource
 			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 				Update(context.TODO(), resource, metav1.UpdateOptions{})
 			if lastError == nil {
@@ -623,55 +633,47 @@ func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.Man
 	return false
 }
 
-func ResolveDescriptionFromResource(clusternetClient *versioned.Clientset, obj interface{}) (*v1alpha1.Description, error) {
-	var descriptionNamespace, descriptionName string
-	newObj := obj.(*unstructured.Unstructured)
-	namespacedName := newObj.GetLabels()[known.ObjectControlledByLabel]
-	parts := strings.Split(namespacedName, ".")
-
-	if len(parts) == 2 {
-		descriptionNamespace = parts[0]
-		descriptionName = parts[1]
-	} else {
-		return nil, fmt.Errorf("unexpected key format: %q", namespacedName)
+func fieldsToBeIgnored() []string {
+	return []string{
+		known.MetaGeneration,
+		known.MetaUID,
+		known.MetaSelflink,
 	}
-	desc, err := clusternetClient.AppsV1alpha1().Descriptions(descriptionNamespace).Get(context.TODO(), descriptionName, metav1.GetOptions{})
-
-	if err != nil {
-		return nil, err
-	}
-	return desc, nil
 }
 
-func getFieldShouldIgnored() []string {
-	return []string{known.MetaGeneration, known.MetaUID, known.MetaSelflink}
-}
-
-//when compare leave alone with fields like *generation* and *uid*.
+// ResourceNeedResync will compare fields and decide whether to sync back original object.
 func ResourceNeedResync(original pkgruntime.Object, current pkgruntime.Object) bool {
-	originBuf, err := json.Marshal(original)
+	originBytes, err := json.Marshal(original)
 	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json %v", err.Error()))
+		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
 		return false
 	}
 
-	currentBuf, err := json.Marshal(current)
+	currentBytes, err := json.Marshal(current)
 	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json %v", err.Error()))
+		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
 		return false
 	}
 
-	patch, err := jsonpatch.CreatePatch(currentBuf, originBuf)
+	patch, err := jsonpatch.CreatePatch(originBytes, currentBytes)
 	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("Error creating JSON patch:%v", err))
+		klog.ErrorDepth(5, fmt.Sprintf("Error creating JSON patch: %v", err))
 		return false
 	}
 	for _, operation := range patch {
-		if operation.Operation == "replace" || operation.Operation == "add" {
-			if ContainsString(getFieldShouldIgnored(), operation.Path) {
-				continue
-			}
+		// filter ignored paths
+		if ContainsString(fieldsToBeIgnored(), operation.Path) {
+			continue
+		}
+
+		switch operation.Operation {
+		case "add":
+			continue
+		case "remove", "replace":
 			return true
+		default:
+			// skip other operations, like "copy", "move" and "test"
+			continue
 		}
 	}
 

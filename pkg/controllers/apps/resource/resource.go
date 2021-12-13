@@ -17,15 +17,11 @@ limitations under the License.
 package resource
 
 import (
-	"context"
 	"fmt"
-
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -39,7 +35,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
-type SyncHandlerFunc func(obj interface{}) error
+type SyncHandlerFunc func(ownedByValue string) error
 
 // Controller is a controller that handle `name` specified resource
 type Controller struct {
@@ -51,7 +47,7 @@ type Controller struct {
 	clusternetClient *versioned.Clientset
 }
 
-func NewController(apiResource *metav1.APIResource, namespace string, clusternetClient *versioned.Clientset,
+func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.Clientset,
 	client dynamic.Interface, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
@@ -59,7 +55,7 @@ func NewController(apiResource *metav1.APIResource, namespace string, clusternet
 	gvk := schema.GroupVersionKind{Group: apiResource.Group,
 		Version: apiResource.Version, Kind: apiResource.Kind}
 
-	resourceClient, _ := utils.NewResourceClient(client, apiResource)
+	resourceClient := utils.NewResourceClient(client, apiResource)
 
 	c := &Controller{
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), gvk.String()),
@@ -69,98 +65,36 @@ func NewController(apiResource *metav1.APIResource, namespace string, clusternet
 		clusternetClient: clusternetClient,
 	}
 
-	ri := utils.NewResourceInformer(resourceClient, namespace, apiResource, cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addResource,
-		UpdateFunc: c.updateResource,
-		DeleteFunc: c.deleteResource,
+	ri := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			resource := obj.(*unstructured.Unstructured)
+			val, ok := resource.GetLabels()[known.ObjectOwnedByDescriptionLabel]
+			if ok {
+				klog.V(4).Infof("adding %s %q", c.name, klog.KObj(resource))
+				c.enqueue(val)
+			}
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			resource := oldObj.(*unstructured.Unstructured)
+			val, ok := resource.GetLabels()[known.ObjectOwnedByDescriptionLabel]
+			if ok {
+				klog.V(4).Infof("updating %s %q", c.name, klog.KObj(resource))
+				c.enqueue(val)
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			resource := obj.(*unstructured.Unstructured)
+			val, ok := resource.GetLabels()[known.ObjectOwnedByDescriptionLabel]
+			if ok {
+				klog.V(4).Infof("deleting %s %q", c.name, klog.KObj(resource))
+				c.enqueue(val)
+			}
+		},
 	})
 	ri.Start()
 	c.resourceSynced = ri.HasSynced
 
 	return c, nil
-}
-
-func (c *Controller) addResource(obj interface{}) {
-	resource := obj.(*unstructured.Unstructured)
-	klog.V(4).Infof("adding %s %q", c.name, klog.KObj(resource))
-	c.enqueue(resource)
-}
-
-func (c *Controller) updateResource(old, cur interface{}) {
-	curObj := cur.(*unstructured.Unstructured)
-	currentName := curObj.GroupVersionKind().String() + curObj.GetNamespace() + curObj.GetName()
-
-	if curObj.GetDeletionTimestamp() != nil {
-		c.enqueue(curObj)
-		return
-	}
-
-	desc, err := utils.ResolveDescriptionFromResource(c.clusternetClient, old)
-	if err != nil {
-		return
-	}
-	// in case the Description label been removed in child cluster.
-	if _, ok := curObj.GetLabels()[known.ObjectControlledByLabel]; !ok {
-		labels := curObj.GetLabels()
-		if labels == nil {
-			labels = map[string]string{}
-		}
-		labels[known.ObjectControlledByLabel] = desc.GetNamespace() + "." + desc.GetName()
-		curObj.SetLabels(labels)
-		if _, error := c.client.Resources(curObj.GetNamespace()).Update(context.TODO(), curObj, metav1.UpdateOptions{}); error != nil {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to update rawResource: %v", err))
-			return
-		}
-	}
-
-	// in case the create label been removed in child cluster.
-	if _, ok := curObj.GetLabels()[known.ObjectCreatedByLabel]; !ok {
-		labels := curObj.GetLabels()
-		if labels == nil {
-			labels = map[string]string{}
-		}
-		labels[known.ObjectCreatedByLabel] = known.ClusternetHubName
-		curObj.SetLabels(labels)
-		if _, error := c.client.Resources(curObj.GetNamespace()).Update(context.TODO(), curObj, metav1.UpdateOptions{}); error != nil {
-			klog.ErrorDepth(5, fmt.Sprintf("failed to update rawResource: %v", err))
-			return
-		}
-	}
-
-	objectsToBeDeployed := desc.Spec.Raw
-	for _, object := range objectsToBeDeployed {
-		rawResource := &unstructured.Unstructured{}
-		err := rawResource.UnmarshalJSON(object)
-		if err != nil {
-			msg := fmt.Sprintf("failed to unmarshal rawResource: %v", err)
-			klog.ErrorDepth(5, msg)
-		} else {
-			rawName := rawResource.GroupVersionKind().String() + rawResource.GetNamespace() + rawResource.GetName()
-
-			if rawName == currentName {
-				if utils.ResourceNeedResync(rawResource, curObj) {
-					c.enqueue(curObj)
-					klog.V(4).Infof("updating rawResource %q", klog.KObj(curObj))
-					return
-				}
-				klog.V(4).Infof("no updates on the object %s, skipping syncing", klog.KObj(curObj))
-				break
-			}
-		}
-	}
-}
-
-func (c *Controller) deleteResource(obj interface{}) {
-	resource := obj.(*unstructured.Unstructured)
-	if deleted, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-		// This object might be stale but ok for our current usage.
-		obj = deleted.Obj
-		if obj == nil {
-			return
-		}
-	}
-	klog.V(4).Infof("deleting object %q", klog.KObj(resource))
-	c.enqueue(resource)
 }
 
 // Run will set up the event handlers for types we are interested in, as well
@@ -216,11 +150,6 @@ func (c *Controller) processNextWorkItem() bool {
 		defer c.workqueue.Done(obj)
 		var key string
 		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
-		// workqueue.
 		if key, ok = obj.(string); !ok {
 			// As the item in the workqueue is actually invalid, we call
 			// Forget here else we'd go into a loop of attempting to
@@ -229,8 +158,6 @@ func (c *Controller) processNextWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		// Run the syncHandler, passing it the namespace/name string of the
-		// resource to be synced.
 		if err := c.syncHandler(key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
@@ -239,7 +166,7 @@ func (c *Controller) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("successfully synced %q %q", c.name, key)
+		klog.Infof("successfully sync back Description %s", key)
 		return nil
 	}(obj)
 
@@ -254,42 +181,11 @@ func (c *Controller) processNextWorkItem() bool {
 // syncHandler compares the actual state with the desired, and attempts to
 // converge the two.
 func (c *Controller) syncHandler(key string) error {
-	// If an error occurs during handling, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
-
-	// Convert the namespace/name string into a distinct namespace and name
-	ns, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource %s key: %s", c.name, key))
-		return nil
-	}
-
-	klog.V(4).Infof("start processing Resource %s %q", c.name, key)
-	// Get the resource with this namespace/name
-	obj, err := c.client.Resources(ns).Get(context.TODO(), name, metav1.GetOptions{})
-	// The resource may no longer exist, in which case we stop processing.
-	if errors.IsNotFound(err) {
-		klog.V(2).Infof("%s %q has been deleted", c.name, key)
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	err = c.syncHandlerFunc(obj)
-
-	return err
+	klog.V(4).Infof("start processing Description %s", key)
+	return c.syncHandlerFunc(key)
 }
 
-// enqueue takes a resource object and converts it into a namespace/name
-// string which is then put onto the work queue. This method can handle any
-// kind of resources.
-func (c *Controller) enqueue(object runtime.Object) {
-	key, err := cache.MetaNamespaceKeyFunc(object)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
+// enqueue puts key onto the work queue.
+func (c *Controller) enqueue(key string) {
 	c.workqueue.Add(key)
 }
