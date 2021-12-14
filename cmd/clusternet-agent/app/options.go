@@ -21,17 +21,14 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/clusternet/clusternet/pkg/agent"
-)
-
-const (
-	// kubeConfig flag sets the kubeconfig file to use when talking to current child cluster.
-	kubeConfig = "kubeconfig"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // ClusterRegistrationOptions holds the command-line options for command
 type options struct {
-	kubeconfig          string
 	clusterRegistration *agent.ClusterRegistrationOptions
+	*utils.ControllerOptions
 }
 
 // Complete completes all the required options.
@@ -41,6 +38,11 @@ func (opts *options) Complete() error {
 	// complete cluster registration options
 	errs := opts.clusterRegistration.Complete()
 	allErrs = append(allErrs, errs...)
+
+	// complete leader election and client connection options
+	if err := opts.ControllerOptions.Complete(); err != nil {
+		allErrs = append(allErrs, err)
+	}
 
 	return utilerrors.NewAggregate(allErrs)
 }
@@ -53,21 +55,34 @@ func (opts *options) Validate() error {
 	errs := opts.clusterRegistration.Validate()
 	allErrs = append(allErrs, errs...)
 
+	// validate leader election and client connection options
+	if err := opts.ControllerOptions.Validate(); err != nil {
+		allErrs = append(allErrs, err)
+	}
+
 	return utilerrors.NewAggregate(allErrs)
 }
 
 // AddFlags adds the flags to the flagset.
 func (opts *options) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&opts.kubeconfig, kubeConfig, opts.kubeconfig,
-		"Path to a kubeconfig file for current child cluster. Only required if out-of-cluster")
-
 	// flags for cluster registration
 	opts.clusterRegistration.AddFlags(fs)
+
+	// flags for leader election and client connection
+	opts.ControllerOptions.AddFlags(fs)
 }
 
 // NewOptions creates a new *options with sane defaults
-func NewOptions() *options {
+func NewOptions() (*options, error) {
+	// "self-cluster" is the legacy name for lease
+	// TODO: rename to "clusternet-agent"
+	controllerOptions, err := utils.NewControllerOptions("self-cluster", known.ClusternetSystemNamespace)
+	if err != nil {
+		return nil, err
+	}
+
 	return &options{
 		clusterRegistration: agent.NewClusterRegistrationOptions(),
-	}
+		ControllerOptions:   controllerOptions,
+	}, nil
 }

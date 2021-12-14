@@ -54,10 +54,15 @@ spec:
                 secretKeyRef:
                   name: clusternet-agent-cluster-registration
                   key: regToken
+            - name: AGENT_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           command:
             - /usr/local/bin/clusternet-agent
             - --cluster-reg-token=$(REG_TOKEN)
             - --cluster-reg-parent-url=$(PARENT_URL)
             - --cluster-sync-mode=Dual
             - --feature-gates=SocketConnection=true,AppPusher=true
+            - --leader-elect-resource-namespace=$(AGENT_NAMESPACE)
             - -v=4

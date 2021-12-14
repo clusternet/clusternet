@@ -32,7 +32,8 @@ const (
 	// ClusterAPIServerURLKey denotes the apiserver address
 	ClusterAPIServerURLKey = "apiserver-advertise-url"
 
-	// ClusternetSystemNamespace is the system namespace where we place system components.
+	// ClusternetSystemNamespace is the default system namespace where we place system components.
+	// This could be re-configured with flag "--leader-elect-resource-namespace"
 	ClusternetSystemNamespace = "clusternet-system"
 
 	// ClusternetAppSA is the service account where we store credentials to deploy resources
@@ -52,7 +53,7 @@ const (
 	// DefaultRetryPeriod means the default retry period
 	DefaultRetryPeriod = 5 * time.Second
 
-	// Providing 0 duration to an informer indicates that resync should be delayed as long as possible
+	// NoResyncPeriod indicates that informer resync should be delayed as long as possible
 	NoResyncPeriod = 0 * time.Second
 
 	// DefaultThreadiness defines default number of threads

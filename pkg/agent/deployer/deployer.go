@@ -53,13 +53,17 @@ type Deployer struct {
 	appPusherEnabled bool
 
 	childAPIServerURL string
+	// systemNamespace specifies the default namespace to look up credentials
+	// default to be "clusternet-system"
+	systemNamespace string
 }
 
-func NewDeployer(syncMode, childAPIServerURL string) *Deployer {
+func NewDeployer(syncMode, childAPIServerURL, systemNamespace string) *Deployer {
 	return &Deployer{
 		syncMode:          clusterapi.ClusterSyncMode(syncMode),
 		appPusherEnabled:  utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		childAPIServerURL: childAPIServerURL,
+		systemNamespace:   systemNamespace,
 	}
 }
 
@@ -79,7 +83,7 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	}
 
 	// make sure deployer gets initialized before we go next
-	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet)
+	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet, d.systemNamespace)
 	if d.appPusherEnabled && d.syncMode != clusterapi.Pull {
 		klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
 		createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
