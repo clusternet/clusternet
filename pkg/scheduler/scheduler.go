@@ -85,7 +85,7 @@ type Scheduler struct {
 
 // NewScheduler returns a new Scheduler.
 func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error) {
-	clientConfig, err := utils.LoadsKubeConfig(schedulerOptions.ClientConnection.Kubeconfig, 1)
+	clientConfig, err := utils.LoadsKubeConfig(&schedulerOptions.ClientConnection)
 	if err != nil {
 		return nil, err
 	}

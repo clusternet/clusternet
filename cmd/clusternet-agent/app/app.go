@@ -36,7 +36,10 @@ var (
 
 // NewClusternetAgentCmd creates a *cobra.Command object with default parameters
 func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
-	opts := NewOptions()
+	opts, err := NewOptions()
+	if err != nil {
+		klog.Fatalf("unable to initialize command options: %v", err)
+	}
 
 	cmd := &cobra.Command{
 		Use:  cmdName,
@@ -57,14 +60,16 @@ func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 				klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 			})
 
-			// TODO: add logic
 			agentCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
-			agent, err := agent.NewAgent(agentCtx, opts.kubeconfig, opts.clusterRegistration)
+			agent, err := agent.NewAgent(agentCtx, opts.clusterRegistration, opts.ControllerOptions)
 			if err != nil {
 				klog.Exit(err)
 			}
-			agent.Run()
+			if err = agent.Run(); err != nil {
+				klog.Exit(err)
+			}
+
 		},
 	}
 

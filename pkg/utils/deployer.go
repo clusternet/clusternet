@@ -578,26 +578,26 @@ func getStatusCause(err error) ([]metav1.StatusCause, bool) {
 	return apierr.Status().Details.Causes, true
 }
 
-func GetDeployerCredentials(ctx context.Context, childKubeClientSet kubernetes.Interface) *corev1.Secret {
+func GetDeployerCredentials(ctx context.Context, childKubeClientSet kubernetes.Interface, systemNamespace string) *corev1.Secret {
 	var secret *corev1.Secret
 	localCtx, cancel := context.WithCancel(ctx)
 
-	klog.V(4).Infof("get ServiceAccount %s/%s", known.ClusternetSystemNamespace, known.ClusternetAppSA)
+	klog.V(4).Infof("get ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA)
 	wait.JitterUntilWithContext(localCtx, func(ctx context.Context) {
-		sa, err := childKubeClientSet.CoreV1().ServiceAccounts(known.ClusternetSystemNamespace).Get(ctx, known.ClusternetAppSA, metav1.GetOptions{})
+		sa, err := childKubeClientSet.CoreV1().ServiceAccounts(systemNamespace).Get(ctx, known.ClusternetAppSA, metav1.GetOptions{})
 		if err != nil {
-			klog.ErrorDepth(5, fmt.Errorf("failed to get ServiceAccount %s/%s: %v", known.ClusternetSystemNamespace, known.ClusternetAppSA, err))
+			klog.ErrorDepth(5, fmt.Errorf("failed to get ServiceAccount %s/%s: %v", systemNamespace, known.ClusternetAppSA, err))
 			return
 		}
 
 		if len(sa.Secrets) == 0 {
-			klog.ErrorDepth(5, fmt.Errorf("no secrets found in ServiceAccount %s/%s", known.ClusternetSystemNamespace, known.ClusternetAppSA))
+			klog.ErrorDepth(5, fmt.Errorf("no secrets found in ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA))
 			return
 		}
 
-		secret, err = childKubeClientSet.CoreV1().Secrets(known.ClusternetSystemNamespace).Get(ctx, sa.Secrets[0].Name, metav1.GetOptions{})
+		secret, err = childKubeClientSet.CoreV1().Secrets(systemNamespace).Get(ctx, sa.Secrets[0].Name, metav1.GetOptions{})
 		if err != nil {
-			klog.ErrorDepth(5, fmt.Errorf("failed to get Secret %s/%s: %v", known.ClusternetSystemNamespace, sa.Secrets[0].Name, err))
+			klog.ErrorDepth(5, fmt.Errorf("failed to get Secret %s/%s: %v", systemNamespace, sa.Secrets[0].Name, err))
 			return
 		}
 

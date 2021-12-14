@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -94,21 +95,35 @@ func CreateKubeConfigForSocketProxyWithToken(serverURL, token string) *clientcmd
 }
 
 // LoadsKubeConfig tries to load kubeconfig from specified kubeconfig file or in-cluster config
-func LoadsKubeConfig(kubeConfigPath string, flowRate int) (*rest.Config, error) {
-	if len(kubeConfigPath) == 0 {
-		// use in-cluster config
-		return rest.InClusterConfig()
+func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionConfiguration) (*rest.Config, error) {
+	if clientConnectionCfg == nil {
+		return nil, errors.New("nil ClientConnectionConfiguration")
 	}
 
-	clientConfig, err := clientcmd.LoadFromFile(kubeConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", kubeConfigPath, err)
+	var cfg *rest.Config
+	var clientConfig *clientcmdapi.Config
+	var err error
+
+	switch clientConnectionCfg.Kubeconfig {
+	case "":
+		// use in-cluster config
+		cfg, err = rest.InClusterConfig()
+	default:
+		clientConfig, err = clientcmd.LoadFromFile(clientConnectionCfg.Kubeconfig)
+		if err != nil {
+			return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", clientConnectionCfg.Kubeconfig, err)
+		}
+		cfg, err = clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 	}
-	config, err := clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+
 	if err != nil {
-		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
+		return nil, err
 	}
-	return applyDefaultRateLimiter(config, flowRate), nil
+
+	// apply qps and burst settings
+	cfg.QPS = clientConnectionCfg.QPS
+	cfg.Burst = int(clientConnectionCfg.Burst)
+	return cfg, nil
 }
 
 // GenerateKubeConfigFromToken composes a kubeconfig from token
@@ -119,10 +134,6 @@ func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRat
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
 
-	return applyDefaultRateLimiter(config, flowRate), nil
-}
-
-func applyDefaultRateLimiter(config *rest.Config, flowRate int) *rest.Config {
 	if flowRate < 0 {
 		flowRate = 1
 	}
@@ -131,7 +142,7 @@ func applyDefaultRateLimiter(config *rest.Config, flowRate int) *rest.Config {
 	config.QPS = rest.DefaultQPS * float32(flowRate)
 	config.Burst = rest.DefaultBurst * flowRate
 
-	return config
+	return config, nil
 }
 
 func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister,

@@ -53,15 +53,14 @@ const (
 
 // default values
 const (
-	SelfClusterLeaseName    = "self-cluster"
 	ParentClusterSecretName = "parent-cluster"
 
 	// RegistrationNamePrefix is a prefix name for cluster registration
 	RegistrationNamePrefix = "clusternet-cluster"
 
-	// max length for clustername
+	// ClusterNameMaxLength is the max length for clustername
 	ClusterNameMaxLength = 30
-	// default length for random uid
+	// DefaultRandomUIDLength is the default length for random uid
 	DefaultRandomUIDLength = 5
 
 	nameFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"

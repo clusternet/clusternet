@@ -27,7 +27,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 
@@ -76,7 +78,13 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	socketConnection := utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection)
 	deployerEnabled := utilfeature.DefaultFeatureGate.Enabled(features.Deployer)
 
-	config, err := utils.LoadsKubeConfig(opts.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath, 10)
+	clientConnectionCfg := &componentbaseconfig.ClientConnectionConfiguration{
+		Kubeconfig: opts.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath,
+		QPS:        rest.DefaultQPS * float32(10),
+		Burst:      int32(rest.DefaultBurst * 10),
+	}
+
+	config, err := utils.LoadsKubeConfig(clientConnectionCfg)
 	if err != nil {
 		return nil, err
 	}

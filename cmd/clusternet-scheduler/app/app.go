@@ -53,7 +53,7 @@ func NewSchedulerCommand(ctx context.Context) *cobra.Command {
 			if err = opts.Complete(); err != nil {
 				klog.Exit(err)
 			}
-			if err = opts.Validate(args); err != nil {
+			if err = opts.Validate(); err != nil {
 				klog.Exit(err)
 			}
 
