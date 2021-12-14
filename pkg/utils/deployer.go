@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mattbaird/jsonpatch"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
@@ -34,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	pkgruntime "k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -318,8 +320,10 @@ func resolveControllerRef(descLister applisters.DescriptionLister, namespace str
 	return desc
 }
 
+type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
+
 func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
-	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder) error {
+	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder, callbackHandler ResourceCallbackHandler) error {
 	var allErrs []error
 	wg := sync.WaitGroup{}
 	objectsToBeDeployed := desc.Spec.Raw
@@ -332,17 +336,33 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
 			klog.ErrorDepth(5, msg)
 			recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
-		} else {
-			wg.Add(1)
-			go func(resource *unstructured.Unstructured) {
-				defer wg.Done()
-
-				err := applyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
-				if err != nil {
-					errCh <- err
-				}
-			}(resource)
+			continue
 		}
+
+		labels := resource.GetLabels()
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels[known.ObjectOwnedByDescriptionLabel] = desc.Namespace + "." + desc.Name
+		resource.SetLabels(labels)
+		wg.Add(1)
+		go func(resource *unstructured.Unstructured) {
+			defer wg.Done()
+
+			retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+			if retryErr != nil {
+				errCh <- retryErr
+				return
+			}
+			if callbackHandler != nil {
+				callbackErr := callbackHandler(resource)
+				if callbackErr != nil {
+					errCh <- callbackErr
+					return
+				}
+			}
+		}(resource)
+
 	}
 	wg.Wait()
 
@@ -436,7 +456,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 	return err
 }
 
-func applyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
+func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
 	// set UID as empty
 	resource.SetUID("")
 
@@ -457,38 +477,42 @@ func applyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 			return false, nil
 		}
 
-		// try  to update resource
-		_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
-			Update(context.TODO(), resource, metav1.UpdateOptions{})
-		if lastError == nil {
-			return true, nil
-		}
-		statusCauses, ok := getStatusCause(lastError)
-		if !ok {
-			lastError = fmt.Errorf("failed to get StatusCause for %s %s", resource.GetKind(), klog.KObj(resource))
-			return false, nil
-		}
-
 		curObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 			Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
 		if err != nil {
 			lastError = err
 			return false, nil
+		} else {
+			lastError = nil
 		}
-		resourceCopy := resource.DeepCopy()
-		for _, cause := range statusCauses {
-			if cause.Type != metav1.CauseTypeFieldValueInvalid {
-				continue
+
+		if ResourceNeedResync(resource, curObj) {
+			// try to update resource
+			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+				Update(context.TODO(), resource, metav1.UpdateOptions{})
+			if lastError == nil {
+				return true, nil
 			}
-			// apply immutable value
-			fields := strings.Split(cause.Field, ".")
-			setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
-		}
-		// update with immutable values applied
-		_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
-			Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
-		if lastError == nil {
-			return true, nil
+			statusCauses, ok := getStatusCause(lastError)
+			if !ok {
+				lastError = fmt.Errorf("failed to get StatusCause for %s %s", resource.GetKind(), klog.KObj(resource))
+				return false, nil
+			}
+			resourceCopy := resource.DeepCopy()
+			for _, cause := range statusCauses {
+				if cause.Type != metav1.CauseTypeFieldValueInvalid {
+					continue
+				}
+				// apply immutable value
+				fields := strings.Split(cause.Field, ".")
+				setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
+			}
+			// update with immutable values applied
+			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
+				Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
+			if lastError == nil {
+				return true, nil
+			}
 		}
 		return false, nil
 	})
@@ -603,6 +627,53 @@ func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.Man
 	for _, condition := range mcls[0].Status.Conditions {
 		if condition.Type == clusterapi.ClusterReady {
 			return condition.Status == metav1.ConditionUnknown
+		}
+	}
+
+	return false
+}
+
+func fieldsToBeIgnored() []string {
+	return []string{
+		known.MetaGeneration,
+		known.MetaUID,
+		known.MetaSelflink,
+	}
+}
+
+// ResourceNeedResync will compare fields and decide whether to sync back original object.
+func ResourceNeedResync(original pkgruntime.Object, current pkgruntime.Object) bool {
+	originBytes, err := json.Marshal(original)
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
+		return false
+	}
+
+	currentBytes, err := json.Marshal(current)
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
+		return false
+	}
+
+	patch, err := jsonpatch.CreatePatch(originBytes, currentBytes)
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("Error creating JSON patch: %v", err))
+		return false
+	}
+	for _, operation := range patch {
+		// filter ignored paths
+		if ContainsString(fieldsToBeIgnored(), operation.Path) {
+			continue
+		}
+
+		switch operation.Operation {
+		case "add":
+			continue
+		case "remove", "replace":
+			return true
+		default:
+			// skip other operations, like "copy", "move" and "test"
+			continue
 		}
 	}
 

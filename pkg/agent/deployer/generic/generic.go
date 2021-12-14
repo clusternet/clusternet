@@ -18,8 +18,15 @@ package generic
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -32,13 +39,16 @@ import (
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/description"
+	resourcecontroller "github.com/clusternet/clusternet/pkg/controllers/apps/resource"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 type Deployer struct {
+	lock sync.RWMutex
 	// syncMode indicates current sync mode
 	syncMode clusterapi.ClusterSyncMode
 	// whether AppPusher feature gate is enabled
@@ -55,6 +65,7 @@ type Deployer struct {
 	descLister     applisters.DescriptionLister
 	descSynced     cache.InformerSynced
 	descController *description.Controller
+	rsControllers  map[schema.GroupVersionKind]*resourcecontroller.Controller
 
 	recorder record.EventRecorder
 }
@@ -81,6 +92,7 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 		descLister:          clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
 		descSynced:          clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
 		recorder:            recorder,
+		rsControllers:       make(map[schema.GroupVersionKind]*resourcecontroller.Controller),
 	}
 
 	descController, err := description.NewController(clusternetClient,
@@ -128,5 +140,75 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	}
 
 	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder)
+		deployer.discoveryRESTMapper, desc, deployer.recorder, deployer.ResourceCallbackHandler)
+}
+
+func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstructured) error {
+	gvk := resource.GroupVersionKind()
+
+	if !deployer.ControllerHasStarted(gvk) {
+		restMapping, _ := deployer.discoveryRESTMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		//add informer
+		apiResource := &metav1.APIResource{
+			Group:      resource.GroupVersionKind().Group,
+			Version:    resource.GroupVersionKind().Version,
+			Kind:       resource.GroupVersionKind().Kind,
+			Name:       restMapping.Resource.Resource,
+			Namespaced: false, // set to false for all namespaces
+		}
+
+		resourceController, err := resourcecontroller.NewController(apiResource,
+			deployer.clusternetClient, deployer.dynamicClient, deployer.handleResource)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		//TODO when to recycle resource controller or make they live forever as resource controller cache?
+		stopChan := make(chan struct{})
+		resourceController.Run(known.DefaultThreadiness, stopChan)
+		deployer.AddController(gvk, resourceController)
+	}
+	return nil
+}
+
+func (deployer *Deployer) handleResource(ownedByValue string) error {
+	// get description ns and name
+	parts := strings.Split(ownedByValue, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("unexpected value for label %s: %s", known.ObjectOwnedByDescriptionLabel, ownedByValue)
+	}
+	// namespace contains no ".", while name does
+	namespace := parts[0]
+	name := strings.TrimPrefix(ownedByValue, namespace+".")
+
+	desc, err := deployer.descLister.Descriptions(namespace).Get(name)
+	if err != nil {
+		return err
+	}
+
+	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+		deployer.discoveryRESTMapper, desc, deployer.recorder, nil)
+}
+
+func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool {
+	deployer.lock.RLock()
+	defer deployer.lock.RUnlock()
+	if _, ok := deployer.rsControllers[gvk]; ok {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller *resourcecontroller.Controller) {
+	deployer.lock.Lock()
+	defer deployer.lock.Unlock()
+	if _, ok := deployer.rsControllers[gvk]; ok {
+		return
+	} else {
+		deployer.rsControllers[gvk] = controller
+	}
 }

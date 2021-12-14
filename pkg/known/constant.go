@@ -51,6 +51,19 @@ const (
 
 	// DefaultRetryPeriod means the default retry period
 	DefaultRetryPeriod = 5 * time.Second
+
+	// Providing 0 duration to an informer indicates that resync should be delayed as long as possible
+	NoResyncPeriod = 0 * time.Second
+
+	// DefaultThreadiness defines default number of threads
+	DefaultThreadiness = 2
+)
+
+// fields should be ignored when compared
+const (
+	MetaGeneration = "/metadata/generation"
+	MetaUID        = "/metadata/uid"
+	MetaSelflink   = "/metadata/selfLink"
 )
 
 const (
