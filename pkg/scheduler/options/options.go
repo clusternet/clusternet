@@ -18,77 +18,54 @@ package options
 
 import (
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	componentbaseconfig "k8s.io/component-base/config"
-	componentbaseoptions "k8s.io/component-base/config/options"
-	componentbaseconfigv1alpha1 "k8s.io/component-base/config/v1alpha1"
-	"k8s.io/klog/v2"
 
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // SchedulerOptions has all the params needed to run a Scheduler
 type SchedulerOptions struct {
-	// LeaderElection defines the configuration of leader election client.
-	LeaderElection componentbaseconfig.LeaderElectionConfiguration
-
-	// ClientConnection specifies the kubeconfig file and client connection
-	// settings for the proxy server to use when communicating with the apiserver.
-	ClientConnection componentbaseconfig.ClientConnectionConfiguration
+	*utils.ControllerOptions
 }
 
 // NewSchedulerOptions returns a new SchedulerOptions
 func NewSchedulerOptions() (*SchedulerOptions, error) {
-	versionedClientConnection := componentbaseconfigv1alpha1.ClientConnectionConfiguration{}
-	versionedLeaderElection := componentbaseconfigv1alpha1.LeaderElectionConfiguration{
-		ResourceLock:      "lease", // Use lease-based leader election to reduce cost.
-		ResourceName:      "clusternet-scheduler",
-		ResourceNamespace: known.ClusternetSystemNamespace,
-	}
-	// Use the default ClientConnectionConfiguration and LeaderElectionConfiguration options
-	componentbaseconfigv1alpha1.RecommendedDefaultClientConnectionConfiguration(&versionedClientConnection)
-	componentbaseconfigv1alpha1.RecommendedDefaultLeaderElectionConfiguration(&versionedLeaderElection)
-
-	o := &SchedulerOptions{
-		ClientConnection: componentbaseconfig.ClientConnectionConfiguration{},
-		LeaderElection:   componentbaseconfig.LeaderElectionConfiguration{},
-	}
-
-	schedScheme := runtime.NewScheme()
-	utilruntime.Must(componentbaseconfigv1alpha1.AddToScheme(schedScheme))
-	if err := schedScheme.Convert(&versionedClientConnection, &o.ClientConnection, nil); err != nil {
-		return nil, err
-	}
-	if err := schedScheme.Convert(&versionedLeaderElection, &o.LeaderElection, nil); err != nil {
+	controllerOptions, err := utils.NewControllerOptions("clusternet-scheduler", known.ClusternetSystemNamespace)
+	if err != nil {
 		return nil, err
 	}
 
-	return o, nil
+	return &SchedulerOptions{
+		ControllerOptions: controllerOptions,
+	}, nil
 }
 
 // Validate validates SchedulerOptions
-func (o *SchedulerOptions) Validate(args []string) error {
+func (o *SchedulerOptions) Validate() error {
 	errors := []error{}
+
+	// validate leader election and client connection options
+	if err := o.ControllerOptions.Validate(); err != nil {
+		errors = append(errors, err)
+	}
+
 	return utilerrors.NewAggregate(errors)
 }
 
 // Complete fills in fields required to have valid data
 func (o *SchedulerOptions) Complete() error {
-	// TODO
+	allErrs := []error{}
 
-	return nil
+	// complete leader election and client connection options
+	if err := o.ControllerOptions.Complete(); err != nil {
+		allErrs = append(allErrs, err)
+	}
+
+	return utilerrors.NewAggregate(allErrs)
 }
 
 // AddFlags adds flags for SchedulerOptions.
 func (o *SchedulerOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&o.ClientConnection.Kubeconfig, "kubeconfig", o.ClientConnection.Kubeconfig, "Path to a kubeconfig file pointing at the 'core' kubernetes server. Only required if out-of-cluster.")
-	fs.Float32Var(&o.ClientConnection.QPS, "kube-api-qps", o.ClientConnection.QPS, "QPS to use while talking with the 'core' kubernetes apiserver.")
-	fs.Int32Var(&o.ClientConnection.Burst, "kube-api-burst", o.ClientConnection.Burst, "Burst to use while talking with 'core' kubernetes apiserver.")
-
-	componentbaseoptions.BindLeaderElectionFlags(&o.LeaderElection, fs)
-	if err := fs.MarkHidden("leader-elect-resource-lock"); err != nil {
-		klog.Errorf("failed to set a flag to hidden: %v", err)
-	}
+	o.ControllerOptions.AddFlags(fs)
 }
