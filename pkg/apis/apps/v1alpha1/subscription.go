@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -93,6 +94,10 @@ type Subscriber struct {
 	// +required
 	// +kubebuilder:validation:Required
 	ClusterAffinity *metav1.LabelSelector `json:"clusterAffinity"`
+
+	// ClusterTolerations tolerates any matched taints of ManagedCluster.
+	// +optional
+	ClusterTolerations []corev1.Toleration `json:"clusterTolerations,omitempty"`
 }
 
 // Feed defines the resource to be selected.

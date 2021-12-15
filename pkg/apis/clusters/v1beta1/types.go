@@ -196,6 +196,10 @@ type ManagedClusterSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Enum=Push;Pull;Dual
 	SyncMode ClusterSyncMode `json:"syncMode"`
+
+	// Taints has the "effect" on any resource that does not tolerate the Taint.
+	// +optional
+	Taints []corev1.Taint `json:"taints,omitempty"`
 }
 
 // ManagedClusterStatus defines the observed state of ManagedCluster
