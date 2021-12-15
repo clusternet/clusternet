@@ -38,12 +38,15 @@ import (
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/version"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	clusternetopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
 	"github.com/clusternet/clusternet/pkg/hub/apiserver"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -55,21 +58,37 @@ type HubServerOptions struct {
 	// No tunnel logging by default
 	TunnelLogging bool
 
+	// Whether the anonymous access is allowed by the kube-apiserver,
+	// i.e. flag "--anonymous-auth=true" is set to kube-apiserver.
+	// If enabled, then the deployers in Clusternet will use anonymous when proxying requests to child clusters.
+	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
+	AnonymousAuthSupported bool
+
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	LoopbackSharedInformerFactory informers.SharedInformerFactory
+
+	*utils.ControllerOptions
 }
 
 // NewHubServerOptions returns a new HubServerOptions
-func NewHubServerOptions() *HubServerOptions {
-	o := &HubServerOptions{
-		RecommendedOptions: genericoptions.NewRecommendedOptions("fake", nil),
+func NewHubServerOptions() (*HubServerOptions, error) {
+	controllerOpts, err := utils.NewControllerOptions("clusternet-hub", known.ClusternetSystemNamespace)
+	if err != nil {
+		return nil, err
 	}
-	return o
+	controllerOpts.ClientConnection.QPS = rest.DefaultQPS * float32(10)
+	controllerOpts.ClientConnection.Burst = int32(rest.DefaultBurst * 10)
+
+	return &HubServerOptions{
+		RecommendedOptions:     genericoptions.NewRecommendedOptions("fake", nil),
+		AnonymousAuthSupported: true,
+		ControllerOptions:      controllerOpts,
+	}, nil
 }
 
 // Validate validates HubServerOptions
-func (o *HubServerOptions) Validate(args []string) error {
+func (o *HubServerOptions) Validate() error {
 	errors := []error{}
 	errors = append(errors, o.validateRecommendedOptions()...)
 	return utilerrors.NewAggregate(errors)
@@ -77,8 +96,7 @@ func (o *HubServerOptions) Validate(args []string) error {
 
 // Complete fills in fields required to have valid data
 func (o *HubServerOptions) Complete() error {
-	// TODO
-
+	o.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath = o.ClientConnection.Kubeconfig
 	return nil
 }
 
@@ -133,6 +151,10 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 
 func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 	o.addRecommendedOptionsFlags(fs)
+	o.ControllerOptions.AddFlags(fs)
+
+	fs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
+	fs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
 }
 
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
@@ -144,7 +166,8 @@ func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
 	o.RecommendedOptions.Authorization.AddFlags(fs)
 	o.RecommendedOptions.Audit.LogOptions.AddFlags(fs)
 	o.RecommendedOptions.Features.AddFlags(fs)
-	o.RecommendedOptions.CoreAPI.AddFlags(fs)
+	// flag "kubeconfig" has been declared in o.ControllerOptions
+	//o.RecommendedOptions.CoreAPI.AddFlags(fs) // --kubeconfig flag
 }
 
 func (o *HubServerOptions) validateRecommendedOptions() []error {

@@ -76,28 +76,38 @@ type Deployer struct {
 
 	// apiserver url of parent cluster
 	apiserverURL string
+
+	// systemNamespace specifies the default namespace to look up objects, like credentials
+	// default to be "clusternet-system"
+	systemNamespace string
+
+	// If enabled, then the deployers in Clusternet will use anonymous when proxying requests to child clusters.
+	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
+	anonymousAuthSupported bool
 }
 
-func NewDeployer(apiserverURL string, clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
-	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
-	kubeInformerFactory kubeinformers.SharedInformerFactory,
-	recorder record.EventRecorder) (*Deployer, error) {
+func NewDeployer(apiserverURL, systemNamespace string,
+	clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
+	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
+	recorder record.EventRecorder, proxyingWithAnonymous bool) (*Deployer, error) {
 
 	deployer := &Deployer{
-		apiserverURL:     apiserverURL,
-		clusternetClient: clusternetClient,
-		kubeClient:       kubeClient,
-		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
-		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
-		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
-		hrSynced:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer().HasSynced,
-		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
-		descSynced:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
-		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
-		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
-		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
-		secretSynced:     kubeInformerFactory.Core().V1().Secrets().Informer().HasSynced,
-		recorder:         recorder,
+		apiserverURL:           apiserverURL,
+		systemNamespace:        systemNamespace,
+		clusternetClient:       clusternetClient,
+		kubeClient:             kubeClient,
+		chartLister:            clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:            clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
+		hrLister:               clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
+		hrSynced:               clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer().HasSynced,
+		descLister:             clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		descSynced:             clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
+		clusterLister:          clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		clusterSynced:          clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
+		secretLister:           kubeInformerFactory.Core().V1().Secrets().Lister(),
+		secretSynced:           kubeInformerFactory.Core().V1().Secrets().Informer().HasSynced,
+		recorder:               recorder,
+		anonymousAuthSupported: proxyingWithAnonymous,
 	}
 
 	hrController, err := helmrelease.NewController(clusternetClient,
@@ -401,7 +411,9 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, hr.Namespace, hr.Labels[known.ClusterIDLabel], deployer.apiserverURL)
+	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister,
+		hr.Namespace, hr.Labels[known.ClusterIDLabel], deployer.apiserverURL, deployer.systemNamespace,
+		deployer.anonymousAuthSupported)
 	if err != nil {
 		return err
 	}

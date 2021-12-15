@@ -27,9 +27,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 
@@ -77,14 +75,7 @@ type Hub struct {
 func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	socketConnection := utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection)
 	deployerEnabled := utilfeature.DefaultFeatureGate.Enabled(features.Deployer)
-
-	clientConnectionCfg := &componentbaseconfig.ClientConnectionConfiguration{
-		Kubeconfig: opts.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath,
-		QPS:        rest.DefaultQPS * float32(10),
-		Burst:      int32(rest.DefaultBurst * 10),
-	}
-
-	config, err := utils.LoadsKubeConfig(clientConnectionCfg)
+	config, err := utils.LoadsKubeConfig(&opts.ClientConnection)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +112,9 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 
 	var d *deployer.Deployer
 	if deployerEnabled {
-		d, err = deployer.NewDeployer(config.Host, kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory, recorder)
+		d, err = deployer.NewDeployer(config.Host, opts.LeaderElection.ResourceNamespace,
+			kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory,
+			recorder, opts.AnonymousAuthSupported)
 		if err != nil {
 			return nil, err
 		}

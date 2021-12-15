@@ -106,9 +106,10 @@ type Deployer struct {
 	apiserverURL string
 }
 
-func NewDeployer(apiserverURL string, kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
+func NewDeployer(apiserverURL, systemNamespace string,
+	kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
-	recorder record.EventRecorder) (*Deployer, error) {
+	recorder record.EventRecorder, anonymousAuthSupported bool) (*Deployer, error) {
 	feedInUseProtection := utilfeature.DefaultFeatureGate.Enabled(features.FeedInUseProtection)
 
 	deployer := &Deployer{
@@ -140,15 +141,17 @@ func NewDeployer(apiserverURL string, kubeclient *kubernetes.Clientset, clustern
 	}
 	deployer.chartController = helmChartController
 
-	helmDeployer, err := helm.NewDeployer(apiserverURL, clusternetclient, kubeclient, clusternetInformerFactory,
-		kubeInformerFactory, deployer.recorder)
+	helmDeployer, err := helm.NewDeployer(apiserverURL, systemNamespace,
+		clusternetclient, kubeclient, clusternetInformerFactory,
+		kubeInformerFactory, deployer.recorder, anonymousAuthSupported)
 	if err != nil {
 		return nil, err
 	}
 	deployer.helmDeployer = helmDeployer
 
-	genericDeployer, err := generic.NewDeployer(apiserverURL, clusternetclient, clusternetInformerFactory,
-		kubeInformerFactory, deployer.recorder)
+	genericDeployer, err := generic.NewDeployer(apiserverURL, systemNamespace,
+		clusternetclient, clusternetInformerFactory, kubeInformerFactory,
+		deployer.recorder, anonymousAuthSupported)
 	if err != nil {
 		return nil, err
 	}
