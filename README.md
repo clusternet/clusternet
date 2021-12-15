@@ -53,9 +53,10 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
 
 # Architecture
 
-<div align="center"><img src="./docs/images/clusternet-arch.png" style="width:900px;" /></div>
+<div align="center"><img src="./docs/images/clusternet-arch.png" style="width:600px;" /></div>
 
-Clusternet is light-weighted that consists of two components, `clusternet-agent` and `clusternet-hub`.
+Clusternet is a lightweight addon that consists of three components, `clusternet-agent`, `clusternet-scheduler`
+and `clusternet-hub`.
 
 `clusternet-agent` is responsible for
 
@@ -64,6 +65,10 @@ Clusternet is light-weighted that consists of two components, `clusternet-agent`
   status, etc;
 - setting up a websocket connection that provides full-duplex communication channels over a single TCP connection to
   parent cluster;
+
+`clusternet-scheduelr` is responsible for
+
+- scheduling resources/feeds to matched child clusters based on `SchedulingStrategy`;
 
 `clusternet-hub` is responsible for
 
@@ -84,15 +89,16 @@ Clusternet is light-weighted that consists of two components, `clusternet-agent`
 For every Kubernetes cluster that wants to be managed, we call it **child cluster**. The cluster where child clusters
 are registerring to, we call it **parent cluster**.
 
-`clusternet-agent` runs in child cluster, while `clusternet-hub` runs in parent cluster.
+`clusternet-agent` runs in child cluster, while `clusternet-scheduler` and `clusternet-hub` runs in parent cluster.
 
 - `ClusterRegistrationRequest` is an object that `clusternet-agent` creates in parent cluster for child cluster
   registration.
 - `ManagedCluster` is an object that `clusternet-hub` creates in parent cluster after
   approving `ClusterRegistrationRequest`.
 - `HelmChart` is an object contains a [helm chart](https://helm.sh/docs/topics/charts/) configuration.
-- `Subscription` defines the resources that subscribers want to install into clusters. For every matched cluster, a
-  corresponding `Base` object will be created in its dedicated namespace.
+- `Subscription` defines the resources that subscribers want to install into clusters. Various `SchedulingStrategy` are
+  supported, such as `Replication`, `Rebalancing` (implementing), etc. For every matched cluster, a corresponding `Base`
+  object will be created in its dedicated namespace.
 - `Clusternet` provides a ***two-stage priority based*** override strategy. `Localization` and `Globalization` will
   define the overrides with priority, where lower numbers are considered lower priority. `Localization` is
   namespace-scoped resource, while `Globalization` is cluster-scoped. Refer to
@@ -111,6 +117,7 @@ Kubernetes v1.20.8, while the versions of child Kubernetes clusters could range 
 | ------------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
 | Clusternet v0.5.0        | \*                 | \*                 | ✓                  | ✓                  | ✓                  | ✓                  |
 | Clusternet v0.6.0        | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
+| Clusternet v0.7.0        | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
 | Clusternet HEAD (main)   | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
 
 Note:
