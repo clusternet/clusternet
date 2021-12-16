@@ -83,6 +83,9 @@ type REST struct {
 	// DeleteCollection call. Delete requests for the items in a collection
 	// are issued in parallel.
 	deleteCollectionWorkers int
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -97,7 +100,7 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 	manifest := &appsapi.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.getNormalizedManifestName(result.GetNamespace(), result.GetName()),
-			Namespace: appsapi.ReservedNamespace,
+			Namespace: r.reservedNamespace,
 			Labels:    result.GetLabels(), // reuse labels from original object, which is useful for label selector
 		},
 		Template: runtime.RawExtension{
@@ -128,9 +131,9 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
-		manifest, err = r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
+		manifest, err = r.manifestLister.Manifests(r.reservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
 	} else {
-		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
+		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).
 			Get(ctx, r.getNormalizedManifestName(request.NamespaceValue(ctx), name), *options)
 	}
 	if err != nil {
@@ -160,7 +163,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, err
 	}
 
-	manifest, err := r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
+	manifest, err := r.manifestLister.Manifests(r.reservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -204,7 +207,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	manifestCopy.Template.Reset()
 	manifestCopy.Template.Object = result
 	// save the updates
-	manifestCopy, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifestCopy, *options)
+	manifestCopy, err = r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).Update(ctx, manifestCopy, *options)
 	if err != nil {
 		return nil, false, err
 	}
@@ -216,7 +219,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 // Delete removes the item from storage.
 // options can be mutated by rest.BeforeDelete due to a graceful deletion strategy.
 func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions) (runtime.Object, bool, error) {
-	err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
+	err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).
 		Delete(ctx, r.getNormalizedManifestName(request.NamespaceValue(ctx), name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -321,7 +324,7 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 	}
 
 	klog.V(5).Infof("%v", label)
-	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Watch(ctx, metav1.ListOptions{
+	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).Watch(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
 		Watch:                options.Watch,
@@ -362,7 +365,7 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		return nil, err
 	}
 
-	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).List(ctx, metav1.ListOptions{
+	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
 		Watch:                options.Watch,
@@ -483,7 +486,7 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 func (r *REST) getNormalizedManifestName(namespace, name string) string {
 	legacyManifestName := r.generateLegacyNameForManifest(namespace, name)
 	// backward compatible
-	_, err := r.manifestLister.Manifests(appsapi.ReservedNamespace).Get(legacyManifestName)
+	_, err := r.manifestLister.Manifests(r.reservedNamespace).Get(legacyManifestName)
 	if err == nil {
 		return legacyManifestName
 	}
@@ -543,10 +546,10 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	u.SetLabels(labels)
 
 	if r.kind != "Namespace" && r.namespaced {
-		u.SetNamespace(appsapi.ReservedNamespace)
+		u.SetNamespace(r.reservedNamespace)
 	}
-	// use reserved namespace "clusternet-reserved" to avoid error "namespaces not found"
-	dryRunNamespace := appsapi.ReservedNamespace
+	// use reserved namespace (default to be "clusternet-reserved") to avoid error "namespaces not found"
+	dryRunNamespace := r.reservedNamespace
 	if r.kind == "Namespace" {
 		dryRunNamespace = ""
 	}
@@ -654,15 +657,14 @@ func (r *REST) getListKind() string {
 
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
-	manifestLister applisters.ManifestLister) *REST {
+	manifestLister applisters.ManifestLister, reservedNamespace string) *REST {
 	return &REST{
-		dryRunClient:     dryRunClient,
-		clusternetClient: clusternetclient,
-		manifestLister:   manifestLister,
-		parameterCodec:   parameterCodec,
-		// currently we only set a default value for deleteCollectionWorkers
-		// TODO: make it configurable?
-		deleteCollectionWorkers: DefaultDeleteCollectionWorkers,
+		dryRunClient:            dryRunClient,
+		clusternetClient:        clusternetclient,
+		manifestLister:          manifestLister,
+		parameterCodec:          parameterCodec,
+		deleteCollectionWorkers: DefaultDeleteCollectionWorkers, // currently we only set a default value for deleteCollectionWorkers
+		reservedNamespace:       reservedNamespace,
 	}
 }
 

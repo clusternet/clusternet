@@ -21,11 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-const (
-	// objects will be store into Manifest with ReservedNamespace
-	ReservedNamespace = "clusternet-reserved"
-)
-
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:scope="Namespaced",categories=clusternet

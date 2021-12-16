@@ -64,6 +64,10 @@ type HubServerOptions struct {
 	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
 	AnonymousAuthSupported bool
 
+	// default namespace to create Manifest in
+	// default to be "clusternet-reserved"
+	ReservedNamespace string
+
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	LoopbackSharedInformerFactory informers.SharedInformerFactory
@@ -83,6 +87,7 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 	return &HubServerOptions{
 		RecommendedOptions:     genericoptions.NewRecommendedOptions("fake", nil),
 		AnonymousAuthSupported: true,
+		ReservedNamespace:      known.ClusternetReservedNamespace,
 		ControllerOptions:      controllerOpts,
 	}, nil
 }
@@ -155,6 +160,7 @@ func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 
 	fs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
 	fs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
+	fs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
 }
 
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {

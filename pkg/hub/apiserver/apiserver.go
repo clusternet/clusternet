@@ -117,7 +117,8 @@ func (cfg *Config) Complete() CompletedConfig {
 func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
 	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset,
 	clusternetInformerFactory informers.SharedInformerFactory,
-	clientBuilder clientbuilder.ControllerClientBuilder) (*HubAPIServer, error) {
+	clientBuilder clientbuilder.ControllerClientBuilder,
+	reservedNamespace string) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
@@ -162,7 +163,8 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 				kubeclient.RESTClient(),
 				clusternetclient,
 				clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
-				crdInformerFactory)
+				crdInformerFactory,
+				reservedNamespace)
 			crdInformerFactory.Start(context.StopCh)
 			return ss.InstallShadowAPIGroups(context.StopCh, kubeclient.DiscoveryClient)
 		}

@@ -36,6 +36,9 @@ const (
 	// This could be re-configured with flag "--leader-elect-resource-namespace"
 	ClusternetSystemNamespace = "clusternet-system"
 
+	// ClusternetReservedNamespace is the default namespace to store Manifest into
+	ClusternetReservedNamespace = "clusternet-reserved"
+
 	// ClusternetAppSA is the service account where we store credentials to deploy resources
 	ClusternetAppSA = "clusternet-app-deployer"
 

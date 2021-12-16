@@ -110,6 +110,9 @@ type ShadowAPIServer struct {
 	crdLister      apiextensionsv1lister.CustomResourceDefinitionLister
 	crdSynced      cache.InformerSynced
 	crdHandler     *crdHandler
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
 func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
@@ -117,7 +120,8 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 	admissionControl admission.Interface,
 	kubeRESTClient restclient.Interface, clusternetclient *clusternet.Clientset,
 	manifestLister applisters.ManifestLister,
-	crdInformerFactory crdinformers.SharedInformerFactory) *ShadowAPIServer {
+	crdInformerFactory crdinformers.SharedInformerFactory,
+	reservedNamespace string) *ShadowAPIServer {
 	return &ShadowAPIServer{
 		GenericAPIServer:    apiserver,
 		maxRequestBodyBytes: maxRequestBodyBytes,
@@ -131,7 +135,8 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 		crdHandler: NewCRDHandler(
 			kubeRESTClient, clusternetclient, manifestLister,
 			crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions(),
-			minRequestTimeout, maxRequestBodyBytes, admissionControl, apiserver.Authorizer, apiserver.Serializer),
+			minRequestTimeout, maxRequestBodyBytes, admissionControl, apiserver.Authorizer, apiserver.Serializer, reservedNamespace),
+		reservedNamespace: reservedNamespace,
 	}
 }
 
@@ -188,7 +193,7 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
-			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister)
+			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister, ss.reservedNamespace)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)

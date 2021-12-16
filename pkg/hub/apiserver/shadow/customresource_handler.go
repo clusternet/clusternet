@@ -83,12 +83,16 @@ type crdHandler struct {
 	requestScopes           map[string]*handlers.RequestScope
 	versionDiscoveryHandler *versionDiscoveryHandler
 	nonCRDAPIResources      []metav1.APIResource
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
 func NewCRDHandler(kubeRESTClient restclient.Interface, clusternetClient *clusternet.Clientset,
 	manifestLister applisters.ManifestLister, crdInformer apiextensionsinformers.CustomResourceDefinitionInformer,
 	minRequestTimeout int, maxRequestBodyBytes int64,
-	admissionControl admission.Interface, authorizer authorizer.Authorizer, serializer runtime.NegotiatedSerializer) *crdHandler {
+	admissionControl admission.Interface, authorizer authorizer.Authorizer, serializer runtime.NegotiatedSerializer,
+	reservedNamespace string) *crdHandler {
 	r := &crdHandler{
 		rootPrefix:          path.Join(genericapiserver.APIGroupPrefix, shadowapi.SchemeGroupVersion.String()),
 		kubeRESTClient:      kubeRESTClient,
@@ -102,6 +106,7 @@ func NewCRDHandler(kubeRESTClient restclient.Interface, clusternetClient *cluste
 		serializer:          serializer,
 		storages:            map[string]*template.REST{},
 		requestScopes:       map[string]*handlers.RequestScope{},
+		reservedNamespace:   reservedNamespace,
 	}
 	return r
 }
@@ -290,7 +295,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		selfLinkPrefix = "/" + path.Join("apis", shadowapi.GroupName, shadowapi.SchemeGroupVersion.Version, "namespaces") + "/"
 	}
 
-	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, ParameterCodec, r.manifestLister)
+	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, ParameterCodec, r.manifestLister, r.reservedNamespace)
 	restStorage.SetNamespaceScoped(crd.Spec.Scope == apiextensionsv1.NamespaceScoped)
 	restStorage.SetName(resource)
 	restStorage.SetShortNames(crd.Spec.Names.ShortNames)

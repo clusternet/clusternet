@@ -73,27 +73,31 @@ type Controller struct {
 	recorder record.EventRecorder
 
 	syncHandlerFunc SyncHandlerFunc
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
 func NewController(clusternetClient clusternetclientset.Interface,
 	locInformer appinformers.LocalizationInformer,
 	chartInformer appinformers.HelmChartInformer, manifestInformer appinformers.ManifestInformer,
-	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc, reservedNamespace string) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "localization"),
-		locLister:        locInformer.Lister(),
-		locSynced:        locInformer.Informer().HasSynced,
-		chartLister:      chartInformer.Lister(),
-		chartSynced:      chartInformer.Informer().HasSynced,
-		manifestLister:   manifestInformer.Lister(),
-		manifestSynced:   manifestInformer.Informer().HasSynced,
-		recorder:         recorder,
-		syncHandlerFunc:  syncHandlerFunc,
+		clusternetClient:  clusternetClient,
+		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "localization"),
+		locLister:         locInformer.Lister(),
+		locSynced:         locInformer.Informer().HasSynced,
+		chartLister:       chartInformer.Lister(),
+		chartSynced:       chartInformer.Informer().HasSynced,
+		manifestLister:    manifestInformer.Lister(),
+		manifestSynced:    manifestInformer.Informer().HasSynced,
+		recorder:          recorder,
+		syncHandlerFunc:   syncHandlerFunc,
+		reservedNamespace: reservedNamespace,
 	}
 
 	// Manage the addition/update of Localization
@@ -332,7 +336,7 @@ func (c *Controller) getLabelsForPatching(loc *appsapi.Localization) (map[string
 			labelsToPatch[string(chart.UID)] = &chartKind.Kind
 		}
 	default:
-		manifests, err := utils.ListManifestsBySelector(c.manifestLister, loc.Spec.Feed)
+		manifests, err := utils.ListManifestsBySelector(c.reservedNamespace, c.manifestLister, loc.Spec.Feed)
 		if err != nil {
 			return nil, err
 		}
