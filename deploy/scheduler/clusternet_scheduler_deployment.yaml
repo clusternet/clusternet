@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clusternet-system
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: clusternet-scheduler
+  namespace: clusternet-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clusternet-scheduler
+  namespace: clusternet-system
+  labels:
+    app: clusternet-scheduler
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: clusternet-scheduler
+  template:
+    metadata:
+      labels:
+        app: clusternet-scheduler
+    spec:
+      serviceAccountName: clusternet-scheduler
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+      containers:
+        - name: clusternet-scheduler
+          image: ghcr.io/clusternet/clusternet-scheduler:v0.7.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SYSTEM_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - /usr/local/bin/clusternet-scheduler
+            - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
+            - -v=4

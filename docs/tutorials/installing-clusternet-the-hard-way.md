@@ -9,7 +9,7 @@ required to install `Clusternet`.
 
 ---
 
-You need to deploy `clusternet-agent` and `clusternet-hub` in child cluster and parent cluster respectively.
+You need to deploy `clusternet-agent` in child clusters, `clusternet-hub` and `clusternet-scheduler` in parent cluster.
 
 > :whale: :whale: :whale: Note:
 >
@@ -42,6 +42,12 @@ Next, you need to create a token for cluster registration, which will be used la
   $ kubectl get secret -n clusternet-system -o=jsonpath='{.items[?(@.metadata.annotations.kubernetes\.io/service-account\.name=="cluster-bootstrap-use")].data.token}' | base64 --decode; echo
   HERE WILL OUTPUTS A LONG STRING. PLEASE REMEMBER THIS.
   ```
+
+## Deploying `clusternet-scheduler` in parent cluster
+
+```console
+kubectl apply -f deploy/scheduler
+```
 
 ### Deploying `clusternet-agent` in child cluster
 
