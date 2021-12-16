@@ -299,6 +299,8 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 			return nil
 		}
 
+		clusters = utils.FilterClustersByTolerations(clusters, subscriber.ClusterTolerations)
+
 		mcls = append(mcls, clusters...)
 	}
 

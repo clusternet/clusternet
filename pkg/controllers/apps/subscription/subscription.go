@@ -289,10 +289,14 @@ func (c *Controller) enqueueSubscriptionForCluster(mcls *clusterapi.ManagedClust
 				klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err))
 				continue
 			}
-			if selector.Matches(labels.Set(mcls.Labels)) {
-				c.workqueue.Add(key)
-				break
+			if !selector.Matches(labels.Set(mcls.Labels)) {
+				continue
 			}
+			if utils.IsClusterUntolerated(mcls, subscriber.ClusterTolerations) {
+				continue
+			}
+			c.workqueue.Add(key)
+			break
 		}
 	}
 }
