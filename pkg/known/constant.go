@@ -38,6 +38,10 @@ const (
 
 	// ClusternetAppSA is the service account where we store credentials to deploy resources
 	ClusternetAppSA = "clusternet-app-deployer"
+
+	// ClusternetHubProxyServiceAccount is the service account that can be used for proxying requests to child clusters.
+	// This will be also used by deployer in clusternet-hub when flag "--anonymous-auth-supported" is set to false.
+	ClusternetHubProxyServiceAccount = "clusternet-hub-proxy"
 )
 
 // These are internal finalizer values to Clusternet, must be qualified name.

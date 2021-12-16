@@ -78,12 +78,9 @@ func CreateKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcm
 }
 
 // CreateKubeConfigForSocketProxyWithToken creates a KubeConfig object with access to the API server with a token
-func CreateKubeConfigForSocketProxyWithToken(serverURL, token string) *clientcmdapi.Config {
-	userName := "clusternet"
-	clusterName := "clusternet-cluster"
-	config := createBasicKubeConfig(serverURL, clusterName, userName, nil)
-	config.AuthInfos[userName] = &clientcmdapi.AuthInfo{
-		Username:    user.Anonymous,
+func CreateKubeConfigForSocketProxyWithToken(secretLister corev1lister.SecretLister,
+	systemNamespace, serverURL, token string, AnonymousAuthSupported bool) (*clientcmdapi.Config, error) {
+	authInfo := &clientcmdapi.AuthInfo{
 		Impersonate: "clusternet",
 		ImpersonateUserExtra: map[string][]string{
 			"clusternet-token": {
@@ -91,7 +88,33 @@ func CreateKubeConfigForSocketProxyWithToken(serverURL, token string) *clientcmd
 			},
 		},
 	}
-	return config
+
+	if AnonymousAuthSupported {
+		authInfo.Username = user.Anonymous
+	} else {
+		secrets, err := secretLister.Secrets(systemNamespace).List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		var found bool
+		for _, secret := range secrets {
+			if secret.Annotations != nil && secret.Annotations[corev1.ServiceAccountNameKey] == known.ClusternetHubProxyServiceAccount {
+				found = true
+				authInfo.Token = string(secret.Data[corev1.ServiceAccountTokenKey])
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("failed to find corresponding secret of serviceAccount %s/%s",
+				systemNamespace, known.ClusternetHubProxyServiceAccount)
+		}
+	}
+
+	userName := "clusternet"
+	clusterName := "clusternet-cluster"
+	config := createBasicKubeConfig(serverURL, clusterName, userName, nil)
+	config.AuthInfos[userName] = authInfo
+	return config, nil
 }
 
 // LoadsKubeConfig tries to load kubeconfig from specified kubeconfig file or in-cluster config
@@ -146,7 +169,7 @@ func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRat
 }
 
 func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister,
-	namespace, clusterID, parentAPIServerURL string) (*clientcmdapi.Config, error) {
+	namespace, clusterID, parentAPIServerURL, systemNamespace string, proxyingWithAnonymous bool) (*clientcmdapi.Config, error) {
 	childClusterSecret, err := secretLister.Secrets(namespace).Get(known.ChildClusterSecretName)
 	if err != nil {
 		return nil, err
@@ -171,13 +194,17 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", namespace)
 	}
 	if mcls[0].Status.UseSocket {
-		childClusterAPIServer, err := getChildAPIServerProxyURL(parentAPIServerURL, mcls[0])
+		var childClusterAPIServer string
+		childClusterAPIServer, err = getChildAPIServerProxyURL(parentAPIServerURL, mcls[0])
 		if err != nil {
 			return nil, err
 		}
-		config = CreateKubeConfigForSocketProxyWithToken(
+		config, err = CreateKubeConfigForSocketProxyWithToken(
+			secretLister,
+			systemNamespace,
 			childClusterAPIServer,
 			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
+			proxyingWithAnonymous,
 		)
 	} else {
 		config = CreateKubeConfigWithToken(
@@ -186,7 +213,7 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 			childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
 		)
 	}
-	return config, nil
+	return config, err
 }
 
 func getChildAPIServerProxyURL(parentAPIServerURL string, mcls *clusterapi.ManagedCluster) (string, error) {
