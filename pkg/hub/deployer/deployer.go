@@ -104,31 +104,35 @@ type Deployer struct {
 
 	// apiserver url of parent cluster
 	apiserverURL string
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
-func NewDeployer(apiserverURL, systemNamespace string,
+func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 	kubeclient *kubernetes.Clientset, clusternetclient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
 	recorder record.EventRecorder, anonymousAuthSupported bool) (*Deployer, error) {
 	feedInUseProtection := utilfeature.DefaultFeatureGate.Enabled(features.FeedInUseProtection)
 
 	deployer := &Deployer{
-		apiserverURL:     apiserverURL,
-		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
-		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
-		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
-		descSynced:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
-		baseLister:       clusternetInformerFactory.Apps().V1alpha1().Bases().Lister(),
-		baseSynced:       clusternetInformerFactory.Apps().V1alpha1().Bases().Informer().HasSynced,
-		mfstLister:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
-		mfstSynced:       clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
-		subLister:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
-		subSynced:        clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
-		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
-		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
-		clusternetClient: clusternetclient,
-		kubeClient:       kubeclient,
-		recorder:         recorder,
+		apiserverURL:      apiserverURL,
+		reservedNamespace: reservedNamespace,
+		chartLister:       clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:       clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
+		descLister:        clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
+		descSynced:        clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
+		baseLister:        clusternetInformerFactory.Apps().V1alpha1().Bases().Lister(),
+		baseSynced:        clusternetInformerFactory.Apps().V1alpha1().Bases().Informer().HasSynced,
+		mfstLister:        clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
+		mfstSynced:        clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
+		subLister:         clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
+		subSynced:         clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
+		clusterLister:     clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		clusterSynced:     clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
+		clusternetClient:  clusternetclient,
+		kubeClient:        kubeclient,
+		recorder:          recorder,
 	}
 
 	helmChartController, err := helmchart.NewController(clusternetclient,
@@ -173,7 +177,8 @@ func NewDeployer(apiserverURL, systemNamespace string,
 		clusternetInformerFactory.Apps().V1alpha1().Bases(),
 		feedInUseProtection,
 		deployer.recorder,
-		deployer.handleManifest)
+		deployer.handleManifest,
+		reservedNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +195,7 @@ func NewDeployer(apiserverURL, systemNamespace string,
 	deployer.baseController = baseController
 
 	l, err := localizer.NewLocalizer(clusternetclient, clusternetInformerFactory,
-		deployer.handleHelmChart, deployer.handleManifest, deployer.recorder)
+		deployer.handleHelmChart, deployer.handleManifest, deployer.recorder, reservedNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -528,7 +533,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 				})
 			}
 		default:
-			manifests, err = utils.ListManifestsBySelector(deployer.mfstLister, feed)
+			manifests, err = utils.ListManifestsBySelector(deployer.reservedNamespace, deployer.mfstLister, feed)
 			if err != nil {
 				break
 			}
@@ -879,7 +884,7 @@ func (deployer *Deployer) addLabelsToReferredFeeds(b *appsapi.Base) error {
 				allErrs = append(allErrs, err)
 			}
 		default:
-			manifests, err := utils.ListManifestsBySelector(deployer.mfstLister, feed)
+			manifests, err := utils.ListManifestsBySelector(deployer.reservedNamespace, deployer.mfstLister, feed)
 			if err == nil {
 				allManifests = append(allManifests, manifests...)
 			} else {

@@ -63,7 +63,7 @@ func GetLabelsSelectorFromFeed(feed appsapi.Feed) (labels.Selector, error) {
 	return selector, nil
 }
 
-func ListManifestsBySelector(manifestLister applisters.ManifestLister, feed appsapi.Feed) ([]*appsapi.Manifest, error) {
+func ListManifestsBySelector(reservedNamespace string, manifestLister applisters.ManifestLister, feed appsapi.Feed) ([]*appsapi.Manifest, error) {
 	if manifestLister == nil {
 		return nil, errors.New("manifestLister is nil when listing charts by selector")
 	}
@@ -72,7 +72,7 @@ func ListManifestsBySelector(manifestLister applisters.ManifestLister, feed apps
 	if err != nil {
 		return nil, err
 	}
-	return manifestLister.Manifests(appsapi.ReservedNamespace).List(selector)
+	return manifestLister.Manifests(reservedNamespace).List(selector)
 }
 
 func FormatFeed(feed appsapi.Feed) string {

@@ -68,26 +68,30 @@ type Localizer struct {
 	manifestCallback func(*appsapi.Manifest) error
 
 	recorder record.EventRecorder
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
 func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	chartCallback func(*appsapi.HelmChart) error, manifestCallback func(*appsapi.Manifest) error,
-	recorder record.EventRecorder) (*Localizer, error) {
+	recorder record.EventRecorder, reservedNamespace string) (*Localizer, error) {
 
 	localizer := &Localizer{
-		clusternetClient: clusternetClient,
-		locLister:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Lister(),
-		locSynced:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer().HasSynced,
-		globLister:       clusternetInformerFactory.Apps().V1alpha1().Globalizations().Lister(),
-		globSynced:       clusternetInformerFactory.Apps().V1alpha1().Globalizations().Informer().HasSynced,
-		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
-		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
-		manifestLister:   clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
-		manifestSynced:   clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
-		chartCallback:    chartCallback,
-		manifestCallback: manifestCallback,
-		recorder:         recorder,
+		clusternetClient:  clusternetClient,
+		locLister:         clusternetInformerFactory.Apps().V1alpha1().Localizations().Lister(),
+		locSynced:         clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer().HasSynced,
+		globLister:        clusternetInformerFactory.Apps().V1alpha1().Globalizations().Lister(),
+		globSynced:        clusternetInformerFactory.Apps().V1alpha1().Globalizations().Informer().HasSynced,
+		chartLister:       clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:       clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
+		manifestLister:    clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
+		manifestSynced:    clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
+		chartCallback:     chartCallback,
+		manifestCallback:  manifestCallback,
+		recorder:          recorder,
+		reservedNamespace: reservedNamespace,
 	}
 
 	locController, err := localization.NewController(clusternetClient,
@@ -95,7 +99,8 @@ func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
 		recorder,
-		localizer.handleLocalization)
+		localizer.handleLocalization,
+		reservedNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +111,8 @@ func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
 		recorder,
-		localizer.handleGlobalization)
+		localizer.handleGlobalization,
+		reservedNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +161,7 @@ func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 			}
 			break
 		}
-		manifests, err := utils.ListManifestsBySelector(l.manifestLister, loc.Spec.Feed)
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, loc.Spec.Feed)
 		if err != nil {
 			return err
 		}
@@ -211,7 +217,7 @@ func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 			}
 			break
 		}
-		manifests, err := utils.ListManifestsBySelector(l.manifestLister, glob.Spec.Feed)
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, glob.Spec.Feed)
 		if err != nil {
 			return err
 		}
@@ -315,7 +321,7 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 		}
 		uid = chart.UID
 	default:
-		manifests, err := utils.ListManifestsBySelector(l.manifestLister, feed)
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, feed)
 		if err != nil {
 			return nil, err
 		}

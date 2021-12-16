@@ -66,11 +66,15 @@ type Controller struct {
 
 	recorder        record.EventRecorder
 	syncHandlerFunc SyncHandlerFunc
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
 func NewController(clusternetClient clusternetclientset.Interface,
 	manifestInformer appinformers.ManifestInformer, baseInformer appinformers.BaseInformer,
-	feedInUseProtection bool, recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	feedInUseProtection bool, recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc,
+	reservedNamespace string) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
@@ -85,6 +89,7 @@ func NewController(clusternetClient clusternetclientset.Interface,
 		feedInUseProtection: feedInUseProtection,
 		recorder:            recorder,
 		syncHandlerFunc:     syncHandlerFunc,
+		reservedNamespace:   reservedNamespace,
 	}
 
 	// Manage the addition/update of Manifest
@@ -193,7 +198,7 @@ func (c *Controller) updateBase(old, cur interface{}) {
 			continue
 		}
 
-		manifests, err := utils.ListManifestsBySelector(c.manifestLister, feed)
+		manifests, err := utils.ListManifestsBySelector(c.reservedNamespace, c.manifestLister, feed)
 		if err != nil {
 			klog.ErrorDepth(6, err)
 			continue

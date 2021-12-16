@@ -112,7 +112,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 
 	var d *deployer.Deployer
 	if deployerEnabled {
-		d, err = deployer.NewDeployer(config.Host, opts.LeaderElection.ResourceNamespace,
+		d, err = deployer.NewDeployer(config.Host, opts.LeaderElection.ResourceNamespace, opts.ReservedNamespace,
 			kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory,
 			recorder, opts.AnonymousAuthSupported)
 		if err != nil {
@@ -154,7 +154,8 @@ func (hub *Hub) Run(ctx context.Context) error {
 		hub.kubeClient,
 		hub.clusternetClient,
 		hub.clusternetInformerFactory,
-		hub.clientBuilder)
+		hub.clientBuilder,
+		hub.options.ReservedNamespace)
 	if err != nil {
 		return err
 	}
