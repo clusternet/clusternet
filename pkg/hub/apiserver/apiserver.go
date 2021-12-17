@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
+	aggregatorinformers "k8s.io/kube-aggregator/pkg/client/informers/externalversions"
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	proxiesinstall "github.com/clusternet/clusternet/pkg/apis/proxies/install"
@@ -117,6 +118,7 @@ func (cfg *Config) Complete() CompletedConfig {
 func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
 	kubeclient *kubernetes.Clientset, clusternetclient *clusternet.Clientset,
 	clusternetInformerFactory informers.SharedInformerFactory,
+	aggregatorInformerFactory aggregatorinformers.SharedInformerFactory,
 	clientBuilder clientbuilder.ControllerClientBuilder,
 	reservedNamespace string) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
@@ -147,6 +149,7 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 	// let informers get registered before hook starts
 	if utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
 		clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer()
+		aggregatorInformerFactory.Apiregistration().V1().APIServices().Informer()
 	}
 
 	s.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-shadowapis", func(context genericapiserver.PostStartHookContext) error {
@@ -163,6 +166,7 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 				kubeclient.RESTClient(),
 				clusternetclient,
 				clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
+				aggregatorInformerFactory.Apiregistration().V1().APIServices().Lister(),
 				crdInformerFactory,
 				reservedNamespace)
 			crdInformerFactory.Start(context.StopCh)
