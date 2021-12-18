@@ -46,6 +46,7 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	apiservicelisters "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
 	metricsapi "k8s.io/metrics/pkg/apis/metrics"
 
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
@@ -106,10 +107,11 @@ type ShadowAPIServer struct {
 	kubeRESTClient   restclient.Interface
 	clusternetclient *clusternet.Clientset
 
-	manifestLister applisters.ManifestLister
-	crdLister      apiextensionsv1lister.CustomResourceDefinitionLister
-	crdSynced      cache.InformerSynced
-	crdHandler     *crdHandler
+	manifestLister   applisters.ManifestLister
+	crdLister        apiextensionsv1lister.CustomResourceDefinitionLister
+	crdSynced        cache.InformerSynced
+	crdHandler       *crdHandler
+	apiserviceLister apiservicelisters.APIServiceLister
 
 	// namespace where Manifests are created
 	reservedNamespace string
@@ -119,9 +121,10 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 	maxRequestBodyBytes int64, minRequestTimeout int,
 	admissionControl admission.Interface,
 	kubeRESTClient restclient.Interface, clusternetclient *clusternet.Clientset,
-	manifestLister applisters.ManifestLister,
+	manifestLister applisters.ManifestLister, apiserviceLister apiservicelisters.APIServiceLister,
 	crdInformerFactory crdinformers.SharedInformerFactory,
 	reservedNamespace string) *ShadowAPIServer {
+
 	return &ShadowAPIServer{
 		GenericAPIServer:    apiserver,
 		maxRequestBodyBytes: maxRequestBodyBytes,
@@ -133,9 +136,10 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 		crdLister:           crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Lister(),
 		crdSynced:           crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions().Informer().HasSynced,
 		crdHandler: NewCRDHandler(
-			kubeRESTClient, clusternetclient, manifestLister,
+			kubeRESTClient, clusternetclient, manifestLister, apiserviceLister,
 			crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions(),
 			minRequestTimeout, maxRequestBodyBytes, admissionControl, apiserver.Authorizer, apiserver.Serializer, reservedNamespace),
+		apiserviceLister:  apiserviceLister,
 		reservedNamespace: reservedNamespace,
 	}
 }
@@ -188,11 +192,17 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 		}
 
 		for _, apiresource := range normalizeAPIGroupResources(apiGroupResource) {
+			// register this resource to storage if the priority is the highest
+			if !canBeAddedToStorage(apiresource.Group, apiresource.Version, apiresource.Name, ss.apiserviceLister) {
+				continue
+			}
+
 			ss.crdHandler.AddNonCRDAPIResource(apiresource)
 			// register scheme for original GVK
 			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
+
 			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister, ss.reservedNamespace)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)

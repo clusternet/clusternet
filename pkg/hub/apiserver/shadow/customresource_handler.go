@@ -51,6 +51,7 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	apiservicelisters "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
 
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
@@ -71,8 +72,9 @@ type crdHandler struct {
 	kubeRESTClient   restclient.Interface
 	clusternetClient *clusternet.Clientset
 
-	manifestLister applisters.ManifestLister
-	crdInformer    apiextensionsinformers.CustomResourceDefinitionInformer
+	manifestLister   applisters.ManifestLister
+	crdInformer      apiextensionsinformers.CustomResourceDefinitionInformer
+	apiserviceLister apiservicelisters.APIServiceLister
 
 	rootPrefix string
 
@@ -89,7 +91,8 @@ type crdHandler struct {
 }
 
 func NewCRDHandler(kubeRESTClient restclient.Interface, clusternetClient *clusternet.Clientset,
-	manifestLister applisters.ManifestLister, crdInformer apiextensionsinformers.CustomResourceDefinitionInformer,
+	manifestLister applisters.ManifestLister, apiserviceLister apiservicelisters.APIServiceLister,
+	crdInformer apiextensionsinformers.CustomResourceDefinitionInformer,
 	minRequestTimeout int, maxRequestBodyBytes int64,
 	admissionControl admission.Interface, authorizer authorizer.Authorizer, serializer runtime.NegotiatedSerializer,
 	reservedNamespace string) *crdHandler {
@@ -99,6 +102,7 @@ func NewCRDHandler(kubeRESTClient restclient.Interface, clusternetClient *cluste
 		clusternetClient:    clusternetClient,
 		manifestLister:      manifestLister,
 		crdInformer:         crdInformer,
+		apiserviceLister:    apiserviceLister,
 		minRequestTimeout:   time.Duration(minRequestTimeout) * time.Second,
 		maxRequestBodyBytes: maxRequestBodyBytes,
 		admissionControl:    admissionControl,
@@ -261,8 +265,6 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		return errors.New("nil root WebService for crdHandler")
 	}
 
-	r.versionDiscoveryHandler.updateCRD(crd)
-
 	storageVersion, err := apiextensionshelpers.GetCRDStorageVersion(crd)
 	if err != nil {
 		return nil
@@ -271,6 +273,13 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		klog.WarningDepth(4, fmt.Sprintf("no served version found for CustomResourceDefinition %s. skip adding serving info.", klog.KObj(crd)))
 		return nil
 	}
+
+	// register this resource to storage if the priority is the highest
+	if !canBeAddedToStorage(crd.Spec.Group, storageVersion, crd.Spec.Names.Plural, r.apiserviceLister) {
+		return nil
+	}
+
+	r.versionDiscoveryHandler.updateCRD(crd)
 
 	r.lock.Lock()
 	defer r.lock.Unlock()
