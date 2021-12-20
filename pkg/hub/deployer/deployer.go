@@ -38,13 +38,13 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/manifest"
@@ -53,7 +53,6 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
-	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/hub/deployer/generic"
 	"github.com/clusternet/clusternet/pkg/hub/deployer/helm"
 	"github.com/clusternet/clusternet/pkg/hub/localizer"
@@ -68,24 +67,20 @@ var (
 	deletePropagationBackground = metav1.DeletePropagationBackground
 )
 
-const (
-	defaultScheduler = "default"
-)
-
 // Deployer defines configuration for the application deployer
 type Deployer struct {
-	chartLister   applisters.HelmChartLister
-	chartSynced   cache.InformerSynced
-	descLister    applisters.DescriptionLister
-	descSynced    cache.InformerSynced
-	baseLister    applisters.BaseLister
-	baseSynced    cache.InformerSynced
-	mfstLister    applisters.ManifestLister
-	mfstSynced    cache.InformerSynced
-	subLister     applisters.SubscriptionLister
-	subSynced     cache.InformerSynced
-	clusterLister clusterlisters.ManagedClusterLister
-	clusterSynced cache.InformerSynced
+	chartLister applisters.HelmChartLister
+	chartSynced cache.InformerSynced
+	descLister  applisters.DescriptionLister
+	descSynced  cache.InformerSynced
+	baseLister  applisters.BaseLister
+	baseSynced  cache.InformerSynced
+	mfstLister  applisters.ManifestLister
+	mfstSynced  cache.InformerSynced
+	subLister   applisters.SubscriptionLister
+	subSynced   cache.InformerSynced
+	nsLister    corev1lister.NamespaceLister
+	nsSynced    cache.InformerSynced
 
 	clusternetClient *clusternetclientset.Clientset
 	kubeClient       *kubernetes.Clientset
@@ -128,8 +123,8 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 		mfstSynced:        clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
 		subLister:         clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
 		subSynced:         clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
-		clusterLister:     clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
-		clusterSynced:     clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
+		nsLister:          kubeInformerFactory.Core().V1().Namespaces().Lister(),
+		nsSynced:          kubeInformerFactory.Core().V1().Namespaces().Informer().HasSynced,
 		clusternetClient:  clusternetclient,
 		kubeClient:        kubeclient,
 		recorder:          recorder,
@@ -164,7 +159,6 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 	subsController, err := subscription.NewController(clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().Bases(),
-		clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
 		deployer.recorder,
 		deployer.handleSubscription)
 	if err != nil {
@@ -214,8 +208,8 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 		deployer.descSynced,
 		deployer.baseSynced,
 		deployer.mfstSynced,
-		deployer.clusterSynced,
 		deployer.subSynced,
+		deployer.nsSynced,
 	) {
 		return
 	}
@@ -275,13 +269,6 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 		return err
 	}
 
-	if sub.Spec.SchedulerName != defaultScheduler {
-		klog.V(4).Infof("Subscription %s is using customized scheduler %q ", klog.KObj(sub), sub.Spec.SchedulerName)
-		deployer.recorder.Event(sub, corev1.EventTypeNormal, "SkipScheduling",
-			fmt.Sprintf("customized scheduler %s is specified", sub.Spec.SchedulerName))
-		return nil
-	}
-
 	err := deployer.populateBases(sub)
 	if err != nil {
 		return err
@@ -291,27 +278,6 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 }
 
 func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
-	var mcls []*clusterapi.ManagedCluster
-	for _, subscriber := range sub.Spec.Subscribers {
-		selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
-		if err != nil {
-			return err
-		}
-		clusters, err := deployer.clusterLister.ManagedClusters("").List(selector)
-		if err != nil {
-			return err
-		}
-
-		if clusters == nil {
-			deployer.recorder.Event(sub, corev1.EventTypeWarning, "NoClusters", "No clusters get matched")
-			return nil
-		}
-
-		clusters = utils.FilterClustersByTolerations(clusters, subscriber.ClusterTolerations)
-
-		mcls = append(mcls, clusters...)
-	}
-
 	allExistingBases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
 		known.ConfigKindLabel:      subscriptionKind.Kind,
 		known.ConfigNameLabel:      sub.Name,
@@ -328,19 +294,25 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 	}
 
 	var allErrs []error
-	for _, cluster := range mcls {
+	for _, namespace := range sub.Status.BindingNamespaces {
+		ns, listErr := deployer.nsLister.Get(namespace)
+		if listErr != nil {
+			if apierrors.IsNotFound(listErr) {
+				continue
+			}
+			return fmt.Errorf("failed to populate Bases for Subscription %s: %v", klog.KObj(sub), err)
+		}
+
 		base := &appsapi.Base{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      sub.Name,
-				Namespace: cluster.Namespace,
+				Namespace: namespace,
 				Labels: map[string]string{
 					known.ObjectCreatedByLabel: known.ClusternetHubName,
 					known.ConfigKindLabel:      subscriptionKind.Kind,
 					known.ConfigNameLabel:      sub.Name,
 					known.ConfigNamespaceLabel: sub.Namespace,
 					known.ConfigUIDLabel:       string(sub.UID),
-					known.ClusterIDLabel:       cluster.Labels[known.ClusterIDLabel],
-					known.ClusterNameLabel:     cluster.Labels[known.ClusterNameLabel],
 					// add subscription info
 					known.ConfigSubscriptionNameLabel:      sub.Name,
 					known.ConfigSubscriptionNamespaceLabel: sub.Namespace,
@@ -354,6 +326,10 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 			Spec: appsapi.BaseSpec{
 				Feeds: sub.Spec.Feeds,
 			},
+		}
+		if ns.Labels != nil {
+			base.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
+			base.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
 		}
 
 		err := deployer.syncBase(sub, base)
