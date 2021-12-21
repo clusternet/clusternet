@@ -17,11 +17,16 @@ limitations under the License.
 package plugins
 
 import (
+	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/defaultbinder"
+	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
+	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/tainttoleration"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 )
 
 // NewInTreeRegistry builds the registry with all the in-tree plugins.
 func NewInTreeRegistry() runtime.Registry {
-	// TODO: register plugins
-	return runtime.Registry{}
+	return runtime.Registry{
+		names.DefaultBinder:   defaultbinder.New,
+		names.TaintToleration: tainttoleration.New,
+	}
 }

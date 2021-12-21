@@ -52,6 +52,7 @@ import (
 	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/scheduler/metrics"
 	"github.com/clusternet/clusternet/pkg/scheduler/options"
+	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
@@ -131,8 +132,13 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		subscribersMap:            make(map[string][]appsapi.Subscriber),
 	}
 
-	framework, err := frameworkruntime.NewFramework(sched.registry,
+	framework, err := frameworkruntime.NewFramework(sched.registry, getDefaultPlugins(),
 		frameworkruntime.WithEventRecorder(recorder),
+		frameworkruntime.WithInformerFactory(clusternetInformerFactory),
+		frameworkruntime.WithClientSet(clusternetClient),
+		frameworkruntime.WithKubeConfig(clientConfig),
+		frameworkruntime.WithParallelism(parallelize.DefaultParallelism),
+		frameworkruntime.WithRunAllFilters(false),
 	)
 	if err != nil {
 		return nil, err
