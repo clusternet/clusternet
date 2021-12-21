@@ -62,6 +62,11 @@ type SubscriptionSpec struct {
 	// +kubebuilder:validation:Required
 	Subscribers []Subscriber `json:"subscribers"`
 
+	// ClusterTolerations tolerates any matched taints of ManagedCluster.
+	//
+	// +optional
+	ClusterTolerations []corev1.Toleration `json:"clusterTolerations,omitempty"`
+
 	// Feeds
 	//
 	// +required
@@ -76,15 +81,20 @@ type SubscriptionStatus struct {
 	// +optional
 	BindingNamespaces []string `json:"bindingNamespaces,omitempty"`
 
+	// SpecHash calculates the hash value of current SubscriptionSpec.
+	//
+	// +optional
+	SpecHash uint64 `json:"specHash,omitempty"`
+
 	// Total number of Helm releases desired by this Subscription.
 	//
 	// +optional
-	DesiredReleases int32 `json:"desiredReleases,omitempty"`
+	DesiredReleases int `json:"desiredReleases,omitempty"`
 
-	// Total number of completed releases targeted by this deployment.
+	// Total number of completed releases targeted by this Subscription.
 	//
 	// +optional
-	CompletedReleases int32 `json:"completedReleases,omitempty"`
+	CompletedReleases int `json:"completedReleases,omitempty"`
 }
 
 // Subscriber defines
@@ -94,10 +104,6 @@ type Subscriber struct {
 	// +required
 	// +kubebuilder:validation:Required
 	ClusterAffinity *metav1.LabelSelector `json:"clusterAffinity"`
-
-	// ClusterTolerations tolerates any matched taints of ManagedCluster.
-	// +optional
-	ClusterTolerations []corev1.Toleration `json:"clusterTolerations,omitempty"`
 }
 
 // Feed defines the resource to be selected.

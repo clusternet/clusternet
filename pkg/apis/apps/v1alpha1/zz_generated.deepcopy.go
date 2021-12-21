@@ -721,13 +721,6 @@ func (in *Subscriber) DeepCopyInto(out *Subscriber) {
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.ClusterTolerations != nil {
-		in, out := &in.ClusterTolerations, &out.ClusterTolerations
-		*out = make([]corev1.Toleration, len(*in))
-		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
-		}
-	}
 	return
 }
 
@@ -808,6 +801,13 @@ func (in *SubscriptionSpec) DeepCopyInto(out *SubscriptionSpec) {
 	if in.Subscribers != nil {
 		in, out := &in.Subscribers, &out.Subscribers
 		*out = make([]Subscriber, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.ClusterTolerations != nil {
+		in, out := &in.ClusterTolerations, &out.ClusterTolerations
+		*out = make([]corev1.Toleration, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
