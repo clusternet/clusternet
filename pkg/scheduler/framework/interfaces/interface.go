@@ -25,13 +25,13 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 )
@@ -188,7 +188,7 @@ type ScoreExtensions interface {
 	// NormalizeScore is called for all cluster scores produced by the same plugin's "Score"
 	// method. A successful run of NormalizeScore will update the scores list and return
 	// a success status.
-	NormalizeScore(ctx context.Context, sub *appsapi.Subscription, scores ClusterScoreList) *Status
+	NormalizeScore(ctx context.Context, scores ClusterScoreList) *Status
 }
 
 // ScorePlugin is an interface that must be implemented by "Score" plugins to rank
@@ -201,7 +201,7 @@ type ScorePlugin interface {
 	// the subscription will be rejected.
 	Score(ctx context.Context, sub *appsapi.Subscription, namespacedCluster string) (int64, *Status)
 
-	// ScoreExtensions returns a ScoreExtensions interface if it implements one, or nil if does not.
+	// ScoreExtensions returns a ScoreExtensions interface if it implements one, or nil if not.
 	ScoreExtensions() ScoreExtensions
 }
 
@@ -363,10 +363,10 @@ type Handle interface {
 	// RejectWaitingSubscription rejects a waiting subscription given its UID.
 	RejectWaitingSubscription(uid types.UID)
 
-	// ClientSet returns a kubernetes clientSet.
-	ClientSet() clientset.Interface
+	// ClientSet returns a clusternet clientSet.
+	ClientSet() clusternet.Interface
 
-	// KubeConfig returns the raw kube schedulerapis.
+	// KubeConfig returns the raw kubeconfig.
 	KubeConfig() *restclient.Config
 
 	// EventRecorder returns an event recorder.

@@ -19,7 +19,7 @@ package cache
 import (
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/labels"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -33,7 +33,7 @@ type Cache interface {
 	NumClusters() int
 
 	// List returns the list of ManagedCluster(s).
-	List() ([]*clusterapi.ManagedCluster, error)
+	List(labelSelector *metav1.LabelSelector) ([]*clusterapi.ManagedCluster, error)
 
 	// Get returns the ManagedCluster of the given managed cluster.
 	Get(namespacedName string) (*clusterapi.ManagedCluster, error)
@@ -45,7 +45,7 @@ type schedulerCache struct {
 
 // NumClusters returns the number of clusters in the cache.
 func (s *schedulerCache) NumClusters() int {
-	clusters, err := s.List()
+	clusters, err := s.List(&metav1.LabelSelector{})
 	if err != nil {
 		klog.Errorf("failed to list clusters: %v", err)
 		return 0
@@ -54,8 +54,12 @@ func (s *schedulerCache) NumClusters() int {
 }
 
 // List returns the list of clusters in the cache.
-func (s *schedulerCache) List() ([]*clusterapi.ManagedCluster, error) {
-	return s.clusterListers.List(labels.Everything())
+func (s *schedulerCache) List(labelSelector *metav1.LabelSelector) ([]*clusterapi.ManagedCluster, error) {
+	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	if err != nil {
+		return nil, err
+	}
+	return s.clusterListers.List(selector)
 }
 
 // Get returns the ManagedCluster of the given cluster.

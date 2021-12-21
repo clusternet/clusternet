@@ -25,14 +25,15 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/util/sets"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/metrics"
@@ -60,7 +61,6 @@ const (
 // frameworkImpl is the component responsible for initializing and running scheduler
 // plugins.
 type frameworkImpl struct {
-	registry             Registry
 	waitingSubscriptions *waitingSubscriptionsMap
 	scorePluginWeight    map[string]int
 	preFilterPlugins     []framework.PreFilterPlugin
@@ -74,7 +74,7 @@ type frameworkImpl struct {
 	postBindPlugins      []framework.PostBindPlugin
 	permitPlugins        []framework.PermitPlugin
 
-	clientSet       clientset.Interface
+	clientSet       clusternet.Interface
 	kubeConfig      *restclient.Config
 	eventRecorder   record.EventRecorder
 	informerFactory informers.SharedInformerFactory
@@ -116,7 +116,7 @@ func (f *frameworkImpl) getExtensionPoints(plugins *schedulerapis.Plugins) []ext
 }
 
 type frameworkOptions struct {
-	clientSet       clientset.Interface
+	clientSet       clusternet.Interface
 	kubeConfig      *restclient.Config
 	eventRecorder   record.EventRecorder
 	informerFactory informers.SharedInformerFactory
@@ -129,7 +129,7 @@ type frameworkOptions struct {
 type Option func(*frameworkOptions)
 
 // WithClientSet sets clientSet for the scheduling frameworkImpl.
-func WithClientSet(clientSet clientset.Interface) Option {
+func WithClientSet(clientSet clusternet.Interface) Option {
 	return func(o *frameworkOptions) {
 		o.clientSet = clientSet
 	}
@@ -181,14 +181,13 @@ func defaultFrameworkOptions() frameworkOptions {
 var _ framework.Framework = &frameworkImpl{}
 
 // NewFramework initializes plugins given the configuration and the registry.
-func NewFramework(r Registry, opts ...Option) (framework.Framework, error) {
+func NewFramework(r Registry, plugins *schedulerapis.Plugins, opts ...Option) (framework.Framework, error) {
 	options := defaultFrameworkOptions()
 	for _, opt := range opts {
 		opt(&options)
 	}
 
 	f := &frameworkImpl{
-		registry:             r,
 		scorePluginWeight:    make(map[string]int),
 		waitingSubscriptions: newWaitingSubscriptionsMap(),
 		clientSet:            options.clientSet,
@@ -201,14 +200,33 @@ func NewFramework(r Registry, opts ...Option) (framework.Framework, error) {
 		profileName:          "default",
 	}
 
-	// TODO: check pluginsNeeded
+	if r == nil {
+		return f, nil
+	}
 
-	// Verifying the score weights again since Plugin.Name() could return a different
-	// value from the one used in the configuration.
-	for _, scorePlugin := range f.scorePlugins {
-		if f.scorePluginWeight[scorePlugin.Name()] == 0 {
-			return nil, fmt.Errorf("score plugin %q is not configured with weight", scorePlugin.Name())
+	// initialize plugins per individual extension points
+	pluginsMap := make(map[string]framework.Plugin)
+	for name, factory := range r {
+		p, err := factory(nil, f)
+		if err != nil {
+			return nil, fmt.Errorf("initializing plugin %q: %w", name, err)
 		}
+		pluginsMap[name] = p
+	}
+
+	for _, e := range f.getExtensionPoints(plugins) {
+		if err := updatePluginList(e.slicePtr, *e.plugins, pluginsMap); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, scorePlugin := range plugins.Score.Enabled {
+		// a weight of zero is not permitted, plugins can be disabled explicitly
+		// when configured.
+		if scorePlugin.Weight == 0 {
+			return nil, fmt.Errorf("score plugin %q is not configured with weight", scorePlugin.Name)
+		}
+		f.scorePluginWeight[scorePlugin.Name] = int(scorePlugin.Weight)
 	}
 
 	if len(f.bindPlugins) == 0 {
@@ -216,6 +234,33 @@ func NewFramework(r Registry, opts ...Option) (framework.Framework, error) {
 	}
 
 	return f, nil
+}
+
+// copied from k8s.io/kubernetes/pkg/scheduler/framework/runtime/framework.go
+func updatePluginList(pluginList interface{}, pluginSet schedulerapis.PluginSet, pluginsMap map[string]framework.Plugin) error {
+	plugins := reflect.ValueOf(pluginList).Elem()
+	pluginType := plugins.Type().Elem()
+	set := sets.NewString()
+	for _, ep := range pluginSet.Enabled {
+		pg, ok := pluginsMap[ep.Name]
+		if !ok {
+			return fmt.Errorf("%s %q does not exist", pluginType.Name(), ep.Name)
+		}
+
+		if !reflect.TypeOf(pg).Implements(pluginType) {
+			return fmt.Errorf("plugin %q does not extend %s plugin", ep.Name, pluginType.Name())
+		}
+
+		if set.Has(ep.Name) {
+			return fmt.Errorf("plugin %q already registered as %q", ep.Name, pluginType.Name())
+		}
+
+		set.Insert(ep.Name)
+
+		newPlugins := reflect.Append(plugins, reflect.ValueOf(pg))
+		plugins.Set(newPlugins)
+	}
+	return nil
 }
 
 // RunPreFilterPlugins runs the set of configured PreFilter plugins. It returns
@@ -379,7 +424,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, sub *appsapi.Subscr
 		if pl.ScoreExtensions() == nil {
 			return
 		}
-		status := f.runScoreExtension(ctx, pl, sub, ClusterScoreList)
+		status := f.runScoreExtension(ctx, pl, ClusterScoreList)
 		if !status.IsSuccess() {
 			err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
 			errCh.SendErrorWithCancel(err, cancel)
@@ -421,9 +466,9 @@ func (f *frameworkImpl) runScorePlugin(ctx context.Context, pl framework.ScorePl
 	return s, status
 }
 
-func (f *frameworkImpl) runScoreExtension(ctx context.Context, pl framework.ScorePlugin, sub *appsapi.Subscription, ClusterScoreList framework.ClusterScoreList) *framework.Status {
+func (f *frameworkImpl) runScoreExtension(ctx context.Context, pl framework.ScorePlugin, ClusterScoreList framework.ClusterScoreList) *framework.Status {
 	startTime := time.Now()
-	status := pl.ScoreExtensions().NormalizeScore(ctx, sub, ClusterScoreList)
+	status := pl.ScoreExtensions().NormalizeScore(ctx, ClusterScoreList)
 	f.metricsRecorder.observePluginDurationAsync(scoreExtensionNormalize, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
@@ -691,12 +736,12 @@ func (f *frameworkImpl) ListPlugins() *schedulerapis.Plugins {
 	return &m
 }
 
-// ClientSet returns a kubernetes clientset.
-func (f *frameworkImpl) ClientSet() clientset.Interface {
+// ClientSet returns a clusternet clientset.
+func (f *frameworkImpl) ClientSet() clusternet.Interface {
 	return f.clientSet
 }
 
-// KubeConfig returns a kubernetes schedulerapis.
+// KubeConfig returns a kubeconfig.
 func (f *frameworkImpl) KubeConfig() *restclient.Config {
 	return f.kubeConfig
 }

@@ -147,12 +147,18 @@ func (g *genericScheduler) findClustersThatFitSubscription(ctx context.Context, 
 		UnschedulablePlugins: sets.NewString(),
 	}
 
+	var allClusters []*clusterapi.ManagedCluster
+	for _, subscriber := range sub.Spec.Subscribers {
+		clusters, err := g.cache.List(subscriber.ClusterAffinity)
+		if err != nil {
+			return nil, diagnosis, err
+		}
+		allClusters = append(allClusters, clusters...)
+	}
+	allClusters = normalizedClusters(allClusters)
+
 	// Run "prefilter" plugins.
 	s := fwk.RunPreFilterPlugins(ctx, sub)
-	allClusters, err := g.cache.List()
-	if err != nil {
-		return nil, diagnosis, err
-	}
 	if !s.IsSuccess() {
 		if !s.IsUnschedulable() {
 			return nil, diagnosis, s.AsError()
@@ -308,4 +314,20 @@ func NewGenericScheduler(cache schedulercache.Cache) ScheduleAlgorithm {
 		cache:                       cache,
 		percentageOfClustersToScore: schedulerapis.DefaultPercentageOfClustersToScore,
 	}
+}
+
+// normalizedClusters will remove duplicate clusters. Deleting clusters will be removed as well.
+func normalizedClusters(clusters []*clusterapi.ManagedCluster) []*clusterapi.ManagedCluster {
+	allKeys := make(map[string]bool)
+	var uniqueClusters []*clusterapi.ManagedCluster
+	for _, cluster := range clusters {
+		if _, ok := allKeys[klog.KObj(cluster).String()]; !ok {
+			if cluster.DeletionTimestamp != nil {
+				continue
+			}
+			uniqueClusters = append(uniqueClusters, cluster)
+			allKeys[klog.KObj(cluster).String()] = true
+		}
+	}
+	return uniqueClusters
 }
