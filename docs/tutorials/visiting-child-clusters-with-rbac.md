@@ -1,9 +1,13 @@
 # Visiting Managed Clusters With RBAC
 
 - [Using curl](#using-curl)
+    - [If you're using tokens](#if-youre-using-tokens)
+    - [If you're using TLS certificates](#if-youre-using-tls-certificates)
 - [Using KubeConfig](#using-kubeconfig)
-    - [Step 1: Modify Server URL](#step-1-modify-server-url)
-    - [Step 2: Configure Credentials from Child Clusters](#step-2-configure-credentials-from-child-clusters)
+    - [An Easy Way - kubectl-clusternet Plugin (Recommended)](#an-easy-way---kubectl-clusternet-plugin-recommended)
+    - [A Hard Way - Constructing a Dedicated KubeConfig](#a-hard-way---constructing-a-dedicated-kubeconfig)
+        - [Step 1: Modify Server URL](#step-1-modify-server-url)
+        - [Step 2: Configure Credentials from Child Clusters](#step-2-configure-credentials-from-child-clusters)
 
 :thumbsup: ***Clusternet supports visiting all your managed clusters with RBAC directly from parent cluster.***
 
@@ -62,11 +66,46 @@ $ curl -k -XGET  -H "Accept: application/json" \
   "${APISERVER}/apis/proxies.clusternet.io/v1alpha1/sockets/${CHILDCLUSTERID}/proxy/direct/api/v1/namespaces"
 ```
 
-## Using KubeConfig
+### Using KubeConfig
 
-You need to follow below **2 steps** to construct a valid kubeconfig to access a child cluster.
+### An Easy Way - kubectl-clusternet Plugin (Recommended)
 
-### Step 1: Modify Server URL
+First,
+please [install/upgrade `kubectl-clusternet` plugin](https://github.com/clusternet/kubectl-clusternet#installation) with
+a minimum required version `v0.5.0`.
+
+```bash
+$ kubectl clusternet version
+{
+  "gitVersion": "0.5.0",
+  "platform": "darwin/amd64"
+}
+```
+
+```bash
+$ kubectl get mcls -A
+NAMESPACE          NAME       CLUSTER ID                             SYNC MODE   KUBERNETES                   READYZ   AGE
+clusternet-ml6wg   aws-cd     6c085c18-3baf-443c-abff-459751f5e3d3   Dual        v1.18.4                      true     4d6h
+clusternet-z5vqv   azure-cd   7dc5966e-6736-48dd-9a82-2e4d74d30443   Dual        v1.20.4                      true     43h
+$ kubectl clusternet --cluster-id=7dc5966e-6736-48dd-9a82-2e4d74d30443 --child-kubeconfig=./azure-cd-kubeconfig get ns
+NAME                STATUS   AGE
+clusternet-system   Active   4d20h
+default             Active   24d
+kube-node-lease     Active   24d
+kube-public         Active   24d
+kube-system         Active   24d
+test-nginx          Active   11d
+test-systemd        Active   11d
+```
+
+Here the apisever in above kubeconfig file `azure-cd-kubeconfig` could be with an inner address. Now you can easily
+check any objects status in child clusters.
+
+### A Hard Way - Constructing a Dedicated KubeConfig
+
+You need to follow below **2 steps** to construct a dedicated kubeconfig to access a child cluster with `kubectl`.
+
+#### Step 1: Modify Server URL
 
 Append `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/https/<SERVER-URL>`
 or `/apis/proxies.clusternet.io/v1alpha1/sockets/<CLUSTER-ID>/proxy/direct` at the end of original **parent cluster**
@@ -129,7 +168,7 @@ $ kubectl config set-cluster `kubectl config get-clusters | grep -v NAME` \
 >
 > Then follow above url modification as well.
 
-### Step 2: Configure Credentials from Child Clusters
+#### Step 2: Configure Credentials from Child Clusters
 
 Then update user entry with **credentials from child clusters**
 
@@ -243,7 +282,7 @@ and `CLIENT-KEY-DATE-PLEASE-BASE64-ENCODED-CHANGE-ME` with certficate and privat
 notice the tokens replaced here should be base64 encoded.**
 
 > :pushpin: :pushpin: Important Note:
-> 
+>
 > If anonymous auth is not allowed, please replace `username: system:anonymous` to `token: PARENT-CLUSTER-TOKEN`.
 > Here `PARENT-CLUSTER-TOKEN` can be retrieved with below command,
 >
