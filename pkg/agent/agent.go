@@ -127,7 +127,7 @@ func (agent *Agent) Run() error {
 
 	// if leader election is disabled, so runCommand inline until done.
 	if !agent.controllerOptions.LeaderElection.LeaderElect {
-		wait.UntilWithContext(agent.ctx, agent.run, 0)
+		agent.run(agent.ctx)
 		klog.Warning("finished without leader elect")
 		return nil
 	}
@@ -147,7 +147,7 @@ func (agent *Agent) Run() error {
 		agent.childKubeClientSet,
 		leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				wait.UntilWithContext(ctx, agent.run, 0)
+				agent.run(ctx)
 			},
 			OnStoppedLeading: func() {
 				klog.Error("leader election got lost")
@@ -197,6 +197,8 @@ func (agent *Agent) run(ctx context.Context) {
 			klog.Error(err)
 		}
 	}, time.Duration(0))
+
+	<-ctx.Done()
 }
 
 // registerSelfCluster begins registering. It starts registering and blocked until the context is done.
