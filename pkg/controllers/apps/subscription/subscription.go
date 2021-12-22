@@ -21,13 +21,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -39,12 +37,9 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
-	clusterinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
-	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -56,9 +51,6 @@ type SyncHandlerFunc func(subscription *appsapi.Subscription) error
 
 // Controller is a controller that handle Subscription
 type Controller struct {
-	lock           sync.RWMutex
-	subscribersMap map[string][]appsapi.Subscriber
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -68,33 +60,30 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	subsLister    applisters.SubscriptionLister
-	subsSynced    cache.InformerSynced
-	baseSynced    cache.InformerSynced
-	clusterLister clusterlisters.ManagedClusterLister
-	clusterSynced cache.InformerSynced
+	subsLister applisters.SubscriptionLister
+	subsSynced cache.InformerSynced
+	baseSynced cache.InformerSynced
 
 	recorder record.EventRecorder
 
 	syncHandlerFunc SyncHandlerFunc
 }
 
+// NewController returns a new Controller, which is only responsible for populating Bases.
+// The scheduling parts are handled by clusternet-scheduler.
 func NewController(clusternetClient clusternetclientset.Interface,
 	subsInformer appinformers.SubscriptionInformer, baseInformer appinformers.BaseInformer,
-	clusterInformer clusterinformers.ManagedClusterInformer, recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		subscribersMap:   make(map[string][]appsapi.Subscriber),
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "subscription"),
 		subsLister:       subsInformer.Lister(),
 		subsSynced:       subsInformer.Informer().HasSynced,
 		baseSynced:       baseInformer.Informer().HasSynced,
-		clusterLister:    clusterInformer.Lister(),
-		clusterSynced:    clusterInformer.Informer().HasSynced,
 		recorder:         recorder,
 		syncHandlerFunc:  syncHandlerFunc,
 	}
@@ -104,12 +93,6 @@ func NewController(clusternetClient clusternetclientset.Interface,
 		AddFunc:    c.addSubscription,
 		UpdateFunc: c.updateSubscription,
 		DeleteFunc: c.deleteSubscription,
-	})
-
-	clusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addCluster,
-		UpdateFunc: c.updateCluster,
-		DeleteFunc: c.deleteCluster,
 	})
 
 	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -134,7 +117,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	if !cache.WaitForNamedCacheSync("subscription-controller", stopCh,
 		c.subsSynced,
 		c.baseSynced,
-		c.clusterSynced,
 	) {
 		return
 	}
@@ -150,11 +132,6 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 
 func (c *Controller) addSubscription(obj interface{}) {
 	sub := obj.(*appsapi.Subscription)
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.subscribersMap[klog.KObj(sub).String()] = sub.Spec.Subscribers
-
 	klog.V(4).Infof("adding Subscription %q", klog.KObj(sub))
 	c.enqueue(sub)
 }
@@ -168,15 +145,18 @@ func (c *Controller) updateSubscription(old, cur interface{}) {
 		return
 	}
 
-	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldSub.Spec, newSub.Spec) {
-		klog.V(4).Infof("no updates on the spec of Subscription %s, skipping syncing", klog.KObj(oldSub))
+	// Decide whether discovery has reported a status change.
+	// clusternet-scheduler is responsible for spec changes.
+	if reflect.DeepEqual(oldSub.Status, newSub.Status) {
+		klog.V(4).Infof("no updates on the status of Subscription %s, skipping syncing", klog.KObj(oldSub))
 		return
 	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.subscribersMap[klog.KObj(newSub).String()] = newSub.Spec.Subscribers
+	// no changes on binding namespaces and spec hash
+	if reflect.DeepEqual(oldSub.Status.BindingNamespaces, newSub.Status.BindingNamespaces) &&
+		oldSub.Status.SpecHash == newSub.Status.SpecHash {
+		klog.V(4).Infof("no changes on binding namespaces and spec hash of Subscription %s, skipping syncing", klog.KObj(oldSub))
+		return
+	}
 
 	klog.V(4).Infof("updating Subscription %q", klog.KObj(oldSub))
 	c.enqueue(newSub)
@@ -196,10 +176,6 @@ func (c *Controller) deleteSubscription(obj interface{}) {
 			return
 		}
 	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	delete(c.subscribersMap, klog.KObj(sub).String())
 
 	klog.V(4).Infof("deleting Subscription %q", klog.KObj(sub))
 	c.enqueue(sub)
@@ -242,63 +218,6 @@ func (c *Controller) resolveControllerRef(name, namespace string, uid types.UID)
 		return nil
 	}
 	return sub
-}
-
-func (c *Controller) addCluster(obj interface{}) {
-	mcls := obj.(*clusterapi.ManagedCluster)
-	klog.V(5).Infof("adding ManagedCluster %q", klog.KObj(mcls))
-	c.enqueueSubscriptionForCluster(mcls)
-}
-
-func (c *Controller) updateCluster(old, cur interface{}) {
-	oldMcls := old.(*clusterapi.ManagedCluster)
-	newMcls := cur.(*clusterapi.ManagedCluster)
-
-	if newMcls.DeletionTimestamp != nil {
-		c.deleteCluster(cur)
-		return
-	}
-
-	// Decide whether discovery has reported a label change.
-	if reflect.DeepEqual(oldMcls.Labels, newMcls.Labels) {
-		klog.V(4).Infof("no updates on the labels of ManagedCluster %s, skipping syncing", klog.KObj(oldMcls))
-		return
-	}
-
-	klog.V(5).Infof("updating ManagedCluster %q", klog.KObj(oldMcls))
-	c.enqueueSubscriptionForCluster(newMcls)
-}
-
-func (c *Controller) deleteCluster(obj interface{}) {
-	// when a ManagedCluster is deleted,
-	// - Auto populated objects, like Base and Description, will be auto-deleted on next sync/resync of subscribed Subscriptions
-	// - If current dedicated namespace is deleted, then all objects in this namespaces will be pruned.
-
-	// TODO (dixudx): prune all related objects immediately?
-}
-
-func (c *Controller) enqueueSubscriptionForCluster(mcls *clusterapi.ManagedCluster) {
-	c.lock.RLock()
-	subscribersMap := c.subscribersMap
-	c.lock.RUnlock()
-
-	for key, subscribers := range subscribersMap {
-		for _, subscriber := range subscribers {
-			selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
-			if err != nil {
-				klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err))
-				continue
-			}
-			if !selector.Matches(labels.Set(mcls.Labels)) {
-				continue
-			}
-			if utils.IsClusterUntolerated(mcls, subscriber.ClusterTolerations) {
-				continue
-			}
-			c.workqueue.Add(key)
-			break
-		}
-	}
 }
 
 // runWorker is a long-running function that will continually call the

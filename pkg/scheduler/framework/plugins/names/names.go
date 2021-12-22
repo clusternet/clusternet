@@ -14,19 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package plugins
+package names
 
-import (
-	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/defaultbinder"
-	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
-	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/tainttoleration"
-	"github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
+const (
+	DefaultBinder = "DefaultBinder"
+
+	TaintToleration = "TaintToleration"
 )
-
-// NewInTreeRegistry builds the registry with all the in-tree plugins.
-func NewInTreeRegistry() runtime.Registry {
-	return runtime.Registry{
-		names.DefaultBinder:   defaultbinder.New,
-		names.TaintToleration: tainttoleration.New,
-	}
-}

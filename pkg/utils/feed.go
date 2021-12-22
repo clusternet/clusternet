@@ -21,7 +21,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 
+	"github.com/davecgh/go-spew/spew"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -158,4 +160,17 @@ func HasFeed(feed appsapi.Feed, feeds []appsapi.Feed) bool {
 	}
 
 	return false
+}
+
+func HashSubscriptionSpec(subscriptionSpec *appsapi.SubscriptionSpec) uint64 {
+	specJSON, _ := json.Marshal(subscriptionSpec)
+	printer := spew.ConfigState{
+		Indent:         " ",
+		SortKeys:       true,
+		DisableMethods: true,
+		SpewKeys:       true,
+	}
+	hasher := fnv.New32a()
+	printer.Fprintf(hasher, "%#v", specJSON)
+	return uint64(hasher.Sum32())
 }

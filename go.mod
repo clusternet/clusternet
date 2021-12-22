@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/containerd/containerd v1.4.12 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/emicklei/go-restful v2.9.5+incompatible
 	github.com/evanphx/json-patch v4.11.0+incompatible
 	github.com/go-openapi/spec v0.19.5

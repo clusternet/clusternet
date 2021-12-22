@@ -43,7 +43,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
-	v1helper "k8s.io/component-helpers/scheduling/corev1"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -679,24 +678,4 @@ func ResourceNeedResync(original pkgruntime.Object, current pkgruntime.Object) b
 	}
 
 	return false
-}
-
-// FilterClustersByTolerations filters clusters that match the specified tolerations.
-func FilterClustersByTolerations(clusters []*clusterapi.ManagedCluster, tolerations []corev1.Toleration) []*clusterapi.ManagedCluster {
-	var res []*clusterapi.ManagedCluster
-	for _, cluster := range clusters {
-		if !IsClusterUntolerated(cluster, tolerations) {
-			res = append(res, cluster)
-		}
-	}
-	return res
-}
-
-// IsClusterUntolerated checks if the cluster does not match the specified tolerations.
-func IsClusterUntolerated(cluster *clusterapi.ManagedCluster, tolerations []corev1.Toleration) bool {
-	filterPredicate := func(t *corev1.Taint) bool {
-		return t.Effect == corev1.TaintEffectNoSchedule
-	}
-	_, isUntolerated := v1helper.FindMatchingUntoleratedTaint(cluster.Spec.Taints, tolerations, filterPredicate)
-	return isUntolerated
 }

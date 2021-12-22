@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestFormatFeed(t *testing.T) {
@@ -255,6 +256,72 @@ func TestHasFeed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := HasFeed(tt.feed, tt.feeds); got != tt.want {
 				t.Errorf("HasFeed() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHashSubscriptionSpec(t *testing.T) {
+	tests := []struct {
+		name             string
+		subscriptionSpec *appsapi.SubscriptionSpec
+		want             uint64
+	}{
+		{
+			subscriptionSpec: &appsapi.SubscriptionSpec{
+				SchedulerName:      "default",
+				SchedulingStrategy: "Replication",
+				Subscribers: []appsapi.Subscriber{
+					{
+						ClusterAffinity: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"cluster-name": "abc",
+							},
+							MatchExpressions: nil,
+						},
+					},
+				},
+				ClusterTolerations: nil,
+				Feeds: []appsapi.Feed{
+					{
+						Kind:       "Demo",
+						APIVersion: "abc.com/v1",
+						Namespace:  "foo",
+						Name:       "bar",
+					},
+				},
+			},
+			want: uint64(2608449479),
+		},
+		{
+			subscriptionSpec: &appsapi.SubscriptionSpec{
+				SchedulerName:      "default",
+				SchedulingStrategy: "Replication",
+				Subscribers: []appsapi.Subscriber{
+					{
+						ClusterAffinity: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"cluster-name": "abc",
+							},
+						},
+					},
+				},
+				Feeds: []appsapi.Feed{
+					{
+						Kind:       "Demo",
+						APIVersion: "abc.com/v1",
+						Namespace:  "foo",
+						Name:       "bar",
+					},
+				},
+			},
+			want: uint64(2608449479),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HashSubscriptionSpec(tt.subscriptionSpec); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
 			}
 		})
 	}

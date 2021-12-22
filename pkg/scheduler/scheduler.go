@@ -19,10 +19,14 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -48,6 +52,7 @@ import (
 	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/scheduler/metrics"
 	"github.com/clusternet/clusternet/pkg/scheduler/options"
+	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
@@ -81,6 +86,9 @@ type Scheduler struct {
 	SchedulingQueue workqueue.RateLimitingInterface
 
 	framework framework.Framework
+
+	lock           sync.RWMutex
+	subscribersMap map[string][]appsapi.Subscriber
 }
 
 // NewScheduler returns a new Scheduler.
@@ -121,10 +129,16 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		registry:                  plugins.NewInTreeRegistry(),
 		scheduleAlgorithm:         algorithm.NewGenericScheduler(schedulerCache),
 		SchedulingQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter()),
+		subscribersMap:            make(map[string][]appsapi.Subscriber),
 	}
 
-	framework, err := frameworkruntime.NewFramework(sched.registry,
+	framework, err := frameworkruntime.NewFramework(sched.registry, getDefaultPlugins(),
 		frameworkruntime.WithEventRecorder(recorder),
+		frameworkruntime.WithInformerFactory(clusternetInformerFactory),
+		frameworkruntime.WithClientSet(clusternetClient),
+		frameworkruntime.WithKubeConfig(clientConfig),
+		frameworkruntime.WithParallelism(parallelize.DefaultParallelism),
+		frameworkruntime.WithRunAllFilters(false),
 	)
 	if err != nil {
 		return nil, err
@@ -134,7 +148,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 	// register all metrics
 	metrics.Register()
 
-	addAllEventHandlers(sched)
+	sched.addAllEventHandlers()
 	return sched, nil
 }
 
@@ -352,13 +366,16 @@ func (sched *Scheduler) recordSchedulingFailure(sub *appsapi.Subscription, err e
 
 // addAllEventHandlers is a helper function used in tests and in Scheduler
 // to add event handlers for various informers.
-func addAllEventHandlers(sched *Scheduler) {
+func (sched *Scheduler) addAllEventHandlers() {
 	sched.ClusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch t := obj.(type) {
 			case *appsapi.Subscription:
 				sub := obj.(*appsapi.Subscription)
 				if sub.DeletionTimestamp != nil {
+					sched.lock.Lock()
+					defer sched.lock.Unlock()
+					delete(sched.subscribersMap, klog.KObj(sub).String())
 					return false
 				}
 
@@ -377,17 +394,80 @@ func addAllEventHandlers(sched *Scheduler) {
 		},
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				// TODO
 				sub := obj.(*appsapi.Subscription)
+				sched.lock.Lock()
+				defer sched.lock.Unlock()
+				sched.subscribersMap[klog.KObj(sub).String()] = sub.Spec.Subscribers
 				sched.SchedulingQueue.AddRateLimited(klog.KObj(sub).String())
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				// TODO
+				oldSub := oldObj.(*appsapi.Subscription)
 				newSub := newObj.(*appsapi.Subscription)
+
+				// Decide whether discovery has reported a spec change.
+				if reflect.DeepEqual(oldSub.Spec, newSub.Spec) {
+					klog.V(4).Infof("no updates on the spec of Subscription %s, skipping syncing", klog.KObj(oldSub))
+					return
+				}
+
+				sched.lock.Lock()
+				defer sched.lock.Unlock()
+				sched.subscribersMap[klog.KObj(newSub).String()] = newSub.Spec.Subscribers
 				sched.SchedulingQueue.AddRateLimited(klog.KObj(newSub).String())
 			},
 		},
 	})
+
+	enqueueSubscriptionForClusterFunc := func(mcls *clusterapi.ManagedCluster) {
+		sched.lock.RLock()
+		defer sched.lock.RUnlock()
+
+		for key, subscribers := range sched.subscribersMap {
+			for _, subscriber := range subscribers {
+				selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
+				if err != nil {
+					klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err))
+					continue
+				}
+				if !selector.Matches(labels.Set(mcls.Labels)) {
+					continue
+				}
+				sched.SchedulingQueue.AddRateLimited(key)
+				break
+			}
+		}
+	}
+
+	sched.ClusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			mcls := obj.(*clusterapi.ManagedCluster)
+			if mcls.DeletionTimestamp != nil {
+				return
+			}
+			enqueueSubscriptionForClusterFunc(mcls)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldMcls := oldObj.(*clusterapi.ManagedCluster)
+			newMcls := newObj.(*clusterapi.ManagedCluster)
+
+			if newMcls.DeletionTimestamp != nil {
+				return
+			}
+
+			// no updates on the labels/taints of ManagedCluster
+			if reflect.DeepEqual(oldMcls.Labels, newMcls.Labels) && reflect.DeepEqual(oldMcls.Spec.Taints, newMcls.Spec.Taints) {
+				klog.V(4).Infof("no updates on the labels/taints of ManagedCluster %s, skipping syncing", klog.KObj(oldMcls))
+				return
+			}
+			enqueueSubscriptionForClusterFunc(newMcls)
+		},
+		DeleteFunc: func(obj interface{}) {
+			// when a ManagedCluster is deleted,
+			// - Auto populated objects, like Base and Description, will be auto-deleted on next sync/resync of subscribed Subscriptions
+			// - If current dedicated namespace is deleted, then all objects in this namespaces will be pruned.
+		},
+	})
+
 }
 
 // truncateMessage truncates a message if it hits the NoteLengthLimit.
