@@ -278,14 +278,14 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 }
 
 func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
-	allExistingBases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
+	allExistingBases, listErr := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
 		known.ConfigKindLabel:      subscriptionKind.Kind,
 		known.ConfigNameLabel:      sub.Name,
 		known.ConfigNamespaceLabel: sub.Namespace,
 		known.ConfigUIDLabel:       string(sub.UID),
 	}))
-	if err != nil {
-		return err
+	if listErr != nil {
+		return listErr
 	}
 	// Bases to be deleted
 	basesToBeDeleted := sets.String{}
@@ -294,7 +294,14 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 	}
 
 	var allErrs []error
-	for _, namespace := range sub.Status.BindingNamespaces {
+	for _, namespacedName := range sub.Status.BindingClusters {
+		// Convert the namespacedName/name string into a distinct namespacedName and name
+		namespace, _, err := cache.SplitMetaNamespaceKey(namespacedName)
+		if err != nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid resource key: %s", namespacedName))
+			continue
+		}
+
 		ns, listErr := deployer.nsLister.Get(namespace)
 		if listErr != nil {
 			if apierrors.IsNotFound(listErr) {
@@ -332,7 +339,7 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 			base.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
 		}
 
-		err := deployer.syncBase(sub, base)
+		err = deployer.syncBase(sub, base)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(base), err)

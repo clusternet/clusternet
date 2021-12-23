@@ -36,8 +36,8 @@ func TestDefaultBinder(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns"},
 	}
 	testClusters := []string{
-		"cluster-ns-03",
-		"cluster-ns-01",
+		"cluster-ns-03/xyz",
+		"cluster-ns-01/def",
 	}
 	tests := []struct {
 		name           string
@@ -47,8 +47,8 @@ func TestDefaultBinder(t *testing.T) {
 		{
 			name: "successful",
 			wantedBindings: []string{
-				"cluster-ns-01",
-				"cluster-ns-03",
+				"cluster-ns-01/def",
+				"cluster-ns-03/xyz",
 			},
 		}, {
 			name:      "binding error",
@@ -57,7 +57,7 @@ func TestDefaultBinder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var bindedNamespaces []string
+			var bindedClusters []string
 			client := fake.NewSimpleClientset(testSubscription)
 			client.PrependReactor("update", "subscriptions", func(action clienttesting.Action) (bool, runtime.Object, error) {
 				if action.GetSubresource() != "status" {
@@ -69,7 +69,7 @@ func TestDefaultBinder(t *testing.T) {
 
 				bindedSubscription := action.(clienttesting.UpdateAction).GetObject().(*appsapi.Subscription)
 				if bindedSubscription != nil {
-					bindedNamespaces = bindedSubscription.Status.BindingNamespaces
+					bindedClusters = bindedSubscription.Status.BindingClusters
 				}
 				return true, bindedSubscription, nil
 			})
@@ -83,7 +83,7 @@ func TestDefaultBinder(t *testing.T) {
 			if got := status.AsError(); (tt.injectErr != nil) != (got != nil) {
 				t.Errorf("got error %q, want %q", got, tt.injectErr)
 			}
-			if diff := cmp.Diff(tt.wantedBindings, bindedNamespaces); diff != "" {
+			if diff := cmp.Diff(tt.wantedBindings, bindedClusters); diff != "" {
 				t.Errorf("got different binding (-want, +got): %s", diff)
 			}
 		})

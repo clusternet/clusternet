@@ -233,7 +233,7 @@ type PreBindPlugin interface {
 
 	// PreBind is called before binding a subscription. All prebind plugins must return
 	// success or the subscription will be rejected and won't be sent for binding.
-	PreBind(ctx context.Context, sub *appsapi.Subscription, clusterNamespaces []string) *Status
+	PreBind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
 }
 
 // PostBindPlugin is an interface that must be implemented by "PostBind" plugins.

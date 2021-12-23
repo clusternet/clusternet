@@ -476,13 +476,13 @@ func (f *frameworkImpl) runScoreExtension(ctx context.Context, pl framework.Scor
 // RunPreBindPlugins runs the set of configured prebind plugins. It returns a
 // failure (bool) if any of the plugins returns an error. It also returns an
 // error containing the rejection message or the error occurred in the plugin.
-func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, clusterNamespaces []string) (status *framework.Status) {
+func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(preBind, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	for _, pl := range f.preBindPlugins {
-		status = f.runPreBindPlugin(ctx, pl, sub, clusterNamespaces)
+		status = f.runPreBindPlugin(ctx, pl, sub, namespacedClusters)
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running PreBind plugin", "plugin", pl.Name(), "sub", klog.KObj(sub))
@@ -492,15 +492,15 @@ func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, sub *appsapi.Subs
 	return nil
 }
 
-func (f *frameworkImpl) runPreBindPlugin(ctx context.Context, pl framework.PreBindPlugin, sub *appsapi.Subscription, clusterNamespaces []string) *framework.Status {
+func (f *frameworkImpl) runPreBindPlugin(ctx context.Context, pl framework.PreBindPlugin, sub *appsapi.Subscription, namespacedClusters []string) *framework.Status {
 	startTime := time.Now()
-	status := pl.PreBind(ctx, sub, clusterNamespaces)
+	status := pl.PreBind(ctx, sub, namespacedClusters)
 	f.metricsRecorder.observePluginDurationAsync(preBind, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
 
 // RunBindPlugins runs the set of configured bind plugins until one returns a non `Skip` status.
-func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, clusterNamespaces []string) (status *framework.Status) {
+func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(bind, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -509,7 +509,7 @@ func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscri
 		return framework.NewStatus(framework.Skip, "")
 	}
 	for _, bp := range f.bindPlugins {
-		status = f.runBindPlugin(ctx, bp, sub, clusterNamespaces)
+		status = f.runBindPlugin(ctx, bp, sub, namespacedClusters)
 		if status != nil && status.Code() == framework.Skip {
 			continue
 		}
@@ -523,27 +523,27 @@ func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscri
 	return status
 }
 
-func (f *frameworkImpl) runBindPlugin(ctx context.Context, bp framework.BindPlugin, sub *appsapi.Subscription, clusterNamespaces []string) *framework.Status {
+func (f *frameworkImpl) runBindPlugin(ctx context.Context, bp framework.BindPlugin, sub *appsapi.Subscription, namespacedClusters []string) *framework.Status {
 	startTime := time.Now()
-	status := bp.Bind(ctx, sub, clusterNamespaces)
+	status := bp.Bind(ctx, sub, namespacedClusters)
 	f.metricsRecorder.observePluginDurationAsync(bind, bp.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
 
 // RunPostBindPlugins runs the set of configured postbind plugins.
-func (f *frameworkImpl) RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, clusterNamespaces []string) {
+func (f *frameworkImpl) RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(postBind, framework.Success.String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	for _, pl := range f.postBindPlugins {
-		f.runPostBindPlugin(ctx, pl, sub, clusterNamespaces)
+		f.runPostBindPlugin(ctx, pl, sub, namespacedClusters)
 	}
 }
 
-func (f *frameworkImpl) runPostBindPlugin(ctx context.Context, pl framework.PostBindPlugin, sub *appsapi.Subscription, clusterNamespaces []string) {
+func (f *frameworkImpl) runPostBindPlugin(ctx context.Context, pl framework.PostBindPlugin, sub *appsapi.Subscription, namespacedClusters []string) {
 	startTime := time.Now()
-	pl.PostBind(ctx, sub, clusterNamespaces)
+	pl.PostBind(ctx, sub, namespacedClusters)
 	f.metricsRecorder.observePluginDurationAsync(postBind, pl.Name(), nil, metrics.SinceInSeconds(startTime))
 }
 
@@ -552,13 +552,13 @@ func (f *frameworkImpl) runPostBindPlugin(ctx context.Context, pl framework.Post
 // continue running the remaining ones and returns the error. In such a case,
 // the subscription will not be scheduled and the caller will be expected to call
 // RunReservePluginsUnreserve.
-func (f *frameworkImpl) RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, clusterNamespaces []string) (status *framework.Status) {
+func (f *frameworkImpl) RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(reserve, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	for _, pl := range f.reservePlugins {
-		status = f.runReservePluginReserve(ctx, pl, sub, clusterNamespaces)
+		status = f.runReservePluginReserve(ctx, pl, sub, namespacedClusters)
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running Reserve plugin", "plugin", pl.Name(), "subscription", klog.KObj(sub))
@@ -568,16 +568,16 @@ func (f *frameworkImpl) RunReservePluginsReserve(ctx context.Context, sub *appsa
 	return nil
 }
 
-func (f *frameworkImpl) runReservePluginReserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, clusterNamespaces []string) *framework.Status {
+func (f *frameworkImpl) runReservePluginReserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, namespacedClusters []string) *framework.Status {
 	startTime := time.Now()
-	status := pl.Reserve(ctx, sub, clusterNamespaces)
+	status := pl.Reserve(ctx, sub, namespacedClusters)
 	f.metricsRecorder.observePluginDurationAsync(reserve, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
 
 // RunReservePluginsUnreserve runs the Unreserve method in the set of
 // configured reserve plugins.
-func (f *frameworkImpl) RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, clusterNamespaces []string) {
+func (f *frameworkImpl) RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(unreserve, framework.Success.String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -585,13 +585,13 @@ func (f *frameworkImpl) RunReservePluginsUnreserve(ctx context.Context, sub *app
 	// Execute the Unreserve operation of each reserve plugin in the
 	// *reverse* order in which the Reserve operation was executed.
 	for i := len(f.reservePlugins) - 1; i >= 0; i-- {
-		f.runReservePluginUnreserve(ctx, f.reservePlugins[i], sub, clusterNamespaces)
+		f.runReservePluginUnreserve(ctx, f.reservePlugins[i], sub, namespacedClusters)
 	}
 }
 
-func (f *frameworkImpl) runReservePluginUnreserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, clusterNamespaces []string) {
+func (f *frameworkImpl) runReservePluginUnreserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, namespacedClusters []string) {
 	startTime := time.Now()
-	pl.Unreserve(ctx, sub, clusterNamespaces)
+	pl.Unreserve(ctx, sub, namespacedClusters)
 	f.metricsRecorder.observePluginDurationAsync(unreserve, pl.Name(), nil, metrics.SinceInSeconds(startTime))
 }
 
@@ -601,7 +601,7 @@ func (f *frameworkImpl) runReservePluginUnreserve(ctx context.Context, pl framew
 // plugins returns "Wait", then this function will create and add waiting subscription
 // to a map of currently waiting subs and return status with "Wait" code.
 // Subscription will remain waiting subscription for the minimum duration returned by the permit plugins.
-func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, clusterNamespaces []string) (status *framework.Status) {
+func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(permit, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -609,7 +609,7 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subsc
 	pluginsWaitTime := make(map[string]time.Duration)
 	statusCode := framework.Success
 	for _, pl := range f.permitPlugins {
-		status, timeout := f.runPermitPlugin(ctx, pl, sub, clusterNamespaces)
+		status, timeout := f.runPermitPlugin(ctx, pl, sub, namespacedClusters)
 		if !status.IsSuccess() {
 			if status.IsUnschedulable() {
 				msg := fmt.Sprintf("rejected subscription %q by permit plugin %q: %v", sub.Name, pl.Name(), status.Message())
@@ -641,9 +641,9 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subsc
 	return nil
 }
 
-func (f *frameworkImpl) runPermitPlugin(ctx context.Context, pl framework.PermitPlugin, sub *appsapi.Subscription, clusterNamespaces []string) (*framework.Status, time.Duration) {
+func (f *frameworkImpl) runPermitPlugin(ctx context.Context, pl framework.PermitPlugin, sub *appsapi.Subscription, namespacedClusters []string) (*framework.Status, time.Duration) {
 	startTime := time.Now()
-	status, timeout := pl.Permit(ctx, sub, clusterNamespaces)
+	status, timeout := pl.Permit(ctx, sub, namespacedClusters)
 	f.metricsRecorder.observePluginDurationAsync(permit, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status, timeout
 }
