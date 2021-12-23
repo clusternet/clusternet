@@ -20,10 +20,10 @@ Run
 
 ```bash
 # build for linux/amd64 by default
-$ make clusternet-agent clusternet-hub
+$ make clusternet-agent clusternet-hub clusternet-scheduler
 ```
 
-to build binaries `clusternet-agent` and `clusternet-hub` for `linux/amd64`.
+to build binaries `clusternet-agent`, `clusternet-hub` and `clusternet-scheduler` for `linux/amd64`.
 
 Also you could specify other platforms when building, such as,
 
@@ -68,7 +68,7 @@ on the installation.
 
 ```bash
 # build for linux/amd64 by default
-# container images for clusternet-agent and clusternet-hub
+# container images for clusternet-agent, clusternet-hub and clusternet-scheduler
 $ make images
 ```
 

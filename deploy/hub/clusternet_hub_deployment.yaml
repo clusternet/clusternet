@@ -61,17 +61,20 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-hub
-          image: ghcr.io/clusternet/clusternet-hub:v0.6.0
+          image: ghcr.io/clusternet/clusternet-hub:v0.7.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: RESERVED_NAMESPACE
+              value: clusternet-reserved
           command:
             - /usr/local/bin/clusternet-hub
             - --secure-port=443
             - --feature-gates=SocketConnection=true,Deployer=true,ShadowAPI=true,FeedInUseProtection=true
             - --anonymous-auth-supported=true
             - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
+            - --reserved-namespace=$(RESERVED_NAMESPACE)
             - -v=4
