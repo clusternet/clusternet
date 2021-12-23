@@ -144,8 +144,8 @@ spec:
           status:
             description: SubscriptionStatus defines the observed state of Subscription
             properties:
-              bindingNamespaces:
-                description: Namespaces of targeted clusters that Subscription binds to.
+              bindingClusters:
+                description: Namespaced names of targeted clusters that Subscription binds to.
                 items:
                   type: string
                 type: array

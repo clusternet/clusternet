@@ -76,10 +76,10 @@ type SubscriptionSpec struct {
 
 // SubscriptionStatus defines the observed state of Subscription
 type SubscriptionStatus struct {
-	// Namespaces of targeted clusters that Subscription binds to.
+	// Namespaced names of targeted clusters that Subscription binds to.
 	//
 	// +optional
-	BindingNamespaces []string `json:"bindingNamespaces,omitempty"`
+	BindingClusters []string `json:"bindingClusters,omitempty"`
 
 	// SpecHash calculates the hash value of current SubscriptionSpec.
 	//

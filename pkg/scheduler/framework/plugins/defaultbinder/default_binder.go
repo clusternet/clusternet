@@ -58,7 +58,7 @@ func (pl *DefaultBinder) Bind(ctx context.Context, sub *appsapi.Subscription, na
 	})
 
 	subCopy := sub.DeepCopy()
-	subCopy.Status.BindingNamespaces = namespacedClusters
+	subCopy.Status.BindingClusters = namespacedClusters
 	subCopy.Status.SpecHash = utils.HashSubscriptionSpec(&subCopy.Spec)
 	subCopy.Status.DesiredReleases = len(namespacedClusters)
 

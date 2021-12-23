@@ -324,7 +324,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 // bind a subscription to given clusters.
 // We expect this to run asynchronously, so we handle binding metrics internally.
-func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, targetClusterNamespaces []string) (err error) {
+func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (err error) {
 	defer func() {
 		// finish binding
 		if err != nil {
@@ -336,11 +336,11 @@ func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, tar
 			corev1.EventTypeNormal,
 			"Scheduled",
 			"Binding",
-			"Successfully assigned %s to %s", klog.KObj(sub), strings.Join(targetClusterNamespaces, ","),
+			fmt.Sprintf("Successfully assigned %s to %s", klog.KObj(sub), strings.Join(namespacedClusters, ",")),
 		)
 	}()
 
-	bindStatus := sched.framework.RunBindPlugins(ctx, sub, targetClusterNamespaces)
+	bindStatus := sched.framework.RunBindPlugins(ctx, sub, namespacedClusters)
 	if bindStatus.IsSuccess() {
 		return nil
 	}
