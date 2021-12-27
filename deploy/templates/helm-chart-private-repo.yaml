@@ -1,0 +1,24 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: HelmChart
+metadata:
+  name: example
+  namespace: default
+spec:
+  repo: https://private-repo.com/test # CHANGE ME
+  chartPullSecret: # Need it only for private helm repo
+    name: my-private-repo-auth
+    namespace: my-system
+  chart: example # CHANGE ME
+  version: 0.0.1 # CHANGE ME
+  targetNamespace: abc
+
+---
+apiVersion: v1
+data:
+  username: a-base64-encoded-username # CHANGE ME
+  password: a-base64-encoded-password # CHANGE ME
+kind: Secret
+metadata:
+  name: my-private-repo-auth
+  namespace: my-system
+type: Opaque
