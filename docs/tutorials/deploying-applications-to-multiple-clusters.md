@@ -6,6 +6,13 @@ Clusternet supports deploying applications to multiple clusters from a single se
 >
 > Feature gate `Deployer` should be enabled by `clusternet-hub`.
 
+- [Defining Your Applications](#defining-your-applications)
+- [Setting Overrides](#setting-overrides)
+- [Applying Your Applications](#applying-your-applications)
+- [Checking Status](#checking-status)
+
+## Defining Your Applications
+
 First, let's see an exmaple application. Below `Subscription` "app-demo" defines the target child clusters to be
 distributed to, and the resources to be deployed with.
 
@@ -43,6 +50,12 @@ Before applying this `Subscription`, please
 modify [examples/applications/subscription.yaml](https://github.com/clusternet/clusternet/blob/main/examples/applications/subscription.yaml)
 with your clusterID.
 
+> :bulb: :bulb:
+> If you want to install a helm chart from a private helm repository, please set a valid `chartPullSecret` by referring
+> [this example](../../deploy/templates/helm-chart-private-repo.yaml).
+
+## Setting Overrides
+
 `Clusternet` also provides a ***two-stage priority based*** override strategy. You can define
 namespace-scoped `Localization` and cluster-scoped `Globalization` with priorities (ranging from 0 to 1000, default to
 be 500), where lower numbers are considered lower priority. These Globalization(s) and Localization(s) will be applied
@@ -63,6 +76,8 @@ Before applying these Localization(s), please
 modify [examples/applications/localization.yaml](https://github.com/clusternet/clusternet/blob/main/examples/applications/localization.yaml)
 with your `ManagedCluster` namespace, such as `clusternet-5l82l`.
 
+## Applying Your Applications
+
 After installing kubectl plugin [kubectl-clusternet](https://github.com/clusternet/kubectl-clusternet), you could run
 below commands to distribute this application to child clusters.
 
@@ -76,6 +91,8 @@ subscription.apps.clusternet.io/app-demo created
 $ # or
 $ # kubectl-clusternet apply -f examples/applications/
 ```
+
+## Checking Status
 
 Then you can view the resources just created,
 
