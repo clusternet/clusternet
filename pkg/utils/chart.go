@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -53,11 +54,6 @@ const (
 var (
 	Settings = cli.New()
 )
-
-// LocateHelmChart will looks for a chart from repository and load it.
-func LocateHelmChart(chartRepo, chartName, chartVersion string) (*chart.Chart, error) {
-	return LocateAuthHelmChart(chartRepo, "", "", chartName, chartVersion)
-}
 
 // LocateAuthHelmChart will looks for a chart from auth repository and load it.
 func LocateAuthHelmChart(chartRepo, username, password, chartName, chartVersion string) (*chart.Chart, error) {
@@ -102,6 +98,7 @@ func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	client := action.NewInstall(cfg)
 	client.ReleaseName = hr.Name
 	client.CreateNamespace = true
+	client.Timeout = time.Minute * 5
 	client.Namespace = hr.Spec.TargetNamespace
 
 	return client.Run(chart, vals)
@@ -111,12 +108,14 @@ func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 	klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
 	client := action.NewUpgrade(cfg)
+	client.Timeout = time.Minute * 5
 	client.Namespace = hr.Spec.TargetNamespace
 	return client.Run(hr.Name, chart, vals)
 }
 
 func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {
 	client := action.NewUninstall(cfg)
+	client.Timeout = time.Minute * 5
 	_, err := client.Run(hr.Name)
 	if err != nil {
 		if strings.Contains(err.Error(), "Release not loaded") {
