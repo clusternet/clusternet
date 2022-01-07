@@ -29,8 +29,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Rebase code
+        run: git rebase origin/main
       - name: Cache go modules and build cache
         uses: actions/cache@v2.1.5
         with:
