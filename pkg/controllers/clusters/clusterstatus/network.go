@@ -91,9 +91,13 @@ func findPodIPRangeFromNodeSpec(nodeLister corev1Lister.NodeLister) string {
 // findPodCommandParameter returns the pod container command parameter for the given pod.
 // copied from submariner.io/submariner-operator/pkg/discovery/network/pods.go
 func findPodCommandParameter(podLister corev1Lister.PodLister, labelSelectorValue, parameter string) string {
-	pod, err := findPod(podLister, "component", labelSelectorValue)
+	pod := findPodWithComponentLabel(podLister, labelSelectorValue)
 
-	if err != nil || pod == nil {
+	if pod == nil {
+		pod = findPodWithK8sComponentLabel(podLister, labelSelectorValue)
+	}
+
+	if pod == nil {
 		return ""
 	}
 	for _, container := range pod.Spec.Containers {
@@ -106,6 +110,24 @@ func findPodCommandParameter(podLister corev1Lister.PodLister, labelSelectorValu
 		}
 	}
 	return ""
+}
+
+func findPodWithComponentLabel(podLister corev1Lister.PodLister, labelSelectorValue string) *corev1.Pod {
+	pod, err := findPod(podLister, "component", labelSelectorValue)
+
+	if err != nil {
+		return nil
+	}
+	return pod
+}
+
+func findPodWithK8sComponentLabel(podLister corev1Lister.PodLister, labelSelectorValue string) *corev1.Pod {
+	pod, err := findPod(podLister, "app.kubernetes.io/component", labelSelectorValue)
+
+	if err != nil {
+		return nil
+	}
+	return pod
 }
 
 // findPod returns the pods filter by the given labelSelector.
