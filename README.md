@@ -1,4 +1,5 @@
-# Clusternet
+
+<div><img src="./docs/images/clusternet-horizontal-color.png" style="width:300px;" /></div>
 
 [![GoPkg Widget](https://pkg.go.dev/badge/github.com/clusternet/clusternet.svg)](https://pkg.go.dev/github.com/clusternet/clusternet)
 [![License](https://img.shields.io/github/license/clusternet/clusternet)](https://www.apache.org/licenses/LICENSE-2.0.html)
