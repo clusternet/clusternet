@@ -29,10 +29,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
-      - name: Rebase code
-        run: git rebase origin/main
       - name: Cache go modules and build cache
         uses: actions/cache@v2.1.5
         with:
@@ -79,8 +77,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Configure git config
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Rebase code
+        run: git rebase origin/main
       - name: Cache go modules and build cache
         uses: actions/cache@v2.1.5
         with:
