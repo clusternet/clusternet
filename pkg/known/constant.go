@@ -45,6 +45,9 @@ const (
 	// ClusternetHubProxyServiceAccount is the service account that can be used for proxying requests to child clusters.
 	// This will be also used by deployer in clusternet-hub when flag "--anonymous-auth-supported" is set to false.
 	ClusternetHubProxyServiceAccount = "clusternet-hub-proxy"
+
+	// nvidia gpu name
+	NVIDIAGPUResourceName = "nvidia.com/gpu"
 )
 
 // These are internal finalizer values to Clusternet, must be qualified name.
