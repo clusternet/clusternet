@@ -156,6 +156,10 @@ func (g *genericScheduler) findClustersThatFitSubscription(ctx context.Context, 
 		allClusters = append(allClusters, clusters...)
 	}
 	allClusters = normalizedClusters(allClusters)
+	// Return immediately if no clusters match the cluster affinity.
+	if len(allClusters) == 0 {
+		return allClusters, diagnosis, nil
+	}
 
 	// Run "prefilter" plugins.
 	s := fwk.RunPreFilterPlugins(ctx, sub)
