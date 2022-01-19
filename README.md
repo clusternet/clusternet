@@ -21,14 +21,12 @@ Out of the Box.
 
 Clusternet (**Cluster** Inter**net**) is an open source ***add-on*** that helps you manage thousands of millions of
 Kubernetes clusters as easily as visiting the Internet. No matter the clusters are running on public cloud, private
-cloud, hybrid cloud, or at the edge, Clusternet lets you manage/visit them all as if they were running locally. This
-also help eliminate the need to juggle different management tools for each cluster.
+cloud, hybrid cloud, or at the edge, Clusternet helps setup network tunnels in a configurable way and lets you
+manage/visit them all as if they were running locally. This also help eliminate the need to juggle different management
+tools for each cluster.
 
 **Clusternet can also help deploy and coordinate applications to multiple clusters from a single set of APIs in a
 hosting cluster.**
-
-Clusternet will help setup network tunnels in a configurable way, when your clusters are running in a VPC network, at
-the edge, or behind a firewall.
 
 Clusternet also provides a Kubernetes-styled API, where you can continue using the Kubernetes way, such as KubeConfig,
 to visit a certain Managed Kubernetes cluster, or a Kubernetes service.
@@ -38,6 +36,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
 
 ----
 
+- [Core Features](#core-features)
 - [Architecture](#architecture)
 - [Concepts](#concepts)
 - [Kubernetes Version Skew](#kubernetes-version-skew)
@@ -51,6 +50,41 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
 - [Contributing & Developing](#contributing--developing)
 
 ----
+
+# Core Features
+
+- Kubernetes Multi-Cluster Management and Governance
+    - managing Kubernetes clusters running in cloud providers, such as AWS, Google Cloud, Tencent Cloud, Alibaba Cloud,
+      etc
+    - managing on-premise Kubernetes clusters
+    - managing any [Certified Kubernetes Distributions](https://www.cncf.io/certification/software-conformance/), such
+      as [k3s](https://github.com/k3s-io/k3s)
+    - managing Kubernetes clusters running at the edge
+    - parent cluster can also be registered itself as child cluster to run workloads
+    - managing Kubernetes version skewed from v1.17.x to v1.22.x,
+      refering [Kubernetes Version Skew](#kubernetes-version-skew) for details
+    - visiting any managed clusters with dynamic RBAC rules
+      refering [this tutorial](./docs/tutorials/visiting-child-clusters-with-rbac.md) for details
+- Application Coordinations
+    - Cross-Cluster Scheduling
+        - cluster label selectors
+        - cluster taints & tolerations
+    - Various Resource Types
+        - Kubernetes native objects, such as `Deployment`, `StatefulSet`, etc
+        - CRD
+        - helm charts
+    - [Setting Overrides](https://github.com/clusternet/clusternet/blob/main/docs/tutorials/deploying-applications-to-multiple-clusters.md#setting-overrides)
+        - two-stage priority based override strategies
+        - easy to rollback
+        - cross-cluster canary rollout
+- CLI
+    - providing a kubectl plugin, which can be installed with `kubectl krew install clusternet`
+    - consistent user experience with `kubectl`
+    - create/update/watch/delete multi-cluster resources
+    - interacting with any child clusters the same as local cluster
+- Client-go
+    - easy to integrate via
+      a [client-go wrapper](https://github.com/clusternet/clusternet/blob/main/examples/clientgo/READEME.md)
 
 # Architecture
 
@@ -67,7 +101,7 @@ and `clusternet-hub`.
 - setting up a websocket connection that provides full-duplex communication channels over a single TCP connection to
   parent cluster;
 
-`clusternet-scheduelr` is responsible for
+`clusternet-scheduler` is responsible for
 
 - scheduling resources/feeds to matched child clusters based on `SchedulingStrategy`;
 
