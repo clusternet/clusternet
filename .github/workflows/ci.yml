@@ -18,7 +18,7 @@ jobs:
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:
-        go-version: [ 1.14.x, 1.15.x, 1.16.x ]
+        go-version: [ 1.16.x ]
         os: [ ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
@@ -66,7 +66,7 @@ jobs:
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:
-        go-version: [ 1.14.x, 1.15.x, 1.16.x ]
+        go-version: [ 1.16.x ]
         os: [ ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
@@ -119,7 +119,7 @@ jobs:
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:
-        go-version: [ 1.14.x, 1.15.x, 1.16.x ]
+        go-version: [ 1.16.x ]
         os: [ ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
@@ -152,7 +152,7 @@ jobs:
       - name: Run tests
         run: make test
       - name: Upload coverage to Codecov
-        if: matrix.go-version == '1.15.x'
+        if: matrix.go-version == '1.16.x'
         uses: codecov/codecov-action@v2
         with:
           files: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/coverage.out
