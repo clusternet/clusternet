@@ -109,7 +109,7 @@ func (c *FakeClusterRegistrationRequests) UpdateStatus(ctx context.Context, clus
 // Delete takes name of the clusterRegistrationRequest and deletes it. Returns an error if one occurs.
 func (c *FakeClusterRegistrationRequests) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(clusterregistrationrequestsResource, name), &v1beta1.ClusterRegistrationRequest{})
+		Invokes(testing.NewRootDeleteActionWithOptions(clusterregistrationrequestsResource, name, opts), &v1beta1.ClusterRegistrationRequest{})
 	return err
 }
 

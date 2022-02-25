@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.5.0
+    controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
   name: globalizations.apps.clusternet.io
 spec:
@@ -28,13 +28,18 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Globalization represents the cluster-scoped override config for a group of resources.
+        description: Globalization represents the cluster-scoped override config for
+          a group of resources.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -42,21 +47,32 @@ spec:
             description: GlobalizationSpec defines the desired state of Globalization
             properties:
               clusterAffinity:
-                description: ClusterAffinity is a label query over managed clusters by labels. If no labels are specified, all clusters will be selected.
+                description: ClusterAffinity is a label query over managed clusters
+                  by labels. If no labels are specified, all clusters will be selected.
                 properties:
                   matchExpressions:
-                    description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
                     items:
-                      description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                      description: A label selector requirement is a selector that
+                        contains values, a key, and an operator that relates the key
+                        and values.
                       properties:
                         key:
-                          description: key is the label key that the selector applies to.
+                          description: key is the label key that the selector applies
+                            to.
                           type: string
                         operator:
-                          description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                          description: operator represents a key's relationship to
+                            a set of values. Valid operators are In, NotIn, Exists
+                            and DoesNotExist.
                           type: string
                         values:
-                          description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                          description: values is an array of string values. If the
+                            operator is In or NotIn, the values array must be non-empty.
+                            If the operator is Exists or DoesNotExist, the values
+                            array must be empty. This array is replaced during a strategic
+                            merge patch.
                           items:
                             type: string
                           type: array
@@ -68,17 +84,24 @@ spec:
                   matchLabels:
                     additionalProperties:
                       type: string
-                    description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    description: matchLabels is a map of {key,value} pairs. A single
+                      {key,value} in the matchLabels map is equivalent to an element
+                      of matchExpressions, whose key field is "key", the operator
+                      is "In", and the values array contains only "value". The requirements
+                      are ANDed.
                     type: object
                 type: object
               feed:
-                description: Feed holds references to the objects the Globalization applies to.
+                description: Feed holds references to the objects the Globalization
+                  applies to.
                 properties:
                   apiVersion:
-                    description: APIVersion defines the versioned schema of this representation of an object.
+                    description: APIVersion defines the versioned schema of this representation
+                      of an object.
                     type: string
                   kind:
-                    description: Kind is a string value representing the REST resource this object represents. In CamelCase.
+                    description: Kind is a string value representing the REST resource
+                      this object represents. In CamelCase.
                     type: string
                   name:
                     description: Name of the target resource.
@@ -93,7 +116,8 @@ spec:
                 type: object
               overridePolicy:
                 default: ApplyLater
-                description: OverridePolicy specifies the override policy for this Globalization.
+                description: OverridePolicy specifies the override policy for this
+                  Globalization.
                 enum:
                 - ApplyNow
                 - ApplyLater
@@ -101,7 +125,8 @@ spec:
               overrides:
                 description: Overrides holds all the OverrideConfig.
                 items:
-                  description: OverrideConfig holds information that describes a override config.
+                  description: OverrideConfig holds information that describes a override
+                    config.
                   properties:
                     name:
                       description: Name indicate the OverrideConfig name.
@@ -123,7 +148,11 @@ spec:
                 type: array
               priority:
                 default: 500
-                description: Priority is an integer defining the relative importance of this Globalization compared to others. Lower numbers are considered lower priority. And these Globalization(s) will be applied by order from lower priority to higher. That means override values in lower Globalization will be overridden by those in higher Globalization.
+                description: Priority is an integer defining the relative importance
+                  of this Globalization compared to others. Lower numbers are considered
+                  lower priority. And these Globalization(s) will be applied by order
+                  from lower priority to higher. That means override values in lower
+                  Globalization will be overridden by those in higher Globalization.
                 format: int32
                 maximum: 1000
                 minimum: 0
