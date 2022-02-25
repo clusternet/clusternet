@@ -221,7 +221,7 @@ func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.Re
 		if config.ClientConfig != nil {
 			config.FlowControl = utilflowcontrol.New(
 				config.SharedInformerFactory,
-				kubernetes.NewForConfigOrDie(config.ClientConfig).FlowcontrolV1beta1(),
+				kubernetes.NewForConfigOrDie(config.ClientConfig).FlowcontrolV1beta2(),
 				config.MaxRequestsInFlight+config.MaxMutatingRequestsInFlight,
 				config.RequestTimeout/4,
 			)
