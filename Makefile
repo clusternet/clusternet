@@ -123,7 +123,7 @@ ifeq (, $(shell which golangci-lint))
 	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
 	cd $$GOLANG_LINT_TMP_DIR ;\
 	go mod init tmp ;\
-	go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.39.0 ;\
+	go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.44.2 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
