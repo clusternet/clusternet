@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.5.0
+    controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
   name: helmcharts.apps.clusternet.io
 spec:
@@ -47,10 +47,14 @@ spec:
         description: HelmChart is the Schema for the helm chart
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -61,7 +65,8 @@ spec:
                 description: Chart is the name of a Helm Chart in the Repository.
                 type: string
               chartPullSecret:
-                description: ChartPullSecret is the name of the secret that contains the auth information for the chart repository.
+                description: ChartPullSecret is the name of the secret that contains
+                  the auth information for the chart repository.
                 properties:
                   name:
                     type: string
@@ -69,14 +74,18 @@ spec:
                     type: string
                 type: object
               repo:
-                description: a Helm Repository to be used. such as, https://charts.bitnami.com/bitnami
-                pattern: ^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&\(\)\*\+,;=.]+$
+                description: a Helm Repository to be used. OCI-based registries are
+                  also supported. For example, https://charts.bitnami.com/bitnami
+                  or oci://localhost:5000/helm-charts
+                pattern: ^(http|https|oci)?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$
                 type: string
               targetNamespace:
-                description: TargetNamespace specifies the namespace to install this HelmChart
+                description: TargetNamespace specifies the namespace to install this
+                  HelmChart
                 type: string
               version:
-                description: ChartVersion is the version of the chart to be deployed. It will be defaulted with current latest version if empty.
+                description: ChartVersion is the version of the chart to be deployed.
+                  It will be defaulted with current latest version if empty.
                 type: string
             required:
             - chart

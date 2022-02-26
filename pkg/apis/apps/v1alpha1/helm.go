@@ -77,12 +77,13 @@ const (
 
 type HelmOptions struct {
 	// a Helm Repository to be used.
-	// such as, https://charts.bitnami.com/bitnami
+	// OCI-based registries are also supported.
+	// For example, https://charts.bitnami.com/bitnami or oci://localhost:5000/helm-charts
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern=`^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&\(\)\*\+,;=.]+$`
+	// +kubebuilder:validation:Pattern=`^(http|https|oci)?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$`
 	Repository string `json:"repo"`
 
 	// ChartPullSecret is the name of the secret that contains the auth information for the chart repository.

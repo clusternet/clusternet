@@ -116,7 +116,7 @@ func (c *FakeManagedClusters) UpdateStatus(ctx context.Context, managedCluster *
 // Delete takes name of the managedCluster and deletes it. Returns an error if one occurs.
 func (c *FakeManagedClusters) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(managedclustersResource, c.ns, name), &v1beta1.ManagedCluster{})
+		Invokes(testing.NewDeleteActionWithOptions(managedclustersResource, c.ns, name, opts), &v1beta1.ManagedCluster{})
 
 	return err
 }

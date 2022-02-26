@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
-CRD_OPTIONS ?= "crd:trivialVersions=true"
+CRD_OPTIONS ?= "crd:crdVersions=v1"
 
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
 BASEIMAGE ?= alpine:3.13.5
-GOVERSION ?= 1.16.13
+GOVERSION ?= 1.17.6
 REGISTRY ?= ghcr.io
 
 # Run tests
@@ -106,7 +105,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.5.0 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(shell go env GOPATH)/bin/controller-gen
@@ -124,7 +123,7 @@ ifeq (, $(shell which golangci-lint))
 	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
 	cd $$GOLANG_LINT_TMP_DIR ;\
 	go mod init tmp ;\
-	go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.39.0 ;\
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.44.2 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
