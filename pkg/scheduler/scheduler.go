@@ -335,8 +335,8 @@ func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, nam
 			sub,
 			corev1.EventTypeNormal,
 			"Scheduled",
-			"Binding",
-			fmt.Sprintf("Successfully assigned %s to %s", klog.KObj(sub), strings.Join(namespacedClusters, ",")),
+			"Successfully bound %s to %s",
+			klog.KObj(sub), strings.Join(namespacedClusters, ","),
 		)
 	}()
 

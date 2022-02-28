@@ -146,14 +146,15 @@ are registerring to, we call it **parent cluster**.
 # Kubernetes Version Skew
 
 `Clusternet` is compatible with multiple Kubernetes versions. For example, you could run `clusternet-hub` with
-Kubernetes v1.20.8, while the versions of child Kubernetes clusters could range from v1.18.x to v1.22.x.
+Kubernetes v1.20.8, while the versions of child Kubernetes clusters could range from v1.18.x to v1.23.x.
 
-| Version                  | Kubernetes v1.17.x | Kubernetes v1.18.x | Kubernetes v1.19.x | Kubernetes v1.20.x | Kubernetes v1.21.x | Kubernetes v1.22.x |
-| ------------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
-| Clusternet v0.5.0        | \*                 | \*                 | ✓                  | ✓                  | ✓                  | ✓                  |
-| Clusternet v0.6.0        | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
-| Clusternet v0.7.0        | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
-| Clusternet HEAD (main)   | \*                 | ✓                  | ✓                  | ✓                  | ✓                  | ✓                  |
+| Version                | Kubernetes v1.17.x | Kubernetes v1.18.x | Kubernetes v1.19.x ~ v1.23.x |
+| ---------------------- | ------------------ | ------------------ |------------------------------|
+| Clusternet v0.5.0      | \*                 | \*                 | ✓                            |
+| Clusternet v0.6.0      | \*                 | ✓                  | ✓                            |
+| Clusternet v0.7.0      | \*                 | ✓                  | ✓                            |
+| Clusternet v0.8.0      | \*                 | ✓                  | ✓                            |
+| Clusternet HEAD (main) | \*                 | ✓                  | ✓                            |
 
 Note:
 
