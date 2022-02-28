@@ -19,6 +19,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"path"
 	"reflect"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -62,6 +64,11 @@ func LocateAuthHelmChart(chartRepo, username, password, chartName, chartVersion 
 	client.ChartPathOptions.Version = chartVersion
 	client.ChartPathOptions.Username = username
 	client.ChartPathOptions.Password = password
+
+	if registry.IsOCI(chartRepo) {
+		client.ChartPathOptions.RepoURL = ""
+		chartName = path.Join(chartRepo, chartName)
+	}
 
 	cp, err := client.ChartPathOptions.LocateChart(chartName, Settings)
 	if err != nil {

@@ -24,8 +24,6 @@ import (
 	"strings"
 	"sync"
 
-	"helm.sh/helm/v3/pkg/getter"
-	"helm.sh/helm/v3/pkg/repo"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -789,9 +787,8 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 			return err
 		}
 	}
-	_, err = repo.FindChartInAuthRepoURL(chart.Spec.Repository, username, password, chart.Spec.Chart, chart.Spec.ChartVersion,
-		"", "", "",
-		getter.All(utils.Settings))
+
+	_, err = utils.LocateAuthHelmChart(chart.Spec.Repository, username, password, chart.Spec.Chart, chart.Spec.ChartVersion)
 	if err != nil {
 		// failed to find chart
 		return deployer.chartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
