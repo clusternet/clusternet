@@ -323,7 +323,8 @@ func resolveControllerRef(descLister applisters.DescriptionLister, namespace str
 type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
 
 func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
-	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder, callbackHandler ResourceCallbackHandler) error {
+	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder, dryApply bool,
+	callbackHandler ResourceCallbackHandler) error {
 	var allErrs []error
 	wg := sync.WaitGroup{}
 	objectsToBeDeployed := desc.Spec.Raw
@@ -349,11 +350,15 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 		go func(resource *unstructured.Unstructured) {
 			defer wg.Done()
 
-			retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
-			if retryErr != nil {
-				errCh <- retryErr
-				return
+			// dryApply means do not apply resources, just add sub resource watcher.
+			if !dryApply {
+				retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+				if retryErr != nil {
+					errCh <- retryErr
+					return
+				}
 			}
+
 			if callbackHandler != nil {
 				callbackErr := callbackHandler(resource)
 				if callbackErr != nil {
@@ -370,6 +375,14 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 	close(errCh)
 	for err := range errCh {
 		allErrs = append(allErrs, err)
+	}
+
+	// in dry apply case no need to update description status.
+	if dryApply {
+		if len(allErrs) > 0 {
+			return utilerrors.NewAggregate(allErrs)
+		}
+		return nil
 	}
 
 	var statusPhase appsapi.DescriptionPhase
