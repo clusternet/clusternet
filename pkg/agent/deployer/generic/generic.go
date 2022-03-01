@@ -131,7 +131,8 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 
 	if !utils.DeployableByAgent(deployer.syncMode, deployer.appPusherEnabled) {
 		klog.V(5).Infof("Description %s is not deployable by agent, skipping syncing", klog.KObj(desc))
-		return nil
+		return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+			deployer.discoveryRESTMapper, desc, deployer.recorder, true, deployer.ResourceCallbackHandler)
 	}
 
 	if desc.DeletionTimestamp != nil {
@@ -140,7 +141,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	}
 
 	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, deployer.ResourceCallbackHandler)
+		deployer.discoveryRESTMapper, desc, deployer.recorder, false, deployer.ResourceCallbackHandler)
 }
 
 func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstructured) error {
@@ -186,11 +187,15 @@ func (deployer *Deployer) handleResource(ownedByValue string) error {
 
 	desc, err := deployer.descLister.Descriptions(namespace).Get(name)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.V(2).Infof("the owner description %q has been deleted", ownedByValue)
+			return nil
+		}
 		return err
 	}
 
 	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, nil)
+		deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil)
 }
 
 func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool {
