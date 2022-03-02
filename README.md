@@ -72,7 +72,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - Various Resource Types
         - Kubernetes native objects, such as `Deployment`, `StatefulSet`, etc
         - CRD
-        - helm charts
+        - helm charts, including [OCI-based Helm charts](https://helm.sh/docs/topics/registries/)
     - [Setting Overrides](https://github.com/clusternet/clusternet/blob/main/docs/tutorials/deploying-applications-to-multiple-clusters.md#setting-overrides)
         - two-stage priority based override strategies
         - easy to rollback
@@ -200,6 +200,9 @@ Clusternet supports deploying applications to multiple clusters from a single se
 
 Please follow [this guide](./docs/tutorials/deploying-applications-to-multiple-clusters.md) to deploy your applications
 to multiple clusters.
+
+Clusternet also supports using [OCI-based registries](https://helm.sh/docs/topics/registries/) for Helm charts. Please
+refer [this oci-based helm chart](./examples/oci/oci-chart-mysql.yaml) for using.
 
 # Contact
 

@@ -19,6 +19,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -55,13 +57,46 @@ var (
 	Settings = cli.New()
 )
 
+// FindOCIChart will looks for an OCI-based helm chart from repository.
+func FindOCIChart(chartRepo, chartName, chartVersion string) (bool, error) {
+	// TODO: auth
+	registryClient, err := registry.NewClient(
+		registry.ClientOptDebug(Settings.Debug),
+		registry.ClientOptWriter(os.Stdout),
+		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
+	)
+	if err != nil {
+		return false, err
+	}
+	err = registryClient.WithResolver(true, false)
+	if err != nil {
+		return false, err
+	}
+
+	// Retrieve list of tags for repository
+	ref := fmt.Sprintf("%s/%s", strings.TrimPrefix(chartRepo, fmt.Sprintf("%s://", registry.OCIScheme)), chartName)
+	tags, err := registryClient.Tags(ref)
+	if err != nil {
+		return false, err
+	}
+
+	for _, tag := range tags {
+		if tag == chartVersion {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // LocateAuthHelmChart will looks for a chart from auth repository and load it.
-func LocateAuthHelmChart(chartRepo, username, password, chartName, chartVersion string) (*chart.Chart, error) {
-	client := action.NewInstall(nil)
+func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, password, chartName, chartVersion string) (*chart.Chart, error) {
+	client := action.NewInstall(cfg)
 	client.ChartPathOptions.RepoURL = chartRepo
 	client.ChartPathOptions.Version = chartVersion
 	client.ChartPathOptions.Username = username
 	client.ChartPathOptions.Password = password
+	client.ChartPathOptions.InsecureSkipTLSverify = true
+	// TODO: plainHTTP
 
 	cp, err := client.ChartPathOptions.LocateChart(chartName, Settings)
 	if err != nil {
