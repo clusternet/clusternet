@@ -98,6 +98,16 @@ func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, passwor
 	client.ChartPathOptions.InsecureSkipTLSverify = true
 	// TODO: plainHTTP
 
+	if registry.IsOCI(chartRepo) {
+		/*oci based registries don't support to download index.yaml
+		set RepoURL as an empty string to avoid downloading index.yaml
+		in LocateChart() bellow
+		*/
+		client.ChartPathOptions.RepoURL = ""
+		chartName = fmt.Sprintf("%s/%s", chartRepo, chartName)
+		klog.V(5).Infof("oci based chart, full chart path is %s", chartName)
+	}
+
 	cp, err := client.ChartPathOptions.LocateChart(chartName, Settings)
 	if err != nil {
 		return nil, err
