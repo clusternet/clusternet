@@ -21,12 +21,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/mattbaird/jsonpatch"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
@@ -109,12 +111,22 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	hr *appsapi.HelmRelease, recorder record.EventRecorder) error {
 	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
 
+	registryClient, err := registry.NewClient(
+		registry.ClientOptDebug(Settings.Debug),
+		registry.ClientOptWriter(os.Stdout),
+		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
+	)
+	if err != nil {
+		return err
+	}
+
 	cfg := new(action.Configuration)
-	err := cfg.Init(deployCtx, hr.Spec.TargetNamespace, "secret", klog.V(5).Infof)
+	err = cfg.Init(deployCtx, hr.Spec.TargetNamespace, "secret", klog.V(5).Infof)
 	if err != nil {
 		return err
 	}
 	cfg.Releases.MaxHistory = 5
+	cfg.RegistryClient = registryClient
 
 	// delete helm release
 	if hr.DeletionTimestamp != nil {
@@ -141,7 +153,7 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 			return err
 		}
 	}
-	chart, err = LocateAuthHelmChart(hr.Spec.Repository, username, password, hr.Spec.Chart, hr.Spec.ChartVersion)
+	chart, err = LocateAuthHelmChart(cfg, hr.Spec.Repository, username, password, hr.Spec.Chart, hr.Spec.ChartVersion)
 	if err != nil {
 		recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
 		return err

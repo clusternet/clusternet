@@ -22,9 +22,9 @@ require (
 	k8s.io/code-generator v0.23.1
 	k8s.io/component-base v0.23.1
 	k8s.io/component-helpers v0.23.1
-	k8s.io/controller-manager v0.21.2
+	k8s.io/controller-manager v0.23.1
 	k8s.io/klog/v2 v2.30.0
-	k8s.io/kube-aggregator v0.21.2
+	k8s.io/kube-aggregator v0.23.1
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
 	k8s.io/metrics v0.23.1
 	k8s.io/utils v0.0.0-20211116205334-6203023598ed
@@ -180,6 +180,7 @@ replace (
 	github.com/dgrijalva/jwt-go => github.com/dgrijalva/jwt-go v3.2.1-0.20210802184156-9742bd7fca1c+incompatible
 	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2
 	github.com/spf13/afero => github.com/spf13/afero v1.5.1
+	helm.sh/helm/v3 => github.com/clusternet/helm/v3 v3.8.1-0.20220302083614-dcaa0a1d8a20
 	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.23.0-alpha.0.0.20220224022903-dc3dec363e8c
 	k8s.io/apiserver => github.com/clusternet/apiserver v0.0.0-20220224032722-ac3d780b913f
 )

@@ -25,6 +25,7 @@ import (
 	"sync"
 
 	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/repo"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -505,16 +506,16 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 				deployer.recorder.Event(base, corev1.EventTypeWarning, "VerifyingHelmChart", msg)
 				return fmt.Errorf(msg)
 			}
-			if chart.Status.Phase != appsapi.HelmChartFound {
+			if chart.Status.Phase == appsapi.HelmChartNotFound {
 				deployer.recorder.Event(base, corev1.EventTypeWarning, "HelmChartNotFound",
 					fmt.Sprintf("helm chart %s is not found", klog.KObj(chart)))
 				return nil
-			} else {
-				allChartRefs = append(allChartRefs, appsapi.ChartReference{
-					Namespace: chart.Namespace,
-					Name:      chart.Name,
-				})
 			}
+			allChartRefs = append(allChartRefs, appsapi.ChartReference{
+				Namespace: chart.Namespace,
+				Name:      chart.Name,
+			})
+
 		default:
 			manifests, err = utils.ListManifestsBySelector(deployer.reservedNamespace, deployer.mfstLister, feed)
 			if err != nil {
@@ -759,16 +760,17 @@ func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 }
 
 func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
+	var err error
 	klog.V(5).Infof("handle HelmChart %s", klog.KObj(chart))
 	if chart.DeletionTimestamp != nil {
-		if err := deployer.protectHelmChartFeed(chart); err != nil {
+		if err = deployer.protectHelmChartFeed(chart); err != nil {
 			return err
 		}
 
 		// remove finalizers
 		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.AppFinalizer)
 		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.FeedProtectionFinalizer)
-		_, err := deployer.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(), chart, metav1.UpdateOptions{})
+		_, err = deployer.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(), chart, metav1.UpdateOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil
@@ -778,10 +780,13 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 		}
 		return err
 	}
+
 	var (
-		err      error
 		username string
 		password string
+
+		chartPhase appsapi.HelmChartPhase
+		reason     string
 	)
 	if chart.Spec.ChartPullSecret.Name != "" {
 		username, password, err = utils.GetHelmRepoCredentials(deployer.kubeClient, chart.Spec.ChartPullSecret.Name, chart.Spec.ChartPullSecret.Namespace)
@@ -789,18 +794,28 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 			return err
 		}
 	}
-	_, err = repo.FindChartInAuthRepoURL(chart.Spec.Repository, username, password, chart.Spec.Chart, chart.Spec.ChartVersion,
-		"", "", "",
-		getter.All(utils.Settings))
+	chartPhase = appsapi.HelmChartFound
+	if registry.IsOCI(chart.Spec.Repository) {
+		var found bool
+		found, err = utils.FindOCIChart(chart.Spec.Repository, chart.Spec.Chart, chart.Spec.ChartVersion)
+		if !found {
+			chartPhase = appsapi.HelmChartNotFound
+			reason = fmt.Sprintf("not found a version matched %s for chart %s/%s", chart.Spec.ChartVersion, chart.Spec.Repository, chart.Spec.Chart)
+		}
+	} else {
+		_, err = repo.FindChartInAuthRepoURL(chart.Spec.Repository, username, password, chart.Spec.Chart, chart.Spec.ChartVersion,
+			"", "", "",
+			getter.All(utils.Settings))
+	}
 	if err != nil {
 		// failed to find chart
-		return deployer.chartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
-			Phase:  appsapi.HelmChartNotFound,
-			Reason: err.Error(),
-		})
+		chartPhase = appsapi.HelmChartNotFound
+		reason = err.Error()
 	}
+
 	err = deployer.chartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
-		Phase: appsapi.HelmChartFound,
+		Phase:  chartPhase,
+		Reason: reason,
 	})
 	if err != nil {
 		return err

@@ -54,6 +54,9 @@ with your clusterID.
 > If you want to install a helm chart from a private helm repository, please set a valid `chartPullSecret` by referring
 > [this example](../../deploy/templates/helm-chart-private-repo.yaml).
 
+Clusternet also supports using [OCI-based registries](https://helm.sh/docs/topics/registries/) for Helm charts. Please
+refer [this oci-based helm chart](../../examples/oci/oci-chart-mysql.yaml).
+
 ## Setting Overrides
 
 `Clusternet` also provides a ***two-stage priority based*** override strategy. You can define
