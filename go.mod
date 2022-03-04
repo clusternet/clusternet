@@ -47,7 +47,7 @@ require (
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/chai2010/gettext-go v0.0.0-20160711120539-c6fed771bfd5 // indirect
-	github.com/containerd/containerd v1.5.9 // indirect
+	github.com/containerd/containerd v1.5.10 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.3 // indirect
