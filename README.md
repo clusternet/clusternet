@@ -1,4 +1,3 @@
-
 <div><img src="./docs/images/clusternet-horizontal-color.png" style="width:300px;" /></div>
 
 [![GoPkg Widget](https://pkg.go.dev/badge/github.com/clusternet/clusternet.svg)](https://pkg.go.dev/github.com/clusternet/clusternet)
@@ -165,6 +164,10 @@ Note:
 
 ## Installing Clusternet
 
+You can try to install clusternet either in real cluster or locally by using [kind](https://kind.sigs.k8s.io/).
+
+### In Real Cluster
+
 You can try below ways to
 
 - [install `Clusternet` with Helm](./docs/tutorials/installing-clusternet-with-helm.md)
@@ -175,12 +178,15 @@ You can try below ways to
 > The container images are hosted on both [ghcr.io](https://github.com/orgs/clusternet/packages) and [dockerhub](https://hub.docker.com/u/clusternet).
 > Please choose the fastest image registry to use.
 
-## Checking Cluster Registration
-
 After `clusternet-hub` is successfully installed. You can try to install `clusternet-agent` to any Kubernetes clusters
 you want to manage.
 
 Please follow [this guide](./docs/tutorials/checking-cluster-registration.md) to check cluster registrations.
+
+### Locally
+
+Apart from installing `Clusternet` in real cluster, please follow [this guide](./docs/tutorials/quick-installing-clusternet-locally.md) 
+to set up environment locally.
 
 ## Visiting Managed Clusters With RBAC
 
