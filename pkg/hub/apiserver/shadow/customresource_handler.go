@@ -126,6 +126,7 @@ func (r *crdHandler) AddNonCRDAPIResource(apiResource metav1.APIResource) {
 func (r *crdHandler) SetRootWebService(ws *restful.WebService) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
+
 	if r.ws != nil {
 		panic("root WebService has already been set for CRD")
 	}
@@ -225,9 +226,9 @@ func (r *crdHandler) removeStorage(crd *apiextensionsv1.CustomResourceDefinition
 	r.versionDiscoveryHandler.removeCRD(crd)
 
 	r.lock.Lock()
-	defer r.lock.Unlock()
 	delete(r.storages, crd.Spec.Names.Plural)
 	delete(r.requestScopes, crd.Spec.Names.Plural)
+	r.lock.Unlock()
 
 	if r.ws == nil {
 		klog.Error("nil root WebService for crdHandler")
@@ -281,11 +282,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 
 	r.versionDiscoveryHandler.updateCRD(crd)
 
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
 	crdGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, ParameterCodec, Codecs)
-
 	var standardSerializers []runtime.SerializerInfo
 	for _, s := range crdGroupInfo.NegotiatedSerializer.SupportedMediaTypes() {
 		if s.MediaType == runtime.ContentTypeProtobuf {
@@ -311,7 +308,6 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	restStorage.SetKind(crd.Spec.Names.Kind)
 	restStorage.SetGroup(crd.Spec.Group)
 	restStorage.SetVersion(storageVersion)
-	r.storages[resource] = restStorage
 
 	groupVersionKind := restStorage.GroupVersionKind(schema.GroupVersion{})
 	groupVersionResource := groupVersionKind.GroupVersion().WithResource(resource)
@@ -330,6 +326,8 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		}
 	}
 
+	r.lock.Lock()
+	r.storages[resource] = restStorage
 	r.requestScopes[resource] = &handlers.RequestScope{
 		Namer: handlers.ContextBasedNaming{
 			SelfLinker:         meta.NewAccessor(),
@@ -353,6 +351,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		Authorizer:               r.authorizer,
 		MaxRequestBodyBytes:      r.maxRequestBodyBytes,
 	}
+	r.lock.Unlock()
 
 	var resourcePath string
 	var namespaced string
@@ -625,9 +624,9 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r.lock.RLock()
-	defer r.lock.RUnlock()
 	requestScope := r.requestScopes[requestInfo.Resource]
 	storage := r.storages[requestInfo.Resource]
+	r.lock.RUnlock()
 	switch requestInfo.Verb {
 	case "get":
 		handlers.GetResource(storage, requestScope).ServeHTTP(w, req)
