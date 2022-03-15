@@ -513,7 +513,7 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 			lastError = nil
 		}
 
-		if ResourceNeedResync(resource, curObj) {
+		if ResourceNeedResync(curObj, resource) {
 			// try to update resource
 			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 				Update(context.TODO(), resource, metav1.UpdateOptions{})
@@ -663,26 +663,31 @@ func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.Man
 func fieldsToBeIgnored() []string {
 	return []string{
 		known.MetaGeneration,
+		known.CreationTimestamp,
+		known.ManagedFields,
 		known.MetaUID,
 		known.MetaSelflink,
 	}
 }
 
-// ResourceNeedResync will compare fields and decide whether to sync back original object.
-func ResourceNeedResync(original pkgruntime.Object, current pkgruntime.Object) bool {
-	originBytes, err := json.Marshal(original)
-	if err != nil {
-		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
-		return false
-	}
-
+// ResourceNeedResync will compare fields and decide whether to sync back the current object.
+//
+// current is deployed resource, modified is changed resource.
+// The function will return the bool value to indicate whether to sync back the current object.
+func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object) bool {
 	currentBytes, err := json.Marshal(current)
 	if err != nil {
 		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
 		return false
 	}
 
-	patch, err := jsonpatch.CreatePatch(originBytes, currentBytes)
+	modifiedBytes, err := json.Marshal(modified)
+	if err != nil {
+		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
+		return false
+	}
+
+	patch, err := jsonpatch.CreatePatch(currentBytes, modifiedBytes)
 	if err != nil {
 		klog.ErrorDepth(5, fmt.Sprintf("Error creating JSON patch: %v", err))
 		return false
