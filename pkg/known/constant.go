@@ -72,9 +72,11 @@ const (
 
 // fields should be ignored when compared
 const (
-	MetaGeneration = "/metadata/generation"
-	MetaUID        = "/metadata/uid"
-	MetaSelflink   = "/metadata/selfLink"
+	MetaGeneration    = "/metadata/generation"
+	CreationTimestamp = "/metadata/creationTimestamp"
+	ManagedFields     = "/metadata/managedFields"
+	MetaUID           = "/metadata/uid"
+	MetaSelflink      = "/metadata/selfLink"
 )
 
 const (
