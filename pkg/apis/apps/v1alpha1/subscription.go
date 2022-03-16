@@ -52,9 +52,14 @@ type SubscriptionSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Enum=Replication;Balancing
+	// +kubebuilder:validation:Enum=Replication;Dividing
 	// +kubebuilder:default=Replication
 	SchedulingStrategy SchedulingStrategyType `json:"schedulingStrategy,omitempty"`
+
+	// Dividing scheduling config params. Present only if SchedulingStrategyType = Dividing.
+	//
+	// +optional
+	DividingScheduling *DividingSchedulingStrategy `json:"dividingSchedulingStrategy,omitempty"`
 
 	// Subscribers subscribes
 	//
@@ -72,6 +77,11 @@ type SubscriptionSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	Feeds []Feed `json:"feeds"`
+
+	// Namespaced names of targeted clusters that Subscription binds to.
+	//
+	// +optional
+	BindingClusters []string `json:"bindingClusters,omitempty"`
 }
 
 // SubscriptionStatus defines the observed state of Subscription
@@ -79,6 +89,7 @@ type SubscriptionStatus struct {
 	// Namespaced names of targeted clusters that Subscription binds to.
 	//
 	// +optional
+	// Deprecated: Will be moved into `SubscriptionSpec`.
 	BindingClusters []string `json:"bindingClusters,omitempty"`
 
 	// SpecHash calculates the hash value of current SubscriptionSpec.
@@ -104,6 +115,13 @@ type Subscriber struct {
 	// +required
 	// +kubebuilder:validation:Required
 	ClusterAffinity *metav1.LabelSelector `json:"clusterAffinity"`
+
+	// Static weight of subscriber when dividing replicas.
+	// Present only for static divided scheduling.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	Weight *int32 `json:"weight,omitempty"`
 }
 
 // Feed defines the resource to be selected.
@@ -134,17 +152,40 @@ type Feed struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
 	Name string `json:"name"`
+
+	// Number of desired pods in child clusters if necessary.
+	// The indices are corresponding with the scheduled clusters.
+	//
+	// +optional
+	Replicas []int32 `json:"replicas,omitempty"`
+}
+
+// DividingSchedulingStrategy describes how to divide replicas into target clusters.
+type DividingSchedulingStrategy struct {
+	// Type of dividing replica scheduling.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=Static
+	// +kubebuilder:validation:Type=string
+	Type ReplicaDividingType `json:"type"`
 }
 
 type SchedulingStrategyType string
 
 const (
-	// ReplicaSchedulingStrategy places and maintains a copy of this Subscription on each matched clusters.
-	ReplicaSchedulingStrategy SchedulingStrategyType = "Replication"
+	// ReplicaSchedulingStrategyType places and maintains a copy of this Subscription on each matched clusters.
+	ReplicaSchedulingStrategyType SchedulingStrategyType = "Replication"
 
-	// BalancingSchedulingStrategy balances and divides the replicas of a Subscription to several matching clusters.
-	// TODO
-	BalancingSchedulingStrategy SchedulingStrategyType = "Balancing"
+	// DividingSchedulingStrategyType divides the replicas of a Subscription to several matching clusters.
+	DividingSchedulingStrategyType SchedulingStrategyType = "Dividing"
+)
+
+type ReplicaDividingType string
+
+const (
+	// StaticReplicaDividingType divides replicas by a fixed weight.
+	StaticReplicaDividingType ReplicaDividingType = "Static"
 )
 
 // +kubebuilder:object:root=true
