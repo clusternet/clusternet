@@ -296,6 +296,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 				},
 			},
 			Spec: appsapi.HelmReleaseSpec{
+				ReleaseName:     utilpointer.String(chart.Name), // default to be the HelmChart name
 				TargetNamespace: chart.Spec.TargetNamespace,
 				HelmOptions:     chart.Spec.HelmOptions,
 			},
@@ -326,6 +327,12 @@ func (deployer *Deployer) syncHelmRelease(desc *appsapi.Description, helmRelease
 	if err == nil {
 		if hr.DeletionTimestamp != nil {
 			return fmt.Errorf("HelmRelease %s is deleting, will resync later", klog.KObj(hr))
+		}
+
+		// backwards compatible
+		// for HelmRelease that are already populated, spec.releaseName should be set to nil
+		if hr.Spec.ReleaseName == nil {
+			helmRelease.Spec.ReleaseName = nil
 		}
 
 		if reflect.DeepEqual(hr.Spec, helmRelease.Spec) {

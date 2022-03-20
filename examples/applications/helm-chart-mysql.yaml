@@ -1,7 +1,7 @@
 apiVersion: apps.clusternet.io/v1alpha1
 kind: HelmChart
 metadata:
-  name: mysql
+  name: mysql # this name will be used as Helm release name as well
   namespace: default
 spec:
   repo: https://charts.bitnami.com/bitnami

@@ -141,7 +141,7 @@ func CheckIfInstallable(chart *chart.Chart) error {
 func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 	client := action.NewInstall(cfg)
-	client.ReleaseName = hr.Name
+	client.ReleaseName = getReleaseName(hr)
 	client.CreateNamespace = true
 	client.Timeout = time.Minute * 5
 	client.Namespace = hr.Spec.TargetNamespace
@@ -155,13 +155,13 @@ func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	client := action.NewUpgrade(cfg)
 	client.Timeout = time.Minute * 5
 	client.Namespace = hr.Spec.TargetNamespace
-	return client.Run(hr.Name, chart, vals)
+	return client.Run(getReleaseName(hr), chart, vals)
 }
 
 func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {
 	client := action.NewUninstall(cfg)
 	client.Timeout = time.Minute * 5
-	_, err := client.Run(hr.Name)
+	_, err := client.Run(getReleaseName(hr))
 	if err != nil {
 		if strings.Contains(err.Error(), "Release not loaded") {
 			return nil
@@ -172,7 +172,7 @@ func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error 
 }
 
 func ReleaseNeedsUpgrade(rel *release.Release, hr *appsapi.HelmRelease, chart *chart.Chart, vals map[string]interface{}) bool {
-	if rel.Name != hr.Name {
+	if rel.Name != getReleaseName(hr) {
 		return true
 	}
 	if rel.Namespace != hr.Spec.TargetNamespace {
@@ -281,4 +281,13 @@ func GetHelmRepoCredentials(kubeclient *kubernetes.Clientset, secretName, namesp
 	}
 
 	return string(username), string(password), nil
+}
+
+// getReleaseName gets the release name from HelmRelease
+func getReleaseName(hr *appsapi.HelmRelease) string {
+	releaseName := hr.Name
+	if hr.Spec.ReleaseName != nil {
+		releaseName = *hr.Spec.ReleaseName
+	}
+	return releaseName
 }
