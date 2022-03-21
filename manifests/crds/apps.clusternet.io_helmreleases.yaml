@@ -72,6 +72,11 @@ spec:
                   namespace:
                     type: string
                 type: object
+              releaseName:
+                description: ReleaseName specifies the desired release name in child
+                  cluster. If nil, the default release name will be in the format
+                  of "{Description Name}-{HelmChart Namespace}-{HelmChart Name}"
+                type: string
               repo:
                 description: a Helm Repository to be used. OCI-based registries are
                   also supported. For example, https://charts.bitnami.com/bitnami

@@ -490,7 +490,7 @@ func (in *HelmRelease) DeepCopyInto(out *HelmRelease) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	out.Spec = in.Spec
+	in.Spec.DeepCopyInto(&out.Spec)
 	out.Status = in.Status
 	return
 }
@@ -550,6 +550,11 @@ func (in *HelmReleaseList) DeepCopyObject() runtime.Object {
 func (in *HelmReleaseSpec) DeepCopyInto(out *HelmReleaseSpec) {
 	*out = *in
 	out.HelmOptions = in.HelmOptions
+	if in.ReleaseName != nil {
+		in, out := &in.ReleaseName, &out.ReleaseName
+		*out = new(string)
+		**out = **in
+	}
 	return
 }
 

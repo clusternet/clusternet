@@ -144,6 +144,13 @@ type HelmRelease struct {
 type HelmReleaseSpec struct {
 	HelmOptions `json:",inline"`
 
+	// ReleaseName specifies the desired release name in child cluster.
+	// If nil, the default release name will be in the format of "{Description Name}-{HelmChart Namespace}-{HelmChart Name}"
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	ReleaseName *string `json:"releaseName,omitempty"`
+
 	// TargetNamespace specifies the namespace to install the chart
 	//
 	// +required
