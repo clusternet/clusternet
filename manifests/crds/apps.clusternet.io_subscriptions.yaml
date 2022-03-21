@@ -46,6 +46,12 @@ spec:
           spec:
             description: SubscriptionSpec defines the desired state of Subscription
             properties:
+              bindingClusters:
+                description: Namespaced names of targeted clusters that Subscription
+                  binds to.
+                items:
+                  type: string
+                type: array
               clusterTolerations:
                 description: ClusterTolerations tolerates any matched taints of ManagedCluster.
                 items:
@@ -86,6 +92,18 @@ spec:
                       type: string
                   type: object
                 type: array
+              dividingSchedulingStrategy:
+                description: Dividing scheduling config params. Present only if SchedulingStrategyType
+                  = Dividing.
+                properties:
+                  type:
+                    description: Type of dividing replica scheduling.
+                    enum:
+                    - Static
+                    type: string
+                required:
+                - type
+                type: object
               feeds:
                 description: Feeds
                 items:
@@ -105,6 +123,13 @@ spec:
                     namespace:
                       description: Namespace of the target resource.
                       type: string
+                    replicas:
+                      description: Number of desired pods in child clusters if necessary.
+                        The indices are corresponding with the scheduled clusters.
+                      items:
+                        format: int32
+                        type: integer
+                      type: array
                   required:
                   - apiVersion
                   - kind
@@ -123,7 +148,7 @@ spec:
                   SchedulingStrategy. Otherwise, with generic SchedulingStrategy.
                 enum:
                 - Replication
-                - Balancing
+                - Dividing
                 type: string
               subscribers:
                 description: Subscribers subscribes
@@ -175,6 +200,12 @@ spec:
                             only "value". The requirements are ANDed.
                           type: object
                       type: object
+                    weight:
+                      description: Static weight of subscriber when dividing replicas.
+                        Present only for static divided scheduling.
+                      format: int32
+                      minimum: 1
+                      type: integer
                   required:
                   - clusterAffinity
                   type: object
@@ -187,8 +218,8 @@ spec:
             description: SubscriptionStatus defines the observed state of Subscription
             properties:
               bindingClusters:
-                description: Namespaced names of targeted clusters that Subscription
-                  binds to.
+                description: "Namespaced names of targeted clusters that Subscription
+                  binds to. \n Deprecated: Will be moved into `SubscriptionSpec`."
                 items:
                   type: string
                 type: array

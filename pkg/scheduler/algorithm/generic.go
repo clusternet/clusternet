@@ -119,7 +119,7 @@ func (g *genericScheduler) selectClusters(clusterScoreList framework.ClusterScor
 // numFeasibleClustersToFind returns the number of feasible clusters that once found, the scheduler stops
 // its search for more feasible clusters.
 func (g *genericScheduler) numFeasibleClustersToFind(numAllClusters int32, schedulingStrategy appsapi.SchedulingStrategyType) (numClusters int32) {
-	if numAllClusters < minFeasibleClustersToFind || g.percentageOfClustersToScore >= 100 || schedulingStrategy == appsapi.ReplicaSchedulingStrategy {
+	if numAllClusters < minFeasibleClustersToFind || g.percentageOfClustersToScore >= 100 || schedulingStrategy == appsapi.ReplicaSchedulingStrategyType {
 		return numAllClusters
 	}
 
