@@ -45,6 +45,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - [Visiting Managed Clusters With RBAC](#visiting-managed-clusters-with-rbac)
     - [How to Interact with Clusternet](#how-to-interact-with-clusternet)
     - [Deploying Applications to Multiple Clusters](#deploying-applications-to-multiple-clusters)
+    - [Manage Multiple Clusters Service DNS](#manage-multicluster-service-dns)
 - [Contact](#contact)
 - [Contributing & Developing](#contributing--developing)
 
@@ -210,6 +211,12 @@ to multiple clusters.
 
 Clusternet also supports using [OCI-based registries](https://helm.sh/docs/topics/registries/) for Helm charts. Please
 refer [this oci-based helm chart](./examples/oci/oci-chart-mysql.yaml) for using.
+
+## Manage Multiple Clusters Service DNS
+
+You can use externalDNS with coredns as a provider to resolve DNS for applications deployed to multiple clusters.
+
+Please follow [this guide](./docs/tutorials/add-global-server-balance.md).
 
 # Contact
 
