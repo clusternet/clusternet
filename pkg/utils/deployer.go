@@ -159,8 +159,9 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 		return err
 	}
 
-	overrideValues, err := GetOverrides(descLister, hr, recorder)
-	if err != nil {
+	releaseName := getReleaseName(hr)
+	var overrideValues map[string]interface{}
+	if err := json.Unmarshal(hr.Spec.Overrides, &overrideValues); err != nil {
 		return err
 	}
 
@@ -169,12 +170,13 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	rel, err = cfg.Releases.Deployed(hr.Name)
 	if err != nil {
 		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
-			rel, err = InstallRelease(cfg, hr, chart, overrideValues)
+			rel, err = InstallRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		}
 	} else {
 		// verify the release is changed or not
 		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
-			rel, err = UpgradeRelease(cfg, hr, chart, overrideValues)
+			klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
+			rel, err = UpgradeRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		} else {
 			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
 		}
@@ -206,50 +208,6 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	}
 	return UpdateHelmReleaseStatus(ctx, clusternetClient,
 		hrLister, descLister, hr, hrStatus)
-}
-
-func GetOverrides(descLister applisters.DescriptionLister, hr *appsapi.HelmRelease, recorder record.EventRecorder) (map[string]interface{}, error) {
-	var overrideValues map[string]interface{}
-	if hr.DeletionTimestamp != nil {
-		return overrideValues, nil
-	}
-
-	// get overrides
-	controllerRef := metav1.GetControllerOf(hr)
-	if controllerRef != nil {
-		desc := resolveControllerRef(descLister, hr.Namespace, controllerRef)
-		if desc == nil {
-			return overrideValues, nil
-		}
-
-		var found bool
-		var index int
-		for idx, chart := range desc.Spec.Charts {
-			if GenerateHelmReleaseName(desc.Name, chart) == hr.Name {
-				found = true
-				index = idx
-				break
-			}
-		}
-		if !found {
-			msg := fmt.Sprintf("Description %s has no connection with HelmRelease %s", klog.KObj(desc), klog.KObj(hr))
-			klog.WarningDepth(5, msg)
-			recorder.Event(desc, corev1.EventTypeWarning, "DescriptionNotRelated", msg)
-			return overrideValues, nil
-		}
-		if len(desc.Spec.Raw) < index {
-			msg := fmt.Sprintf("unequal lengths of Spec.Raw and Spec.Charts in Description %s", klog.KObj(desc))
-			klog.ErrorDepth(5, msg)
-			recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
-			return nil, errors.New(msg)
-		}
-		if len(strings.TrimSpace(string(desc.Spec.Raw[index]))) == 0 {
-			return overrideValues, nil
-		}
-		err := json.Unmarshal(desc.Spec.Raw[index], &overrideValues)
-		return overrideValues, err
-	}
-	return overrideValues, nil
 }
 
 func GenerateHelmReleaseName(descName string, chartRef appsapi.ChartReference) string {

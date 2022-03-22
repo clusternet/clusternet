@@ -138,24 +138,23 @@ func CheckIfInstallable(chart *chart.Chart) error {
 	return fmt.Errorf("chart %s is %s, which is not installable", chart.Name(), chart.Metadata.Type)
 }
 
-func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
+func InstallRelease(cfg *action.Configuration, releaseName, targetNamespace string,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 	client := action.NewInstall(cfg)
-	client.ReleaseName = getReleaseName(hr)
+	client.ReleaseName = releaseName
 	client.CreateNamespace = true
 	client.Timeout = time.Minute * 5
-	client.Namespace = hr.Spec.TargetNamespace
+	client.Namespace = targetNamespace
 
 	return client.Run(chart, vals)
 }
 
-func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
+func UpgradeRelease(cfg *action.Configuration, releaseName, targetNamespace string,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
-	klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
 	client := action.NewUpgrade(cfg)
 	client.Timeout = time.Minute * 5
-	client.Namespace = hr.Spec.TargetNamespace
-	return client.Run(getReleaseName(hr), chart, vals)
+	client.Namespace = targetNamespace
+	return client.Run(releaseName, chart, vals)
 }
 
 func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {

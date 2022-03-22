@@ -77,7 +77,6 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool, par
 	}
 
 	hrController, err := helmrelease.NewController(clusternetClient,
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
 		deployer.handleHelmRelease)
