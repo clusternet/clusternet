@@ -18,6 +18,7 @@ package helm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -111,7 +112,6 @@ func NewDeployer(apiserverURL, systemNamespace string,
 	}
 
 	hrController, err := helmrelease.NewController(clusternetClient,
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
 		deployer.handleHelmRelease)
@@ -257,8 +257,15 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 		hrsToBeDeleted.Insert(klog.KObj(hr).String())
 	}
 
+	if len(desc.Spec.Raw) != len(desc.Spec.Charts) {
+		msg := fmt.Sprintf("unequal lengths of Spec.Raw and Spec.Charts in Description %s", klog.KObj(desc))
+		klog.ErrorDepth(5, msg)
+		deployer.recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
+		return errors.New(msg)
+	}
+
 	var allErrs []error
-	for _, chartRef := range desc.Spec.Charts {
+	for idx, chartRef := range desc.Spec.Charts {
 		chart, err := deployer.chartLister.HelmCharts(chartRef.Namespace).Get(chartRef.Name)
 		if err != nil {
 			return err
@@ -299,6 +306,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 				ReleaseName:     utilpointer.String(chart.Name), // default to be the HelmChart name
 				TargetNamespace: chart.Spec.TargetNamespace,
 				HelmOptions:     chart.Spec.HelmOptions,
+				Overrides:       desc.Spec.Raw[idx],
 			},
 		}
 		hrsToBeDeleted.Delete(klog.KObj(hr).String())

@@ -72,6 +72,10 @@ spec:
                   namespace:
                     type: string
                 type: object
+              overrides:
+                description: Overrides specifies the override values for this release.
+                format: byte
+                type: string
               releaseName:
                 description: ReleaseName specifies the desired release name in child
                   cluster. If nil, the default release name will be in the format

@@ -555,6 +555,11 @@ func (in *HelmReleaseSpec) DeepCopyInto(out *HelmReleaseSpec) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.Overrides != nil {
+		in, out := &in.Overrides, &out.Overrides
+		*out = make([]byte, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
