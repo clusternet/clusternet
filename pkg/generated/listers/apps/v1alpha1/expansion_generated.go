@@ -33,6 +33,14 @@ type DescriptionListerExpansion interface{}
 // DescriptionNamespaceLister.
 type DescriptionNamespaceListerExpansion interface{}
 
+// FeedInventoryListerExpansion allows custom methods to be added to
+// FeedInventoryLister.
+type FeedInventoryListerExpansion interface{}
+
+// FeedInventoryNamespaceListerExpansion allows custom methods to be added to
+// FeedInventoryNamespaceLister.
+type FeedInventoryNamespaceListerExpansion interface{}
+
 // GlobalizationListerExpansion allows custom methods to be added to
 // GlobalizationLister.
 type GlobalizationListerExpansion interface{}
