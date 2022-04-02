@@ -16,7 +16,7 @@ spec:
     listKind: FeedInventoryList
     plural: feedinventories
     shortNames:
-    - wg
+    - finv
     singular: feedinventory
   scope: Namespaced
   versions:
