@@ -29,6 +29,7 @@ type AppsV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	BasesGetter
 	DescriptionsGetter
+	FeedInventoriesGetter
 	GlobalizationsGetter
 	HelmChartsGetter
 	HelmReleasesGetter
@@ -48,6 +49,10 @@ func (c *AppsV1alpha1Client) Bases(namespace string) BaseInterface {
 
 func (c *AppsV1alpha1Client) Descriptions(namespace string) DescriptionInterface {
 	return newDescriptions(c, namespace)
+}
+
+func (c *AppsV1alpha1Client) FeedInventories(namespace string) FeedInventoryInterface {
+	return newFeedInventories(c, namespace)
 }
 
 func (c *AppsV1alpha1Client) Globalizations() GlobalizationInterface {

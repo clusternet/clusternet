@@ -46,12 +46,6 @@ spec:
           spec:
             description: SubscriptionSpec defines the desired state of Subscription
             properties:
-              bindingClusters:
-                description: Namespaced names of targeted clusters that Subscription
-                  binds to.
-                items:
-                  type: string
-                type: array
               clusterTolerations:
                 description: ClusterTolerations tolerates any matched taints of ManagedCluster.
                 items:
@@ -123,13 +117,6 @@ spec:
                     namespace:
                       description: Namespace of the target resource.
                       type: string
-                    replicas:
-                      description: Number of desired pods in child clusters if necessary.
-                        The indices are corresponding with the scheduled clusters.
-                      items:
-                        format: int32
-                        type: integer
-                      type: array
                   required:
                   - apiVersion
                   - kind
@@ -218,8 +205,8 @@ spec:
             description: SubscriptionStatus defines the observed state of Subscription
             properties:
               bindingClusters:
-                description: "Namespaced names of targeted clusters that Subscription
-                  binds to. \n Deprecated: Will be moved into `SubscriptionSpec`."
+                description: Namespaced names of targeted clusters that Subscription
+                  binds to.
                 items:
                   type: string
                 type: array
@@ -229,6 +216,13 @@ spec:
               desiredReleases:
                 description: Total number of Helm releases desired by this Subscription.
                 type: integer
+              replicas:
+                description: Desired replicas of targeted clusters for each feed.
+                items:
+                  additionalProperties:
+                    type: integer
+                  type: object
+                type: array
               specHash:
                 description: SpecHash calculates the hash value of current SubscriptionSpec.
                 format: int64

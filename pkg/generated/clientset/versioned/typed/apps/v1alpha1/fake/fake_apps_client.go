@@ -35,6 +35,10 @@ func (c *FakeAppsV1alpha1) Descriptions(namespace string) v1alpha1.DescriptionIn
 	return &FakeDescriptions{c, namespace}
 }
 
+func (c *FakeAppsV1alpha1) FeedInventories(namespace string) v1alpha1.FeedInventoryInterface {
+	return &FakeFeedInventories{c, namespace}
+}
+
 func (c *FakeAppsV1alpha1) Globalizations() v1alpha1.GlobalizationInterface {
 	return &FakeGlobalizations{c}
 }

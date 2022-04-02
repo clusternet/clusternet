@@ -77,11 +77,6 @@ type SubscriptionSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	Feeds []Feed `json:"feeds"`
-
-	// Namespaced names of targeted clusters that Subscription binds to.
-	//
-	// +optional
-	BindingClusters []string `json:"bindingClusters,omitempty"`
 }
 
 // SubscriptionStatus defines the observed state of Subscription
@@ -89,8 +84,12 @@ type SubscriptionStatus struct {
 	// Namespaced names of targeted clusters that Subscription binds to.
 	//
 	// +optional
-	// Deprecated: Will be moved into `SubscriptionSpec`.
 	BindingClusters []string `json:"bindingClusters,omitempty"`
+
+	// Desired replicas of targeted clusters for each feed.
+	//
+	// +optional
+	Replicas []map[string]int `json:"replicas,omitempty"`
 
 	// SpecHash calculates the hash value of current SubscriptionSpec.
 	//
@@ -152,12 +151,6 @@ type Feed struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
 	Name string `json:"name"`
-
-	// Number of desired pods in child clusters if necessary.
-	// The indices are corresponding with the scheduled clusters.
-	//
-	// +optional
-	Replicas []int32 `json:"replicas,omitempty"`
 }
 
 // DividingSchedulingStrategy describes how to divide replicas into target clusters.
