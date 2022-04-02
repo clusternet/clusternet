@@ -25,7 +25,7 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Namespaced",shortName=wg,categories=clusternet
+// +kubebuilder:resource:scope="Namespaced",shortName=finv,categories=clusternet
 
 // FeedInventory defines a group of feeds which correspond to a subscription.
 type FeedInventory struct {
@@ -37,16 +37,14 @@ type FeedInventory struct {
 
 // FeedOrder defines an abstract representation of a feed.
 type FeedOrder struct {
-	// Feed refers to the feed object of subscription.
-	//
-	// +required
-	// +kubebuilder:validation:Required
 	Feed `json:",inline"`
+
 	// DesiredReplicas represents the desired replicas of the workload.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	DesiredReplicas int32 `json:"desiredReplicas"`
+
 	// ReplicaRequirements describes the scheduling requirements for a new replica.
 	//
 	// +required
