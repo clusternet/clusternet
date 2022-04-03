@@ -161,6 +161,7 @@ type DividingSchedulingStrategy struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=Static
 	// +kubebuilder:validation:Type=string
+	// +kubebuilder:default=Static
 	Type ReplicaDividingType `json:"type"`
 }
 
