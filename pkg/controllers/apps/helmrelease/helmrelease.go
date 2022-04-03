@@ -265,7 +265,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	hr.Kind = controllerKind.Kind
-	hr.APIVersion = controllerKind.Version
+	hr.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(hr)
 	if err != nil {
 		c.recorder.Event(hr, corev1.EventTypeWarning, "FailedSynced", err.Error())
