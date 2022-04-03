@@ -70,6 +70,15 @@ const (
 	// alpha: v0.8.0
 	// Setting on agent side.
 	Recovery featuregate.Feature = "Recovery"
+
+	// FeedInventory runs default in-tree registry to parse the schema of a resource, such as Deployment,
+	// Statefulset, etc.
+	// This feature gate should be closed when external FeedInventory controller is used.
+	//
+	// owner: @dixudx
+	// alpha: v0.9.0
+	// Setting on hub side.
+	FeedInventory featuregate.Feature = "FeedInventory"
 )
 
 func init() {
@@ -86,4 +95,5 @@ var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	ShadowAPI:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	FeedInUseProtection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	Recovery:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FeedInventory:       {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }
