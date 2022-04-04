@@ -282,7 +282,7 @@ type ManagedClusterStatus struct {
 // +kubebuilder:printcolumn:name="CLUSTER TYPE",type=string,JSONPath=`.spec.clusterType`,description="The type of the cluster",priority=100
 // +kubebuilder:printcolumn:name="SYNC MODE",type=string,JSONPath=`.spec.syncMode`,description="The cluster sync mode"
 // +kubebuilder:printcolumn:name="KUBERNETES",type=string,JSONPath=".status.k8sVersion"
-// +kubebuilder:printcolumn:name="READYZ",type=string,JSONPath=".status.readyz"
+// +kubebuilder:printcolumn:name="STATUS",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ManagedCluster is the Schema for the managedclusters API

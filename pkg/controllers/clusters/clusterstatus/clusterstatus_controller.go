@@ -169,7 +169,7 @@ func (c *Controller) getHealthStatus(ctx context.Context, path string) bool {
 }
 
 func (c *Controller) getCondition(status clusterapi.ManagedClusterStatus) metav1.Condition {
-	if status.Livez && status.Readyz {
+	if (status.Livez && status.Readyz) || status.Healthz {
 		return metav1.Condition{
 			Type:               clusterapi.ClusterReady,
 			Status:             metav1.ConditionTrue,
