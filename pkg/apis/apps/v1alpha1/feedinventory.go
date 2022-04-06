@@ -32,6 +32,11 @@ type FeedInventory struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	Spec FeedInventorySpec `json:"spec"`
+}
+
+// FeedInventorySpec defines the desired state of FeedInventory
+type FeedInventorySpec struct {
 	Feeds []FeedOrder `json:"feeds"`
 }
 
@@ -39,17 +44,23 @@ type FeedInventory struct {
 type FeedOrder struct {
 	Feed `json:",inline"`
 
-	// DesiredReplicas represents the desired replicas of the workload.
+	// DesiredReplicas specifies the number of desired replica. This is a pointer to distinguish between explicit
+	// zero and not specified.
 	//
-	// +required
-	// +kubebuilder:validation:Required
-	DesiredReplicas int32 `json:"desiredReplicas"`
+	// +optional
+	DesiredReplicas *int32 `json:"desiredReplicas,omitempty"`
 
 	// ReplicaRequirements describes the scheduling requirements for a new replica.
 	//
-	// +required
-	// +kubebuilder:validation:Required
-	ReplicaRequirements ReplicaRequirements `json:"replicaRequirements"`
+	// +optional
+	ReplicaRequirements ReplicaRequirements `json:"replicaRequirements,omitempty"`
+
+	// ReplicaJsonPath specifies the JSONPath for replica settings,
+	// such as `/spec/replicas` for Deployment/StatefulSet/ReplicaSet.
+	// Should not be empty when DesiredReplicas is non-nil.
+	//
+	// +optional
+	ReplicaJsonPath string `json:"replicaJsonPath,omitempty"`
 }
 
 // ReplicaRequirements describes the scheduling requirements for a new replica.

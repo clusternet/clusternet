@@ -91,6 +91,7 @@ spec:
                   = Dividing.
                 properties:
                   type:
+                    default: Static
                     description: Type of dividing replica scheduling.
                     enum:
                     - Static
