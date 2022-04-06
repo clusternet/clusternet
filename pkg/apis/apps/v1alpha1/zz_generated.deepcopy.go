@@ -890,11 +890,6 @@ func (in *Subscriber) DeepCopyInto(out *Subscriber) {
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.Weight != nil {
-		in, out := &in.Weight, &out.Weight
-		*out = new(int32)
-		**out = **in
-	}
 	return
 }
 
@@ -1019,15 +1014,17 @@ func (in *SubscriptionStatus) DeepCopyInto(out *SubscriptionStatus) {
 	}
 	if in.Replicas != nil {
 		in, out := &in.Replicas, &out.Replicas
-		*out = make([]map[string]int, len(*in))
-		for i := range *in {
-			if (*in)[i] != nil {
-				in, out := &(*in)[i], &(*out)[i]
-				*out = make(map[string]int, len(*in))
-				for key, val := range *in {
-					(*out)[key] = val
-				}
+		*out = make(map[string][]int32, len(*in))
+		for key, val := range *in {
+			var outVal []int32
+			if val == nil {
+				(*out)[key] = nil
+			} else {
+				in, out := &val, &outVal
+				*out = make([]int32, len(*in))
+				copy(*out, *in)
 			}
+			(*out)[key] = outVal
 		}
 	}
 	return
