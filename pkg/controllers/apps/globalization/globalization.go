@@ -298,7 +298,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	glob.Kind = controllerKind.Kind
-	glob.APIVersion = controllerKind.Version
+	glob.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(glob)
 	if err != nil {
 		c.recorder.Event(glob, corev1.EventTypeWarning, "FailedSynced", err.Error())

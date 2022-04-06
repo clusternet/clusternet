@@ -324,7 +324,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	chart.Kind = controllerKind.Kind
-	chart.APIVersion = controllerKind.Version
+	chart.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(chart)
 	if err != nil {
 		c.recorder.Event(chart, corev1.EventTypeWarning, "FailedSynced", err.Error())
