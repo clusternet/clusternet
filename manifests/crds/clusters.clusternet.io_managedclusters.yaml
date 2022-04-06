@@ -37,8 +37,8 @@ spec:
     - jsonPath: .status.k8sVersion
       name: KUBERNETES
       type: string
-    - jsonPath: .status.readyz
-      name: READYZ
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: STATUS
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
