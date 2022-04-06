@@ -583,18 +583,9 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 			Finalizers: []string{
 				known.AppFinalizer,
 			},
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         baseKind.Version,
-					Kind:               baseKind.Kind,
-					Name:               base.Name,
-					UID:                base.UID,
-					Controller:         utilpointer.BoolPtr(true),
-					BlockOwnerDeletion: utilpointer.BoolPtr(true),
-				},
-			},
 		},
 	}
+	descTemplate.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(base, baseKind)})
 
 	var allErrs []error
 	if len(allChartRefs) > 0 {

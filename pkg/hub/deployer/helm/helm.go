@@ -291,16 +291,6 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 				Finalizers: []string{
 					known.AppFinalizer,
 				},
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion:         descriptionKind.Version,
-						Kind:               descriptionKind.Kind,
-						Name:               desc.Name,
-						UID:                desc.UID,
-						Controller:         utilpointer.BoolPtr(true),
-						BlockOwnerDeletion: utilpointer.BoolPtr(true),
-					},
-				},
 			},
 			Spec: appsapi.HelmReleaseSpec{
 				ReleaseName:     utilpointer.String(chart.Name), // default to be the HelmChart name
@@ -309,6 +299,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 				Overrides:       desc.Spec.Raw[idx],
 			},
 		}
+		hr.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(desc, descriptionKind)})
 		hrsToBeDeleted.Delete(klog.KObj(hr).String())
 
 		err = deployer.syncHelmRelease(desc, hr)
