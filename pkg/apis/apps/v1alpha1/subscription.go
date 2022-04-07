@@ -89,7 +89,7 @@ type SubscriptionStatus struct {
 	// Desired replicas of targeted clusters for each feed.
 	//
 	// +optional
-	Replicas []map[string]int `json:"replicas,omitempty"`
+	Replicas map[string][]int32 `json:"replicas,omitempty"`
 
 	// SpecHash calculates the hash value of current SubscriptionSpec.
 	//
@@ -119,8 +119,8 @@ type Subscriber struct {
 	// Present only for static divided scheduling.
 	//
 	// +optional
-	// +kubebuilder:validation:Minimum=1
-	Weight *int32 `json:"weight,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	Weight int32 `json:"weight,omitempty"`
 }
 
 // Feed defines the resource to be selected.

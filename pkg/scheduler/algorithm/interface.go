@@ -26,14 +26,14 @@ import (
 // ScheduleAlgorithm is an interface implemented by things that know how to schedule resources to target
 // managed clusters.
 type ScheduleAlgorithm interface {
-	Schedule(context.Context, framework.Framework, *appsapi.Subscription) (scheduleResult ScheduleResult, err error)
+	Schedule(context.Context, framework.Framework, *appsapi.Subscription, *appsapi.FeedInventory) (scheduleResult ScheduleResult, err error)
 }
 
 // ScheduleResult represents the result of one subscription scheduled. It will contain
 // the final selected clusters, along with the selected intermediate information.
 type ScheduleResult struct {
 	// the scheduler suggest clusters (namespaced name)
-	SuggestedClusters []string
+	SuggestedClusters framework.TargetClusters
 	// Number of clusters scheduler evaluated on one subscription scheduled
 	EvaluatedClusters int
 	// Number of feasible clusters on one subscription scheduled

@@ -217,13 +217,13 @@ type ReservePlugin interface {
 	// Reserve is called by the scheduling framework when the scheduler cache is
 	// updated. If this method returns a failed Status, the scheduler will call
 	// the Unreserve method for all enabled ReservePlugins.
-	Reserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	Reserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 	// Unreserve is called by the scheduling framework when a reserved subscription was
 	// rejected, an error occurred during reservation of subsequent plugins, or
 	// in a later phase. The Unreserve method implementation must be idempotent
 	// and may be called by the scheduler even if the corresponding Reserve
 	// method for the same plugin was not called.
-	Unreserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	Unreserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 }
 
 // PreBindPlugin is an interface that must be implemented by "PreBind" plugins.
@@ -233,7 +233,7 @@ type PreBindPlugin interface {
 
 	// PreBind is called before binding a subscription. All prebind plugins must return
 	// success or the subscription will be rejected and won't be sent for binding.
-	PreBind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	PreBind(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 }
 
 // PostBindPlugin is an interface that must be implemented by "PostBind" plugins.
@@ -245,7 +245,7 @@ type PostBindPlugin interface {
 	// informational. A common application of this extension point is for cleaning
 	// up. If a plugin needs to clean-up its state after a subscription is scheduled and
 	// bound, PostBind is the extension point that it should register.
-	PostBind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	PostBind(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 }
 
 // PermitPlugin is an interface that must be implemented by "Permit" plugins.
@@ -259,7 +259,7 @@ type PermitPlugin interface {
 	// The subscription will also be rejected if the wait timeout or the subscription is rejected while
 	// waiting. Note that if the plugin returns "wait", the framework will wait only
 	// after running the remaining plugins given that no other plugin rejects the subscription.
-	Permit(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (*Status, time.Duration)
+	Permit(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) (*Status, time.Duration)
 }
 
 // BindPlugin is an interface that must be implemented by "Bind" plugins. Bind
@@ -273,7 +273,7 @@ type BindPlugin interface {
 	// remaining bind plugins are skipped. When a bind plugin does not handle a Subscription,
 	// it must return Skip in its Status code. If a bind plugin returns an Error, the
 	// subscription is rejected and will not be bound.
-	Bind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	Bind(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 }
 
 // Framework manages the set of plugins in use by the scheduling framework.
@@ -297,11 +297,11 @@ type Framework interface {
 	// configured Reserve plugins. If any of these calls returns an error, it
 	// does not continue running the remaining ones and returns the error. In
 	// such case, subscription will not be scheduled.
-	RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// RunReservePluginsUnreserve runs the Unreserve method of the set of
 	// configured Reserve plugins.
-	RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 
 	// RunPermitPlugins runs the set of configured Permit plugins. If any of these
 	// plugins returns a status other than "Success" or "Wait", it does not continue
@@ -309,7 +309,7 @@ type Framework interface {
 	// plugins returns "Wait", then this function will create and add waiting subscription
 	// to a map of currently waiting subscriptions and return status with "Wait" code.
 	// Subscription will remain waiting subscription for the minimum duration returned by the Permit plugins.
-	RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// WaitOnPermit will block, if the subscription is a waiting subscription, until the waiting subscription is rejected or allowed.
 	WaitOnPermit(ctx context.Context, sub *appsapi.Subscription) *Status
@@ -319,17 +319,17 @@ type Framework interface {
 	// anything but Success. If the Status code is Unschedulable, it is
 	// considered as a scheduling check failure, otherwise, it is considered as an
 	// internal error. In either case the subscription is not going to be bound.
-	RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// RunPostBindPlugins runs the set of configured PostBind plugins.
-	RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 
 	// RunBindPlugins runs the set of configured Bind plugins. A Bind plugin may choose
 	// whether or not to handle the given subscription. If a Bind plugin chooses to skip the
 	// binding, it should return code=5("skip") status. Otherwise, it should return "Error"
 	// or "Success". If none of the plugins handled binding, RunBindPlugins returns
 	// code=5("skip") status.
-	RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// HasFilterPlugins returns true if at least one Filter plugin is defined.
 	HasFilterPlugins() bool
@@ -380,7 +380,7 @@ type Handle interface {
 
 // PostFilterResult wraps needed info for scheduler framework to act upon PostFilter phase.
 type PostFilterResult struct {
-	NominatedNamespacedClusters []string
+	NominatedtargetClusters TargetClusters
 }
 
 // PluginsRunner abstracts operations to run some plugins.

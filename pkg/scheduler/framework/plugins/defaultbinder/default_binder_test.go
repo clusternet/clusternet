@@ -28,6 +28,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/generated/clientset/versioned/fake"
+	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 )
 
@@ -35,9 +36,11 @@ func TestDefaultBinder(t *testing.T) {
 	testSubscription := &appsapi.Subscription{
 		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns"},
 	}
-	testClusters := []string{
-		"cluster-ns-03/xyz",
-		"cluster-ns-01/def",
+	testClusters := framework.TargetClusters{
+		BindingClusters: []string{
+			"cluster-ns-03/xyz",
+			"cluster-ns-01/def",
+		},
 	}
 	tests := []struct {
 		name           string

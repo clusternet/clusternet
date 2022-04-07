@@ -192,7 +192,7 @@ spec:
                       description: Static weight of subscriber when dividing replicas.
                         Present only for static divided scheduling.
                       format: int32
-                      minimum: 1
+                      minimum: 0
                       type: integer
                   required:
                   - clusterAffinity
@@ -218,12 +218,13 @@ spec:
                 description: Total number of Helm releases desired by this Subscription.
                 type: integer
               replicas:
-                description: Desired replicas of targeted clusters for each feed.
-                items:
-                  additionalProperties:
+                additionalProperties:
+                  items:
+                    format: int32
                     type: integer
-                  type: object
-                type: array
+                  type: array
+                description: Desired replicas of targeted clusters for each feed.
+                type: object
               specHash:
                 description: SpecHash calculates the hash value of current SubscriptionSpec.
                 format: int64
