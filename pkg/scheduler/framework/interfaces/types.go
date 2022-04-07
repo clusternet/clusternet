@@ -39,6 +39,32 @@ type FitError struct {
 	Diagnosis      Diagnosis
 }
 
+// TargetClusters represents the scheduling result.
+type TargetClusters struct {
+	// Namespaced names of targeted clusters that Subscription binds to.
+	BindingClusters []string
+
+	// Desired replicas of targeted clusters for each feed.
+	Replicas map[string][]int32
+}
+
+func (t TargetClusters) Len() int {
+	return len(t.BindingClusters)
+}
+
+func (t TargetClusters) Less(i, j int) bool {
+	return t.BindingClusters[i] < t.BindingClusters[j]
+}
+
+func (t TargetClusters) Swap(i, j int) {
+	t.BindingClusters[i], t.BindingClusters[j] = t.BindingClusters[j], t.BindingClusters[i]
+	for _, replicas := range t.Replicas {
+		if len(replicas) == len(t.BindingClusters) {
+			replicas[i], replicas[j] = replicas[j], replicas[i]
+		}
+	}
+}
+
 const (
 	// NoClusterAvailableMsg is used to format message when no clusters available.
 	NoClusterAvailableMsg = "0/%v clusters are available"

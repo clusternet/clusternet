@@ -25,6 +25,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -77,6 +78,9 @@ type Scheduler struct {
 	subsLister applisters.SubscriptionLister
 	subsSynced cache.InformerSynced
 
+	inventoryLister applisters.FeedInventoryLister
+	inventorySynced cache.InformerSynced
+
 	// default in-tree registry
 	registry frameworkruntime.Registry
 
@@ -126,6 +130,8 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		ClusternetInformerFactory: clusternetInformerFactory,
 		subsLister:                clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
 		subsSynced:                clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
+		inventoryLister:           clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Lister(),
+		inventorySynced:           clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().HasSynced,
 		registry:                  plugins.NewInTreeRegistry(),
 		scheduleAlgorithm:         algorithm.NewGenericScheduler(schedulerCache),
 		SchedulingQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter()),
@@ -231,13 +237,26 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	}
 	klog.V(3).InfoS("Attempting to schedule subscription", "subscription", klog.KObj(sub))
 
+	var finv *appsapi.FeedInventory
+	if sub.Spec.SchedulingStrategy == appsapi.DividingSchedulingStrategyType {
+		finv, err = sched.inventoryLister.FeedInventories(ns).Get(name)
+		// TODO(Garrybest): Ignore some circumstances when subscription does not need to be scheduled so far.
+		// E.g., when feed in subscription has been modified but finv has not been updated.
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				utilruntime.HandleError(err)
+			}
+			return
+		}
+	}
+
 	// Synchronously attempt to find a fit for the subscription.
 	start := time.Now()
 
 	schedulingCycleCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	scheduleResult, err := sched.scheduleAlgorithm.Schedule(schedulingCycleCtx, sched.framework, sub)
+	scheduleResult, err := sched.scheduleAlgorithm.Schedule(schedulingCycleCtx, sched.framework, sub, finv)
 	if err != nil {
 		sched.recordSchedulingFailure(sub, err, ReasonUnschedulable)
 		return
@@ -245,20 +264,17 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInSeconds(start))
 
 	// Run the Reserve method of reserve plugins.
-	var namespacedClusters []string
-	for _, cluster := range scheduleResult.SuggestedClusters {
-		namespacedClusters = append(namespacedClusters, cluster)
-	}
-	if sts := sched.framework.RunReservePluginsReserve(schedulingCycleCtx, sub, namespacedClusters); !sts.IsSuccess() {
+	targetClusters := scheduleResult.SuggestedClusters
+	if sts := sched.framework.RunReservePluginsReserve(schedulingCycleCtx, sub, targetClusters); !sts.IsSuccess() {
 		metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 		// trigger un-reserve to clean up state associated with the reserved subscription
-		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, sub, namespacedClusters)
+		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, sub, targetClusters)
 		sched.recordSchedulingFailure(sub, sts.AsError(), SchedulerError)
 		return
 	}
 
 	// Run "permit" plugins.
-	runPermitStatus := sched.framework.RunPermitPlugins(schedulingCycleCtx, sub, namespacedClusters)
+	runPermitStatus := sched.framework.RunPermitPlugins(schedulingCycleCtx, sub, targetClusters)
 	if runPermitStatus.Code() != framework.Wait && !runPermitStatus.IsSuccess() {
 		var reason string
 		if runPermitStatus.IsUnschedulable() {
@@ -269,7 +285,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			reason = SchedulerError
 		}
 		// One of the plugins returned status different from success or wait.
-		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, sub, namespacedClusters)
+		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, sub, targetClusters)
 		sched.recordSchedulingFailure(sub, runPermitStatus.AsError(), reason)
 		return
 	}
@@ -292,39 +308,39 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 				reason = SchedulerError
 			}
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
-			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, namespacedClusters)
+			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, targetClusters)
 			sched.recordSchedulingFailure(sub, waitOnPermitStatus.AsError(), reason)
 			return
 		}
 
 		// Run "prebind" plugins.
-		preBindStatus := sched.framework.RunPreBindPlugins(bindingCycleCtx, sub, namespacedClusters)
+		preBindStatus := sched.framework.RunPreBindPlugins(bindingCycleCtx, sub, targetClusters)
 		if !preBindStatus.IsSuccess() {
 			metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
-			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, namespacedClusters)
+			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, targetClusters)
 			sched.recordSchedulingFailure(sub, preBindStatus.AsError(), SchedulerError)
 			return
 		}
 
-		err := sched.bind(bindingCycleCtx, sub, namespacedClusters)
+		err := sched.bind(bindingCycleCtx, sub, targetClusters)
 		if err != nil {
 			metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
-			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, namespacedClusters)
+			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, targetClusters)
 			sched.recordSchedulingFailure(sub, fmt.Errorf("binding rejected: %w", err), SchedulerError)
 		} else {
 			metrics.SubscriptionScheduled(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 
 			// Run "postbind" plugins.
-			sched.framework.RunPostBindPlugins(bindingCycleCtx, sub, namespacedClusters)
+			sched.framework.RunPostBindPlugins(bindingCycleCtx, sub, targetClusters)
 		}
 	}()
 }
 
 // bind a subscription to given clusters.
 // We expect this to run asynchronously, so we handle binding metrics internally.
-func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (err error) {
+func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (err error) {
 	defer func() {
 		// finish binding
 		if err != nil {
@@ -336,11 +352,11 @@ func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, nam
 			corev1.EventTypeNormal,
 			"Scheduled",
 			"Successfully bound %s to %s",
-			klog.KObj(sub), strings.Join(namespacedClusters, ","),
+			klog.KObj(sub), strings.Join(targetClusters.BindingClusters, ","),
 		)
 	}()
 
-	bindStatus := sched.framework.RunBindPlugins(ctx, sub, namespacedClusters)
+	bindStatus := sched.framework.RunBindPlugins(ctx, sub, targetClusters)
 	if bindStatus.IsSuccess() {
 		return nil
 	}
@@ -415,6 +431,22 @@ func (sched *Scheduler) addAllEventHandlers() {
 				sched.subscribersMap[klog.KObj(newSub).String()] = newSub.Spec.Subscribers
 				sched.SchedulingQueue.AddRateLimited(klog.KObj(newSub).String())
 			},
+		},
+	})
+
+	sched.ClusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			finv := obj.(*appsapi.FeedInventory)
+			sched.SchedulingQueue.AddRateLimited(klog.KObj(finv).String())
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldInventory := oldObj.(*appsapi.FeedInventory)
+			newInventory := newObj.(*appsapi.FeedInventory)
+			if newInventory.ResourceVersion == oldInventory.ResourceVersion {
+				// Periodic resync will send update events for all known Inventory.
+				return
+			}
+			sched.SchedulingQueue.AddRateLimited(klog.KObj(newInventory).String())
 		},
 	})
 

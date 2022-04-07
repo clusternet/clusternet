@@ -31,6 +31,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/scheduler/algorithm/dividing"
 	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
 	schedulercache "github.com/clusternet/clusternet/pkg/scheduler/cache"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
@@ -64,7 +65,7 @@ type genericScheduler struct {
 // Schedule tries to schedule the given subscription to multiple clusters.
 // If it succeeds, it will return the namespaced names of ManagedClusters.
 // If it fails, it will return a FitError error with reasons.
-func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription) (result ScheduleResult, err error) {
+func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (result ScheduleResult, err error) {
 	trace := utiltrace.New("Scheduling", utiltrace.Field{Key: "namespace", Value: sub.Namespace}, utiltrace.Field{Key: "name", Value: sub.Name})
 	defer trace.LogIfLong(100 * time.Millisecond)
 
@@ -91,7 +92,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 		return result, err
 	}
 
-	clusters, err := g.selectClusters(priorityList, sub)
+	clusters, err := g.selectClusters(priorityList, sub, finv)
 	trace.Step("Prioritizing done")
 
 	return ScheduleResult{
@@ -103,16 +104,23 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 
 // selectClusters takes a prioritized list of clusters and then picks a fraction of clusters
 // in a reservoir sampling manner from the clusters that had the highest score.
-func (g *genericScheduler) selectClusters(clusterScoreList framework.ClusterScoreList, _ *appsapi.Subscription) ([]string, error) {
+func (g *genericScheduler) selectClusters(clusterScoreList framework.ClusterScoreList, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (framework.TargetClusters, error) {
 	if len(clusterScoreList) == 0 {
-		return nil, fmt.Errorf("empty clusterScoreList")
+		return framework.TargetClusters{}, fmt.Errorf("empty clusterScoreList")
 	}
 
-	var selected []string
+	var selected framework.TargetClusters
 	for _, clusterScore := range clusterScoreList {
 		// TODO: sampling with scores
-		selected = append(selected, clusterScore.NamespacedName)
+		selected.BindingClusters = append(selected.BindingClusters, clusterScore.NamespacedName)
 	}
+
+	if sub.Spec.SchedulingStrategy == appsapi.DividingSchedulingStrategyType {
+		if err := g.divideReplicas(&selected, sub, finv); err != nil {
+			return framework.TargetClusters{}, fmt.Errorf("failed to divide replicas: %v", err)
+		}
+	}
+
 	return selected, nil
 }
 
@@ -253,6 +261,25 @@ func (g *genericScheduler) findClustersThatPassFilters(ctx context.Context, fwk 
 		return nil, err
 	}
 	return feasibleClusters, nil
+}
+
+func (g *genericScheduler) divideReplicas(selected *framework.TargetClusters, sub *appsapi.Subscription, finv *appsapi.FeedInventory) error {
+	switch sub.Spec.DividingScheduling.Type {
+	case appsapi.StaticReplicaDividingType:
+		return g.staticDivideReplicas(selected, sub, finv)
+	}
+	return nil
+}
+
+func (g *genericScheduler) staticDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (err error) {
+	clusters := make([]*clusterapi.ManagedCluster, len(selected.BindingClusters))
+	for i, name := range selected.BindingClusters {
+		if clusters[i], err = g.cache.Get(name); err != nil {
+			return err
+		}
+	}
+
+	return dividing.StaticDivideReplicas(selected, sub, clusters, finv)
 }
 
 // prioritizeClusters prioritizes the clusters by running the score plugins,

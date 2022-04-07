@@ -48,19 +48,18 @@ func (pl *DefaultBinder) Name() string {
 }
 
 // Bind binds subscriptions to clusters using the clusternet client.
-func (pl *DefaultBinder) Bind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *framework.Status {
+func (pl *DefaultBinder) Bind(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
 	klog.V(3).InfoS("Attempting to bind subscription to clusters",
-		"subscription", klog.KObj(sub), "clusters", namespacedClusters)
+		"subscription", klog.KObj(sub), "clusters", targetClusters.BindingClusters)
 
 	// use an ordered list
-	sort.SliceStable(namespacedClusters, func(i, j int) bool {
-		return namespacedClusters[i] < namespacedClusters[j]
-	})
+	sort.Stable(targetClusters)
 
 	subCopy := sub.DeepCopy()
-	subCopy.Status.BindingClusters = namespacedClusters
+	subCopy.Status.BindingClusters = targetClusters.BindingClusters
+	subCopy.Status.Replicas = targetClusters.Replicas
 	subCopy.Status.SpecHash = utils.HashSubscriptionSpec(&subCopy.Spec)
-	subCopy.Status.DesiredReleases = len(namespacedClusters)
+	subCopy.Status.DesiredReleases = len(targetClusters.BindingClusters)
 
 	_, err := pl.handle.ClientSet().AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(ctx, subCopy, metav1.UpdateOptions{})
 	if err != nil {
