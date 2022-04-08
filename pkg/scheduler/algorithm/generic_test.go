@@ -38,7 +38,7 @@ func newDeploymentFeed(name string) *appsapi.Feed {
 	}
 }
 
-func Test_genericScheduler_divideReplicas(t *testing.T) {
+func TestDivideReplicas(t *testing.T) {
 	desiredReplicas := int32(12)
 	type args struct {
 		selected *framework.TargetClusters

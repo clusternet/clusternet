@@ -47,35 +47,24 @@ func StaticDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subsc
 // staticDivideReplicas divides replicas by the weight list.
 func staticDivideReplicas(desiredReplicas int32, wl *weightList) []int32 {
 	res := make([]int32, len(wl.weights))
-	remain := wl.weightSum
+	remain := desiredReplicas
 	for i, weight := range wl.weights {
 		replica := weight * int64(desiredReplicas) / wl.weightSum
 		res[i] = int32(replica)
-		remain -= replica
+		remain -= int32(replica)
 	}
 	if remain == 0 {
 		return res
 	}
 
-	remainInt := int(remain)
 	clusterIndices := sortByWeight(wl.weights)
-	if remainInt <= len(clusterIndices) {
-		for i := 0; i < remainInt; i++ {
-			res[clusterIndices[i]]++
-		}
-	} else {
-		avg, bounder := remainInt/len(clusterIndices), remainInt%len(clusterIndices)
-		for i := range clusterIndices {
-			if i < bounder {
-				res[clusterIndices[i]] += int32(avg) + 1
-			} else {
-				res[clusterIndices[i]] += int32(avg)
-			}
-		}
+	for i := 0; i < int(remain); i++ {
+		res[clusterIndices[i]]++
 	}
 	return res
 }
 
+// sortByWeight sorts the cluster index based on their weight
 func sortByWeight(weights []int64) []int {
 	clusterIndices := make([]int, len(weights))
 	for i := range weights {
