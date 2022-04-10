@@ -240,12 +240,17 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	var finv *appsapi.FeedInventory
 	if sub.Spec.SchedulingStrategy == appsapi.DividingSchedulingStrategyType {
 		finv, err = sched.inventoryLister.FeedInventories(ns).Get(name)
-		// TODO(Garrybest): Ignore some circumstances when subscription does not need to be scheduled so far.
-		// E.g., when feed in subscription has been modified but finv has not been updated.
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				utilruntime.HandleError(err)
 			}
+			return
+		}
+		feeds := make([]appsapi.Feed, 0, len(finv.Spec.Feeds))
+		for i := range finv.Spec.Feeds {
+			feeds = append(feeds, finv.Spec.Feeds[i].Feed)
+		}
+		if !reflect.DeepEqual(sub.Spec.Feeds, feeds) {
 			return
 		}
 	}
