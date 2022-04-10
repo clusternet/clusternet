@@ -29,8 +29,8 @@ func newClusterWithLabels(name, namespace string, labels map[string]string) *clu
 	}
 }
 
-func newDeploymentFeed(name string) *appsapi.Feed {
-	return &appsapi.Feed{
+func newDeploymentFeed(name string) appsapi.Feed {
+	return appsapi.Feed{
 		Kind:       "Deployment",
 		APIVersion: "apps/v1",
 		Namespace:  "default",
@@ -71,13 +71,13 @@ func TestDivideReplicas(t *testing.T) {
 								Weight: 1,
 							},
 						},
-						Feeds: []appsapi.Feed{*newDeploymentFeed("example-1")},
+						Feeds: []appsapi.Feed{newDeploymentFeed("example-1")},
 					},
 				},
 				finv: &appsapi.FeedInventory{
 					Spec: appsapi.FeedInventorySpec{Feeds: []appsapi.FeedOrder{
 						{
-							Feed:            *newDeploymentFeed("example-1"),
+							Feed:            newDeploymentFeed("example-1"),
 							DesiredReplicas: &desiredReplicas,
 						},
 					}},
@@ -116,13 +116,13 @@ func TestDivideReplicas(t *testing.T) {
 								Weight: 2,
 							},
 						},
-						Feeds: []appsapi.Feed{*newDeploymentFeed("example-1")},
+						Feeds: []appsapi.Feed{newDeploymentFeed("example-1")},
 					},
 				},
 				finv: &appsapi.FeedInventory{
 					Spec: appsapi.FeedInventorySpec{Feeds: []appsapi.FeedOrder{
 						{
-							Feed:            *newDeploymentFeed("example-1"),
+							Feed:            newDeploymentFeed("example-1"),
 							DesiredReplicas: &desiredReplicas,
 						},
 					}},
@@ -161,13 +161,13 @@ func TestDivideReplicas(t *testing.T) {
 								Weight: 2,
 							},
 						},
-						Feeds: []appsapi.Feed{*newDeploymentFeed("example-1")},
+						Feeds: []appsapi.Feed{newDeploymentFeed("example-1")},
 					},
 				},
 				finv: &appsapi.FeedInventory{
 					Spec: appsapi.FeedInventorySpec{Feeds: []appsapi.FeedOrder{
 						{
-							Feed:            *newDeploymentFeed("example-1"),
+							Feed:            newDeploymentFeed("example-1"),
 							DesiredReplicas: &desiredReplicas,
 						},
 					}},
@@ -214,13 +214,13 @@ func TestDivideReplicas(t *testing.T) {
 								Weight: 2,
 							},
 						},
-						Feeds: []appsapi.Feed{*newDeploymentFeed("example-1")},
+						Feeds: []appsapi.Feed{newDeploymentFeed("example-1")},
 					},
 				},
 				finv: &appsapi.FeedInventory{
 					Spec: appsapi.FeedInventorySpec{Feeds: []appsapi.FeedOrder{
 						{
-							Feed:            *newDeploymentFeed("example-1"),
+							Feed:            newDeploymentFeed("example-1"),
 							DesiredReplicas: &desiredReplicas,
 						},
 					}},
@@ -267,17 +267,17 @@ func TestDivideReplicas(t *testing.T) {
 								Weight: 2,
 							},
 						},
-						Feeds: []appsapi.Feed{*newDeploymentFeed("example-1"), *newDeploymentFeed("example-2")},
+						Feeds: []appsapi.Feed{newDeploymentFeed("example-1"), newDeploymentFeed("example-2")},
 					},
 				},
 				finv: &appsapi.FeedInventory{
 					Spec: appsapi.FeedInventorySpec{Feeds: []appsapi.FeedOrder{
 						{
-							Feed:            *newDeploymentFeed("example-1"),
+							Feed:            newDeploymentFeed("example-1"),
 							DesiredReplicas: &desiredReplicas,
 						},
 						{
-							Feed:            *newDeploymentFeed("example-2"),
+							Feed:            newDeploymentFeed("example-2"),
 							DesiredReplicas: &desiredReplicas,
 						},
 					}},
