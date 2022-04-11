@@ -36,9 +36,9 @@ func StaticDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subsc
 		}
 		if order != nil && order.DesiredReplicas != nil {
 			replicas := staticDivideReplicas(*order.DesiredReplicas, &wl)
-			selected.Replicas[utils.GetFeedKey(&order.Feed)] = replicas
+			selected.Replicas[utils.GetFeedKey(order.Feed)] = replicas
 		} else {
-			selected.Replicas[utils.GetFeedKey(&order.Feed)] = []int32{}
+			selected.Replicas[utils.GetFeedKey(order.Feed)] = []int32{}
 		}
 	}
 	return nil
