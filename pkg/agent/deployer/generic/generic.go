@@ -194,8 +194,17 @@ func (deployer *Deployer) handleResource(ownedByValue string) error {
 		return err
 	}
 
-	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+	if desc.DeletionTimestamp != nil {
+		klog.V(4).Infof("do not rollback in-deleting Description %s", ownedByValue)
+		return nil
+	}
+
+	err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
 		deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil)
+	if err == nil {
+		klog.V(4).Infof("successfully rollback Description %s", ownedByValue)
+	}
+	return err
 }
 
 func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool {
