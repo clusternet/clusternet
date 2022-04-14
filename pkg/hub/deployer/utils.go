@@ -116,7 +116,7 @@ func GenerateLocalizationTemplate(base *appsapi.Base, overridePolicy appsapi.Ove
 		},
 		Spec: appsapi.LocalizationSpec{
 			OverridePolicy: overridePolicy,
-			Priority:       500, // use default
+			Priority:       1000, // with the highest priority
 		},
 	}
 	loc.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(base, baseKind)})

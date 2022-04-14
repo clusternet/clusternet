@@ -436,13 +436,14 @@ func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base
 		curBaseCopy.Finalizers = append(curBaseCopy.Finalizers, known.AppFinalizer)
 	}
 
-	base, err = deployer.clusternetClient.AppsV1alpha1().Bases(curBaseCopy.Namespace).Update(context.TODO(),
+	curBaseCopy, err = deployer.clusternetClient.AppsV1alpha1().Bases(curBaseCopy.Namespace).Update(context.TODO(),
 		curBaseCopy, metav1.UpdateOptions{})
 	if err == nil {
 		msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(curBaseCopy))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
 	}
+	*base = *curBaseCopy
 	return err
 }
 
