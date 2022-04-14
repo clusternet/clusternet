@@ -33,8 +33,8 @@ spec:
             limits:
               memory: 256Mi
               cpu: 500m
-        - name: mysql # only for testing
-          image: mysql
+        - name: redis # only for testing
+          image: redis:6.2
           resources:
             requests:
               memory: 128Mi
