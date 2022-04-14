@@ -67,6 +67,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&GlobalizationList{},
 		&Manifest{},
 		&ManifestList{},
+		&FeedInventory{},
+		&FeedInventoryList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
