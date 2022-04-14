@@ -167,7 +167,7 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 
 	var rel *release.Release
 	// check whether the release is deployed
-	rel, err = cfg.Releases.Deployed(hr.Name)
+	rel, err = cfg.Releases.Deployed(releaseName)
 	if err != nil {
 		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
 			rel, err = InstallRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
