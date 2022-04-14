@@ -343,7 +343,7 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 			return fmt.Errorf("failed to populate Bases for Subscription %s: %v", klog.KObj(sub), err)
 		}
 
-		base := &appsapi.Base{
+		baseTemplate := &appsapi.Base{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      sub.Name,
 				Namespace: namespace,
@@ -368,18 +368,19 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 			},
 		}
 		if ns.Labels != nil {
-			base.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
-			base.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
+			baseTemplate.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
+			baseTemplate.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
 		}
 
-		err = deployer.syncBase(sub, base)
+		basesToBeDeleted.Delete(klog.KObj(baseTemplate).String())
+		base, err := deployer.syncBase(sub, baseTemplate)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(base), err)
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingBase", msg)
+			continue
 		}
-		basesToBeDeleted.Delete(klog.KObj(base).String())
 
 		// populate Localizations for dividing scheduling.
 		err = deployer.populateLocalizations(sub, base, idx)
@@ -399,52 +400,51 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base) error {
-	_, err := deployer.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Create(context.TODO(),
-		base, metav1.CreateOptions{})
+func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *appsapi.Base) (*appsapi.Base, error) {
+	base, err := deployer.clusternetClient.AppsV1alpha1().Bases(baseTemplate.Namespace).Create(context.TODO(),
+		baseTemplate, metav1.CreateOptions{})
 	if err == nil {
-		msg := fmt.Sprintf("Base %s is created successfully", klog.KObj(base))
+		msg := fmt.Sprintf("Base %s is created successfully", klog.KObj(baseTemplate))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseCreated", msg)
-		return nil
+		return base, nil
 	}
 
 	if !apierrors.IsAlreadyExists(err) {
-		return err
+		return nil, err
 	}
 
 	// update it
-	curBase, err := deployer.baseLister.Bases(base.Namespace).Get(base.Name)
+	base, err = deployer.baseLister.Bases(baseTemplate.Namespace).Get(baseTemplate.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if curBase.DeletionTimestamp != nil {
-		return fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(curBase))
+	if base.DeletionTimestamp != nil {
+		return nil, fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(base))
 	}
 
-	curBaseCopy := curBase.DeepCopy()
-	if curBaseCopy.Labels == nil {
-		curBaseCopy.Labels = make(map[string]string)
+	baseCopy := base.DeepCopy()
+	if baseCopy.Labels == nil {
+		baseCopy.Labels = make(map[string]string)
 	}
-	for key, value := range base.Labels {
-		curBaseCopy.Labels[key] = value
-	}
-
-	curBaseCopy.Spec = base.Spec
-	if !utils.ContainsString(curBaseCopy.Finalizers, known.AppFinalizer) {
-		curBaseCopy.Finalizers = append(curBaseCopy.Finalizers, known.AppFinalizer)
+	for key, value := range baseTemplate.Labels {
+		baseCopy.Labels[key] = value
 	}
 
-	curBaseCopy, err = deployer.clusternetClient.AppsV1alpha1().Bases(curBaseCopy.Namespace).Update(context.TODO(),
-		curBaseCopy, metav1.UpdateOptions{})
+	baseCopy.Spec = baseTemplate.Spec
+	if !utils.ContainsString(baseCopy.Finalizers, known.AppFinalizer) {
+		baseCopy.Finalizers = append(baseCopy.Finalizers, known.AppFinalizer)
+	}
+
+	base, err = deployer.clusternetClient.AppsV1alpha1().Bases(baseCopy.Namespace).Update(context.TODO(),
+		baseCopy, metav1.UpdateOptions{})
 	if err == nil {
-		msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(curBaseCopy))
+		msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(baseCopy))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
 	}
-	*base = *curBaseCopy
-	return err
+	return base, err
 }
 
 func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) error {
@@ -473,6 +473,10 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 }
 
 func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base *appsapi.Base, clusterIndex int) error {
+	if len(base.UID) == 0 {
+		return fmt.Errorf("waiting for UID set for Base %s", klog.KObj(base))
+	}
+
 	if sub.Spec.SchedulingStrategy != appsapi.DividingSchedulingStrategyType {
 		return nil
 	}
