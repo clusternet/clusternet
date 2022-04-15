@@ -20,7 +20,7 @@ git clone https://github.com/clusternet/clusternet
 cd clusternet
 ```
 
-## Deploy and run clusternet:
+## Deploy and Run Clusternet:
 
 Run the following script,
 
@@ -54,3 +54,7 @@ clusternet-scheduler-8645f9d85b-cdlr5   1/1     Running   0          2m59s
 clusternet-scheduler-8645f9d85b-fmfln   1/1     Running   0          2m59s
 clusternet-scheduler-8645f9d85b-vkw8r   1/1     Running   0          2m59s
 ```
+
+## Checking Cluster Registration
+
+Please follow [this guide](./checking-cluster-registration.md) to check cluster registrations.
