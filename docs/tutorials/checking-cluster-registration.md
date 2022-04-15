@@ -5,6 +5,8 @@
 
 ## Check Cluster Registration Request
 
+`clusternet-agent` will automatically create a registration request `ClusterRegistrationRequest` for every cluster.
+
 ```bash
 $ # clsrr is an alias for ClusterRegistrationRequest
 $ kubectl get clsrr
@@ -87,6 +89,10 @@ rules:
 ```
 
 ## Check ManagedCluster Status
+
+For every registered cluster that gets approved, there will be a dedicated namespace created for this
+cluster. `ManagedCluster` will be created as well to represent the cluster, including cluster metadata, cluster healthy
+heartbeat, etc.
 
 ```bash
 $ # mcls is an alias for ManagedCluster

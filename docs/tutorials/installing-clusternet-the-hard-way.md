@@ -49,7 +49,7 @@ Next, you need to create a token for cluster registration, which will be used la
 kubectl apply -f deploy/scheduler
 ```
 
-### Deploying `clusternet-agent` in child cluster
+## Deploying `clusternet-agent` in child cluster
 
 `clusternet-agent` runs in child cluster and helps register self-cluster to parent cluster.
 
@@ -99,3 +99,7 @@ instance, `https://192.168.10.10:6443`.
 $ # before deploying, you could update the SyncMode if needed
 $ kubectl apply -f deploy/agent
 ```
+
+## Checking Cluster Registration
+
+Please follow [this guide](./checking-cluster-registration.md) to check cluster registrations.
