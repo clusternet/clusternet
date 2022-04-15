@@ -27,14 +27,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// findClusterIPRange returns the cluster IP range for the cluster.
+// findServiceIPRange returns the cluster IP range for the cluster service.
 // copied from submariner.io/submariner-operator/pkg/discovery/network/generic.go and modified
-func findClusterIPRange(podLister corev1Lister.PodLister) (string, error) {
+func findServiceIPRange(podLister corev1Lister.PodLister) (string, error) {
 	clusterIPRange := findPodCommandParameter(podLister, "kube-apiserver", "--service-cluster-ip-range")
 	if clusterIPRange != "" {
 		return clusterIPRange, nil
 	}
-	return "", errors.New("can't get ClusterIPRange")
+	return "", errors.New("can't get ServiceIPRange")
 }
 
 // findPodIpRange returns the pod IP range for the cluster.
