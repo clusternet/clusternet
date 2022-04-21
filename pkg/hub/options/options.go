@@ -68,6 +68,10 @@ type HubServerOptions struct {
 	// default to be "clusternet-reserved"
 	ReservedNamespace string
 
+	// threadiness of controller workers
+	// default to be 10
+	Threadiness int
+
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	LoopbackSharedInformerFactory informers.SharedInformerFactory
@@ -88,6 +92,7 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 		RecommendedOptions:     genericoptions.NewRecommendedOptions("fake", nil),
 		AnonymousAuthSupported: true,
 		ReservedNamespace:      known.ClusternetReservedNamespace,
+		Threadiness:            known.DefaultThreadiness,
 		ControllerOptions:      controllerOpts,
 	}, nil
 }
@@ -161,6 +166,7 @@ func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
 	fs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
 	fs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
+	fs.IntVar(&o.Threadiness, "threadiness", o.Threadiness, "The number of threads to use for controller workers")
 }
 
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
