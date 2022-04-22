@@ -46,11 +46,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
-const (
-	// default number of threads
-	DefaultThreadiness = 2
-)
-
 // Hub defines configuration for clusternet-hub
 type Hub struct {
 	options *options.HubServerOptions
@@ -190,17 +185,17 @@ func (hub *Hub) Run(ctx context.Context) error {
 			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(context.StopCh)
 
 			go func() {
-				hub.crrApprover.Run(DefaultThreadiness, context.StopCh)
+				hub.crrApprover.Run(hub.options.Threadiness, context.StopCh)
 			}()
 
 			if hub.deployerEnabled {
 				go func() {
-					hub.deployer.Run(DefaultThreadiness, context.StopCh)
+					hub.deployer.Run(hub.options.Threadiness, context.StopCh)
 				}()
 			}
 
 			go func() {
-				hub.clusterLifecycle.Run(DefaultThreadiness, context.StopCh)
+				hub.clusterLifecycle.Run(hub.options.Threadiness, context.StopCh)
 			}()
 
 			select {
