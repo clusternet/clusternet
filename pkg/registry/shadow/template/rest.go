@@ -545,6 +545,12 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	labels[known.ObjectCreatedByLabel] = known.ClusternetHubName
 	u.SetLabels(labels)
 
+	annotations := u.GetAnnotations()
+	// skip validating when SkipValidatingAnnotation is true
+	if annotations != nil && annotations[known.SkipValidatingAnnotation] == "true" {
+		return u, nil
+	}
+
 	if r.kind != "Namespace" && r.namespaced {
 		u.SetNamespace(r.reservedNamespace)
 	}
