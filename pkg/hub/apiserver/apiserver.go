@@ -17,6 +17,7 @@ limitations under the License.
 package apiserver
 
 import (
+	"github.com/rancher/remotedialer"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -78,6 +79,7 @@ type Config struct {
 // HubAPIServer contains state for a master/api server.
 type HubAPIServer struct {
 	GenericAPIServer *genericapiserver.GenericAPIServer
+	PeerDialer       *remotedialer.Server
 }
 
 type completedConfig struct {
@@ -106,7 +108,7 @@ func (cfg *Config) Complete() CompletedConfig {
 }
 
 // New returns a new instance of HubAPIServer from the given config.
-func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
+func (c completedConfig) New(peerID, peerToken string, tunnelLogging, socketConnection bool, extraHeaderPrefixes []string,
 	clusternetInformerFactory informers.SharedInformerFactory,
 	aggregatorInformerFactory aggregatorinformers.SharedInformerFactory) (*HubAPIServer, error) {
 	genericServer, err := c.GenericConfig.New("clusternet-hub", genericapiserver.NewEmptyDelegate())
@@ -114,23 +116,25 @@ func (c completedConfig) New(tunnelLogging, socketConnection bool, extraHeaderPr
 		return nil, err
 	}
 
+	ec := exchanger.NewExchanger(
+		peerID,
+		peerToken,
+		tunnelLogging,
+		clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+	)
+
 	s := &HubAPIServer{
 		GenericAPIServer: genericServer,
+		PeerDialer:       ec.GetDialerHandler(),
 	}
 
 	proxiesAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(proxies.GroupName, Scheme, ParameterCodec, Codecs)
-
-	var ec *exchanger.Exchanger
-	if socketConnection {
-		ec = exchanger.NewExchanger(tunnelLogging, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister())
-	}
-
 	proxiesv1alpha1storage := map[string]rest.Storage{}
 	proxiesv1alpha1storage["sockets"] = socketstorage.NewREST(socketConnection, ec)
 	proxiesv1alpha1storage["sockets/proxy"] = subresources.NewProxyREST(socketConnection, ec, extraHeaderPrefixes)
 	proxiesAPIGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = proxiesv1alpha1storage
 
-	if err := s.GenericAPIServer.InstallAPIGroup(&proxiesAPIGroupInfo); err != nil {
+	if err = s.GenericAPIServer.InstallAPIGroup(&proxiesAPIGroupInfo); err != nil {
 		return nil, err
 	}
 
