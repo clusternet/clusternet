@@ -46,14 +46,14 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 		Use:  cmdName,
 		Long: `Running in parent cluster, responsible for multiple cluster managements`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := version.PrintAndExitIfRequested(cmdName); err != nil {
+			if err = version.PrintAndExitIfRequested(cmdName); err != nil {
 				klog.Exit(err)
 			}
 
-			if err := opts.Complete(); err != nil {
+			if err = opts.Complete(); err != nil {
 				klog.Exit(err)
 			}
-			if err := opts.Validate(); err != nil {
+			if err = opts.Validate(); err != nil {
 				klog.Exit(err)
 			}
 
@@ -61,11 +61,11 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 				klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 			})
 
-			hub, err := hub.NewHub(opts)
-			if err != nil {
-				klog.Exit(err)
+			hub, err2 := hub.NewHub(opts)
+			if err2 != nil {
+				klog.Exit(err2)
 			}
-			if err := hub.Run(ctx); err != nil {
+			if err = hub.Run(ctx); err != nil {
 				klog.Exit(err)
 			}
 
