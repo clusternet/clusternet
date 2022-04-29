@@ -65,4 +65,3 @@ spec:
             - --cluster-sync-mode=Dual
             - --feature-gates=SocketConnection=true,AppPusher=true,Recovery=true
             - --leader-elect-resource-namespace=$(AGENT_NAMESPACE)
-            - -v=4
