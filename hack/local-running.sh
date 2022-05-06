@@ -78,6 +78,7 @@ helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${CHILD_1_CLUSTER_NAME}" 
   clusternet-agent -n clusternet-system --create-namespace \
   --set parentURL="${PARENT_CLUSTER_SERVER}" \
   --set registrationToken=07401b.f395accd246ae52d \
+  --set extraArgs.cluster-reg-name=child1 \
   clusternet/clusternet-agent
 echo "Installing clusternet-agent into child1 finished"
 
@@ -86,6 +87,7 @@ helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${CHILD_2_CLUSTER_NAME}" 
   clusternet-agent -n clusternet-system --create-namespace \
   --set parentURL="${PARENT_CLUSTER_SERVER}" \
   --set registrationToken=07401b.f395accd246ae52d \
+  --set extraArgs.cluster-reg-name=child2 \
   clusternet/clusternet-agent
 echo "Installing clusternet-agent into child2 finished"
 
@@ -94,6 +96,7 @@ helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${CHILD_3_CLUSTER_NAME}" 
   clusternet-agent -n clusternet-system --create-namespace \
   --set parentURL="${PARENT_CLUSTER_SERVER}" \
   --set registrationToken=07401b.f395accd246ae52d \
+  --set extraArgs.cluster-reg-name=child3 \
   clusternet/clusternet-agent
 echo "Installing clusternet-agent into child3 finished"
 
