@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -296,7 +297,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 				ReleaseName:     utilpointer.String(chart.Name), // default to be the HelmChart name
 				TargetNamespace: chart.Spec.TargetNamespace,
 				HelmOptions:     chart.Spec.HelmOptions,
-				Overrides:       desc.Spec.Raw[idx],
+				Overrides:       []byte(strings.TrimSpace(string(desc.Spec.Raw[idx]))),
 			},
 		}
 		hr.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(desc, descriptionKind)})

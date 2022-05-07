@@ -161,8 +161,10 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 
 	releaseName := getReleaseName(hr)
 	var overrideValues map[string]interface{}
-	if err = json.Unmarshal(hr.Spec.Overrides, &overrideValues); err != nil {
-		return err
+	if len(strings.TrimSpace(string(hr.Spec.Overrides))) > 0 {
+		if err = json.Unmarshal(hr.Spec.Overrides, &overrideValues); err != nil {
+			return err
+		}
 	}
 
 	var rel *release.Release
