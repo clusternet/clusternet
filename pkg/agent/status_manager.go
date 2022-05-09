@@ -37,6 +37,7 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 type Manager struct {
@@ -52,19 +53,24 @@ func NewStatusManager(ctx context.Context, apiserverURL, systemNamespace string,
 	retryCtx, retryCancel := context.WithTimeout(ctx, known.DefaultRetryPeriod)
 	defer retryCancel()
 
+	var metricClient *metricsv.Clientset
 	secret := utils.GetDeployerCredentials(retryCtx, kubeClient, systemNamespace)
 	if secret != nil {
 		clusterStatusKubeConfig, err := utils.GenerateKubeConfigFromToken(apiserverURL,
 			string(secret.Data[corev1.ServiceAccountTokenKey]), secret.Data[corev1.ServiceAccountRootCAKey], 2)
 		if err == nil {
 			kubeClient = kubernetes.NewForConfigOrDie(clusterStatusKubeConfig)
+			metricClient, err = metricsv.NewForConfig(clusterStatusKubeConfig)
+			if err != nil {
+				klog.Errorf("failed to generate metricClient with err %v", err)
+			}
 		}
 	}
 
 	return &Manager{
 		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
 		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL,
-			kubeClient, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
+			kubeClient, metricClient, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
 	}
 }
 

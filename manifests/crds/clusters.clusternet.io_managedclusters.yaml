@@ -218,6 +218,12 @@ spec:
                   - type
                   type: object
                 type: array
+              resourceUsage:
+                description: ResourceUsage is the cpu(m) and memory(Mi) already used in the cluster, k8s reserved not include
+                properties:
+                  resourceUsage:
+                    description: ResourceUsage is the cpu(m) and memory(Mi) already used in the cluster, k8s reserved not include
+                type: object  
               healthz:
                 description: Healthz indicates the healthz status of the cluster which
                   is deprecated since Kubernetes v1.16. Please use Livez and Readyz
@@ -240,6 +246,18 @@ spec:
               livez:
                 description: Livez indicates the livez status of the cluster
                 type: boolean
+              podStatistics:
+                description: PodStatistics is the info summary of pods in the cluster
+                properties:
+                  runningPods:
+                    description: RunningPods is the number of running pods in the cluster
+                    format: int32
+                    type: integer
+                  totalPods:
+                    description: TotalPods is the number of all pods in the cluster
+                    format: int32
+                    type: integer
+                type: object
               nodeStatistics:
                 description: NodeStatistics is the info summary of nodes in the cluster
                 properties:

@@ -244,6 +244,8 @@ func (in *ManagedClusterStatus) DeepCopyInto(out *ManagedClusterStatus) {
 		}
 	}
 	out.NodeStatistics = in.NodeStatistics
+	out.PodStatistics = in.PodStatistics
+	out.ResourceUsage = in.ResourceUsage
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]metav1.Condition, len(*in))
