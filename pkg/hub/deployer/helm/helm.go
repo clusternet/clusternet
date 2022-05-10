@@ -33,6 +33,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -425,7 +427,9 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return err
 	}
 
-	deployCtx, err := utils.NewDeployContext(config)
+	deployCtx, err := utils.NewDeployContext(config, &clientcmd.ConfigOverrides{Context: clientcmdapi.Context{
+		Namespace: hr.Spec.TargetNamespace,
+	}})
 	if err != nil {
 		return err
 	}
