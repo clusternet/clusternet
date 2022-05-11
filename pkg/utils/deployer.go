@@ -321,12 +321,12 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			continue
 		}
 
-		labels := resource.GetLabels()
-		if labels == nil {
-			labels = map[string]string{}
+		annotations := resource.GetAnnotations()
+		if annotations == nil {
+			annotations = map[string]string{}
 		}
-		labels[known.ObjectOwnedByDescriptionLabel] = desc.Namespace + "." + desc.Name
-		resource.SetLabels(labels)
+		annotations[known.ObjectOwnedByDescriptionAnnotation] = desc.Namespace + "." + desc.Name
+		resource.SetAnnotations(annotations)
 		wg.Add(1)
 		go func(resource *unstructured.Unstructured) {
 			defer wg.Done()
