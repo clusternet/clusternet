@@ -179,7 +179,7 @@ func (deployer *Deployer) handleResource(ownedByValue string) error {
 	// get description ns and name
 	parts := strings.Split(ownedByValue, ".")
 	if len(parts) < 2 {
-		return fmt.Errorf("unexpected value for label %s: %s", known.ObjectOwnedByDescriptionLabel, ownedByValue)
+		return fmt.Errorf("unexpected value for annotation %s: %s", known.ObjectOwnedByDescriptionAnnotation, ownedByValue)
 	}
 	// namespace contains no ".", while name does
 	namespace := parts[0]
