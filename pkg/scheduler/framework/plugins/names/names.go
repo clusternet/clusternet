@@ -17,6 +17,8 @@ limitations under the License.
 package names
 
 const (
+	StaticAssigner = "StaticAssigner"
+
 	DefaultBinder = "DefaultBinder"
 
 	TaintToleration = "TaintToleration"

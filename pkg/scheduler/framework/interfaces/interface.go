@@ -33,17 +33,44 @@ import (
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
+	"github.com/clusternet/clusternet/pkg/scheduler/cache"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 )
 
 // ClusterScoreList declares a list of clusters and their scores.
 type ClusterScoreList []ClusterScore
 
+func (cs ClusterScoreList) Len() int {
+	return len(cs)
+}
+
+func (cs ClusterScoreList) Less(i, j int) bool {
+	return cs[i].Score > cs[j].Score
+}
+
+func (cs ClusterScoreList) Swap(i, j int) {
+	cs[i], cs[j] = cs[j], cs[i]
+}
+
 // ClusterScore is a struct with cluster id and score.
 type ClusterScore struct {
-	NamespacedName string // the namespaced name key of a ManagedCluster
-	Score          int64
+	NamespacedName       string // the namespaced name key of a ManagedCluster
+	Score                int64
+	MaxAvailableReplicas FeedReplicas
 }
+
+func (cs ClusterScoreList) ClusterNames() []string {
+	clusters := make([]string, 0, len(cs))
+	for _, score := range cs {
+		clusters = append(clusters, score.NamespacedName)
+	}
+	return clusters
+}
+
+type FeedReplicas []int32
+
+// PluginToClusterReplicas declares a map from plugin name to its ClusterScoreList.
+type PluginToClusterReplicas map[string]ClusterScoreList
 
 // PluginToClusterScores declares a map from plugin name to its ClusterScoreList.
 type PluginToClusterScores map[string]ClusterScoreList
@@ -170,6 +197,29 @@ type PostFilterPlugin interface {
 	PostFilter(ctx context.Context, sub *appsapi.Subscription, filteredClusterStatusMap ClusterToStatusMap) (*PostFilterResult, *Status)
 }
 
+// PreEstimatePlugin is an interface for "PreEstimate" plugin. PreEstimate is an
+// informational extension point. Plugins will be called with a list of clusters
+// that passed the filtering phase.
+type PreEstimatePlugin interface {
+	Plugin
+
+	// PreEstimate is called by the scheduling framework after a list of managed clusters
+	// passed the filtering phase. All pre-estimate plugins must return success or
+	// the subscription will be rejected.
+	PreEstimate(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
+}
+
+// EstimatePlugin is an interface that must be implemented by "Estimate" plugins to estimate
+// max available replicas for clusters that passed the filtering phase.
+type EstimatePlugin interface {
+	Plugin
+
+	// Estimate is called on each filtered cluster. It must return success and available
+	// replicas indicating the feasible domain for sake of division. All estimate plugins
+	// must return success or the subscription will be rejected.
+	Estimate(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clusterapi.ManagedCluster) (FeedReplicas, *Status)
+}
+
 // PreScorePlugin is an interface for "PreScore" plugin. PreScore is an
 // informational extension point. Plugins will be called with a list of clusters
 // that passed the filtering phase. A plugin may use this data to update internal
@@ -203,6 +253,29 @@ type ScorePlugin interface {
 
 	// ScoreExtensions returns a ScoreExtensions interface if it implements one, or nil if not.
 	ScoreExtensions() ScoreExtensions
+}
+
+// PreAssignPlugin is an interface for "PreAssign" plugin. PreAssign is an
+// informational extension point. These are meant to prepare the state of
+// the assign.
+type PreAssignPlugin interface {
+	Plugin
+
+	// PreAssign is called by the scheduling framework after a list of managed clusters
+	// passed the filtering phase. All pre-estimate plugins must return success or
+	// the subscription will be rejected.
+	PreAssign(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas TargetClusters) *Status
+}
+
+// AssignPlugin is an interface that must be implemented by "Assign" plugins to assign replicas
+// for each selected cluster.
+type AssignPlugin interface {
+	Plugin
+
+	// Assign is called on each selected cluster. It will assign replicas for each
+	// selected cluster. The return result is a map whose key is feed key and
+	// value is respective assigned replicas for each selected cluster.
+	Assign(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas TargetClusters) (TargetClusters, *Status)
 }
 
 // ReservePlugin is an interface for plugins with Reserve and Unreserve
@@ -293,6 +366,31 @@ type Framework interface {
 	// cluster state to make the subscription potentially schedulable in a future scheduling cycle.
 	RunPostFilterPlugins(ctx context.Context, sub *appsapi.Subscription, filteredClusterStatusMap ClusterToStatusMap) (*PostFilterResult, *Status)
 
+	// RunPreEstimatePlugins runs the set of configured PreEstimate plugins. It returns
+	// *Status and its code is set to non-success if any of the plugins returns
+	// anything but Success. If a non-success status is returned, then the scheduling
+	// cycle is aborted.
+	RunPreEstimatePlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
+
+	// RunEstimatePlugins runs the set of configured Estimate plugins. It returns a map that
+	// stores for each Estimate plugin name the corresponding ClusterScoreList(s).
+	// It also returns *Status, which is set to non-success if any of the plugins returns
+	// a non-success status.
+	RunEstimatePlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster, availableList ClusterScoreList) (ClusterScoreList, *Status)
+
+	// RunPreAssignPlugins runs the set of configured PreAssign plugins. It returns
+	// *Status and its code is set to non-success if any of the plugins returns
+	// anything but Success. If a non-success status is returned, then the scheduling
+	// cycle is aborted.
+	RunPreAssignPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, selected TargetClusters) *Status
+
+	// RunAssignPlugins runs the set of configured Assign plugins. An Assign plugin may choose
+	// whether to handle the given subscription. If an Assign plugin chooses to skip the
+	// assigning, it should return code=5("skip") status. Otherwise, it should return "Error"
+	// or "Success". If none of the plugins handled assigning, RunAssignPlugins returns
+	// code=5("skip") status.
+	RunAssignPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, selected TargetClusters) (TargetClusters, *Status)
+
 	// RunReservePluginsReserve runs the Reserve method of the set of
 	// configured Reserve plugins. If any of these calls returns an error, it
 	// does not continue running the remaining ones and returns the error. In
@@ -340,6 +438,9 @@ type Framework interface {
 	// HasScorePlugins returns true if at least one Score plugin is defined.
 	HasScorePlugins() bool
 
+	// HasEstimatePlugins returns true if at least one Estimate plugin is defined.
+	HasEstimatePlugins() bool
+
 	// ListPlugins returns a map of extension point name to list of configured Plugins.
 	ListPlugins() *schedulerapis.Plugins
 
@@ -353,6 +454,9 @@ type Framework interface {
 type Handle interface {
 	// PluginsRunner abstracts operations to run some plugins.
 	PluginsRunner
+
+	// ClusterCache returns a cluster cache.
+	ClusterCache() cache.Cache
 
 	// IterateOverWaitingSubscriptions acquires a read lock and iterates over the WaitingSubscriptions map.
 	IterateOverWaitingSubscriptions(callback func(WaitingSubscription))

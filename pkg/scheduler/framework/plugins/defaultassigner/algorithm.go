@@ -1,4 +1,4 @@
-package dividing
+package defaultassigner
 
 import (
 	"sort"
