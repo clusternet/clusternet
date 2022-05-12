@@ -141,6 +141,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 	framework, err := frameworkruntime.NewFramework(sched.registry, getDefaultPlugins(),
 		frameworkruntime.WithEventRecorder(recorder),
 		frameworkruntime.WithInformerFactory(clusternetInformerFactory),
+		frameworkruntime.WithCache(schedulerCache),
 		frameworkruntime.WithClientSet(clusternetClient),
 		frameworkruntime.WithKubeConfig(clientConfig),
 		frameworkruntime.WithParallelism(parallelize.DefaultParallelism),

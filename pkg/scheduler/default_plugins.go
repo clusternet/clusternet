@@ -30,11 +30,19 @@ func getDefaultPlugins() *schedulerapis.Plugins {
 				{Name: names.TaintToleration},
 			},
 		},
-		PostFilter: schedulerapis.PluginSet{},
-		PreScore:   schedulerapis.PluginSet{},
+		PostFilter:  schedulerapis.PluginSet{},
+		PreEstimate: schedulerapis.PluginSet{},
+		Estimate:    schedulerapis.PluginSet{},
+		PreScore:    schedulerapis.PluginSet{},
 		Score: schedulerapis.PluginSet{
 			Enabled: []schedulerapis.Plugin{
 				{Name: names.TaintToleration, Weight: 3},
+			},
+		},
+		PreAssign: schedulerapis.PluginSet{},
+		Assign: schedulerapis.PluginSet{
+			Enabled: []schedulerapis.Plugin{
+				{Name: names.StaticAssigner},
 			},
 		},
 		Reserve: schedulerapis.PluginSet{},
