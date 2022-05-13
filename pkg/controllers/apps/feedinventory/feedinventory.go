@@ -409,6 +409,11 @@ func (c *Controller) syncHandler(key string) error {
 
 	_, err = c.clusternetClient.AppsV1alpha1().FeedInventories(finv.Namespace).Create(context.TODO(), finv, metav1.CreateOptions{})
 	if err != nil && apierrors.IsAlreadyExists(err) {
+		curFinv, err2 := c.finvLister.FeedInventories(finv.Namespace).Get(finv.Name)
+		if err2 != nil {
+			return err2
+		}
+		finv.SetResourceVersion(curFinv.GetResourceVersion())
 		_, err = c.clusternetClient.AppsV1alpha1().FeedInventories(finv.Namespace).Update(context.TODO(), finv, metav1.UpdateOptions{})
 	}
 
