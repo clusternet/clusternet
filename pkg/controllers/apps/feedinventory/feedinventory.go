@@ -25,7 +25,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -311,7 +310,7 @@ func (c *Controller) syncHandler(key string) error {
 	// Get the Subscription resource with this name
 	sub, err := c.subLister.Subscriptions(ns).Get(name)
 	// The Subscription resource may no longer exist, in which case we stop processing.
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		klog.V(2).Infof("Subscription %q has been deleted", key)
 		return nil
 	}
@@ -410,6 +409,11 @@ func (c *Controller) syncHandler(key string) error {
 
 	_, err = c.clusternetClient.AppsV1alpha1().FeedInventories(finv.Namespace).Create(context.TODO(), finv, metav1.CreateOptions{})
 	if err != nil && apierrors.IsAlreadyExists(err) {
+		curFinv, err2 := c.finvLister.FeedInventories(finv.Namespace).Get(finv.Name)
+		if err2 != nil {
+			return err2
+		}
+		finv.SetResourceVersion(curFinv.GetResourceVersion())
 		_, err = c.clusternetClient.AppsV1alpha1().FeedInventories(finv.Namespace).Update(context.TODO(), finv, metav1.UpdateOptions{})
 	}
 

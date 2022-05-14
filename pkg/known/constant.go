@@ -67,7 +67,7 @@ const (
 	NoResyncPeriod = 0 * time.Second
 
 	// DefaultThreadiness defines default number of threads
-	DefaultThreadiness = 2
+	DefaultThreadiness = 10
 )
 
 // fields should be ignored when compared

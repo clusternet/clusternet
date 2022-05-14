@@ -219,8 +219,8 @@ type DeployContext struct {
 	restMapper               meta.RESTMapper
 }
 
-func NewDeployContext(config *clientcmdapi.Config) (*DeployContext, error) {
-	clientConfig := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{})
+func NewDeployContext(config *clientcmdapi.Config, overrides *clientcmd.ConfigOverrides) (*DeployContext, error) {
+	clientConfig := clientcmd.NewDefaultClientConfig(*config, overrides)
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error while creating DeployContext: %v", err)

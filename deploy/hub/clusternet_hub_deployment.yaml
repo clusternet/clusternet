@@ -77,4 +77,3 @@ spec:
             - --anonymous-auth-supported=true
             - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
             - --reserved-namespace=$(RESERVED_NAMESPACE)
-            - -v=4

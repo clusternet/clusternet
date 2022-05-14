@@ -30,6 +30,7 @@ func trimCommonMetadata(result *unstructured.Unstructured) {
 	unstructured.RemoveNestedField(result.Object, "metadata", "creationTimestamp")
 	unstructured.RemoveNestedField(result.Object, "metadata", "managedFields")
 	unstructured.RemoveNestedField(result.Object, "metadata", "resourceVersion")
+	unstructured.RemoveNestedField(result.Object, "metadata", "selfLink")
 }
 
 func trimCoreService(result *unstructured.Unstructured) {

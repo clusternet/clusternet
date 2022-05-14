@@ -68,7 +68,7 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 	ri := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
-			val, ok := resource.GetLabels()[known.ObjectOwnedByDescriptionLabel]
+			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
 			if ok {
 				klog.V(4).Infof("adding %s %q", c.name, klog.KObj(resource))
 				c.enqueue(val)
@@ -76,7 +76,7 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			resource := oldObj.(*unstructured.Unstructured)
-			val, ok := resource.GetLabels()[known.ObjectOwnedByDescriptionLabel]
+			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
 			if ok {
 				klog.V(4).Infof("updating %s %q", c.name, klog.KObj(resource))
 				c.enqueue(val)
@@ -84,7 +84,7 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 		},
 		DeleteFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
-			val, ok := resource.GetLabels()[known.ObjectOwnedByDescriptionLabel]
+			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
 			if ok {
 				klog.V(4).Infof("deleting %s %q", c.name, klog.KObj(resource))
 				c.enqueue(val)

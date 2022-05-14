@@ -100,13 +100,6 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 		return err
 	}
 
-	deployCtx, err := utils.NewDeployContext(utils.CreateKubeConfigWithToken(d.childAPIServerURL,
-		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey]))
-	if err != nil {
-		return err
-	}
-
 	// setup broadcaster and event recorder in parent cluster
 	broadcaster := record.NewBroadcaster()
 	klog.Infof("sending events to parent apiserver")
@@ -130,8 +123,11 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	if err != nil {
 		return err
 	}
+	deployConfig := utils.CreateKubeConfigWithToken(d.childAPIServerURL,
+		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey])
 	helmDeployer, err := helm.NewDeployer(d.syncMode, d.appPusherEnabled, parentClientSet, childKubeClient,
-		clusternetclient, deployCtx, clusternetInformerFactory, parentRecorder)
+		clusternetclient, deployConfig, clusternetInformerFactory, parentRecorder)
 	if err != nil {
 		return err
 	}

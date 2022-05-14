@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,6 +33,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -296,7 +299,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 				ReleaseName:     utilpointer.String(chart.Name), // default to be the HelmChart name
 				TargetNamespace: chart.Spec.TargetNamespace,
 				HelmOptions:     chart.Spec.HelmOptions,
-				Overrides:       desc.Spec.Raw[idx],
+				Overrides:       []byte(strings.TrimSpace(string(desc.Spec.Raw[idx]))),
 			},
 		}
 		hr.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(desc, descriptionKind)})
@@ -424,7 +427,9 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return err
 	}
 
-	deployCtx, err := utils.NewDeployContext(config)
+	deployCtx, err := utils.NewDeployContext(config, &clientcmd.ConfigOverrides{Context: clientcmdapi.Context{
+		Namespace: hr.Spec.TargetNamespace,
+	}})
 	if err != nil {
 		return err
 	}

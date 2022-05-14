@@ -161,8 +161,10 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 
 	releaseName := getReleaseName(hr)
 	var overrideValues map[string]interface{}
-	if err = json.Unmarshal(hr.Spec.Overrides, &overrideValues); err != nil {
-		return err
+	if len(strings.TrimSpace(string(hr.Spec.Overrides))) > 0 {
+		if err = json.Unmarshal(hr.Spec.Overrides, &overrideValues); err != nil {
+			return err
+		}
 	}
 
 	var rel *release.Release
@@ -319,12 +321,12 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			continue
 		}
 
-		labels := resource.GetLabels()
-		if labels == nil {
-			labels = map[string]string{}
+		annotations := resource.GetAnnotations()
+		if annotations == nil {
+			annotations = map[string]string{}
 		}
-		labels[known.ObjectOwnedByDescriptionLabel] = desc.Namespace + "." + desc.Name
-		resource.SetLabels(labels)
+		annotations[known.ObjectOwnedByDescriptionAnnotation] = desc.Namespace + "." + desc.Name
+		resource.SetAnnotations(annotations)
 		wg.Add(1)
 		go func(resource *unstructured.Unstructured) {
 			defer wg.Done()
