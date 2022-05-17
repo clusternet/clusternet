@@ -40,6 +40,7 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -60,6 +61,8 @@ type Localizer struct {
 	chartSynced    cache.InformerSynced
 	manifestLister applisters.ManifestLister
 	manifestSynced cache.InformerSynced
+	mclsLister     clusterListers.ManagedClusterLister
+	mclsSynced     cache.InformerSynced
 
 	locController  *localization.Controller
 	globController *globalization.Controller
@@ -88,6 +91,8 @@ func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 		chartSynced:       clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
 		manifestLister:    clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
 		manifestSynced:    clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
+		mclsLister:        clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		mclsSynced:        clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
 		chartCallback:     chartCallback,
 		manifestCallback:  manifestCallback,
 		recorder:          recorder,
@@ -131,6 +136,7 @@ func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
 		l.globSynced,
 		l.chartSynced,
 		l.manifestSynced,
+		l.mclsSynced,
 	) {
 		return
 	}
@@ -331,12 +337,32 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 		uid = manifests[0].UID
 	}
 
-	globs, err := l.globLister.List(labels.SelectorFromSet(labels.Set{
+	feedGlobs, err := l.globLister.List(labels.SelectorFromSet(labels.Set{
 		string(uid): feed.Kind,
 	}))
 	if err != nil {
 		return nil, err
 	}
+
+	globs := make([]*appsapi.Globalization, 0)
+	for _, glob := range feedGlobs {
+		if glob.Spec.ClusterAffinity != nil {
+			selector, err := metav1.LabelSelectorAsSelector(glob.Spec.ClusterAffinity)
+			if err != nil {
+				return nil, err
+			}
+			clusters, listErr := l.mclsLister.ManagedClusters(namespace).List(selector)
+			if listErr != nil {
+				return nil, listErr
+			}
+			if len(clusters) == 0 {
+				klog.V(5).Infof("skipping apply Globalization %s for feed %s in namespace", glob.Name, feed.Name, namespace)
+				continue
+			}
+		}
+		globs = append(globs, glob)
+	}
+
 	sort.SliceStable(globs, func(i, j int) bool {
 		if globs[i].Spec.Priority == globs[j].Spec.Priority {
 			return globs[i].CreationTimestamp.Second() < globs[j].CreationTimestamp.Second()
