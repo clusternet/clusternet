@@ -212,12 +212,12 @@ func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStat
 
 // discoverServiceCIDR returns the service CIDR for the cluster.
 func (c *Controller) discoverServiceCIDR() (string, error) {
-	return findPodIPRange(c.nodeLister, c.podLister)
+	return findServiceIPRange(c.podLister)
 }
 
 // discoverClusterCIDR returns the cluster CIDR for the cluster.
 func (c *Controller) discoverClusterCIDR() (string, error) {
-	return findClusterIPRange(c.podLister)
+	return findPodIPRange(c.nodeLister, c.podLister)
 }
 
 // get node capacity and allocatable resource
