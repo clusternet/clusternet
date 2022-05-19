@@ -265,7 +265,9 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	scheduleResult, err := sched.scheduleAlgorithm.Schedule(schedulingCycleCtx, sched.framework, sub, finv)
 	if err != nil {
 		sched.recordSchedulingFailure(sub, err, ReasonUnschedulable)
-		return
+		if !strings.Contains(err.Error(), "clusters are available") {
+			return
+		}
 	}
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInSeconds(start))
 
@@ -456,7 +458,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 		},
 	})
 
-	enqueueSubscriptionForClusterFunc := func(mcls *clusterapi.ManagedCluster) {
+	enqueueSubscriptionForClusterFunc := func(newMcls *clusterapi.ManagedCluster, oldMcls *clusterapi.ManagedCluster) {
 		sched.lock.RLock()
 		defer sched.lock.RUnlock()
 
@@ -467,7 +469,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 					klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err))
 					continue
 				}
-				if !selector.Matches(labels.Set(mcls.Labels)) {
+				if !selector.Matches(labels.Set(newMcls.Labels)) && !selector.Matches(labels.Set(oldMcls.Labels)) {
 					continue
 				}
 				sched.SchedulingQueue.AddRateLimited(key)
@@ -482,7 +484,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 			if mcls.DeletionTimestamp != nil {
 				return
 			}
-			enqueueSubscriptionForClusterFunc(mcls)
+			enqueueSubscriptionForClusterFunc(mcls, nil)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			oldMcls := oldObj.(*clusterapi.ManagedCluster)
@@ -497,7 +499,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 				klog.V(4).Infof("no updates on the labels/taints of ManagedCluster %s, skipping syncing", klog.KObj(oldMcls))
 				return
 			}
-			enqueueSubscriptionForClusterFunc(newMcls)
+			enqueueSubscriptionForClusterFunc(newMcls, oldMcls)
 		},
 		DeleteFunc: func(obj interface{}) {
 			// when a ManagedCluster is deleted,
