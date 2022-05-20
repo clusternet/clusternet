@@ -168,7 +168,7 @@ func (c *Controller) enqueue(sub *appsapi.Subscription) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.workqueue.AddRateLimited(key)
+	c.workqueue.Add(key)
 }
 
 // enqueueManifest takes a Manifest resource and converts it into a namespace/name
@@ -225,7 +225,7 @@ func (c *Controller) updateManifest(old, cur interface{}) {
 func (c *Controller) deleteFeedInventory(obj interface{}) {
 	finv := obj.(*appsapi.FeedInventory)
 	klog.V(4).Infof("[FeedInventory] deleting FeedInventory %q", klog.KObj(finv))
-	c.workqueue.AddRateLimited(klog.KObj(finv))
+	c.workqueue.Add(klog.KObj(finv))
 }
 
 // runWorker is a long-running function that will continually call the
