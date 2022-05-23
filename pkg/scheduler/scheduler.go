@@ -469,7 +469,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 					klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err))
 					continue
 				}
-				if !selector.Matches(labels.Set(newMcls.Labels)) && !selector.Matches(labels.Set(oldMcls.Labels)) {
+				if !selector.Matches(labels.Set(newMcls.Labels)) && oldMcls != nil && !selector.Matches(labels.Set(oldMcls.Labels)) {
 					continue
 				}
 				sched.SchedulingQueue.AddRateLimited(key)
