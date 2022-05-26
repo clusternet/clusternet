@@ -30,9 +30,9 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	estimatorapis "github.com/clusternet/clusternet/pkg/estimator/apis"
-	framework "github.com/clusternet/clusternet/pkg/estimator/framework/interfaces"
-	"github.com/clusternet/clusternet/pkg/estimator/metrics"
+	predictorapis "github.com/clusternet/clusternet/pkg/predictor/apis"
+	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
+	"github.com/clusternet/clusternet/pkg/predictor/metrics"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -51,7 +51,7 @@ const (
 	aggregate               = "Aggregate"
 )
 
-// frameworkImpl is the component responsible for initializing and running estimator
+// frameworkImpl is the component responsible for initializing and running predictor
 // plugins.
 type frameworkImpl struct {
 	scorePluginWeight   map[string]int
@@ -85,13 +85,13 @@ type frameworkImpl struct {
 // frameworkImpl.
 type extensionPoint struct {
 	// the set of plugins to be configured at this extension point.
-	plugins *estimatorapis.PluginSet
+	plugins *predictorapis.PluginSet
 	// a pointer to the slice storing plugins implementations that will run at this
 	// extension point.
 	slicePtr interface{}
 }
 
-func (f *frameworkImpl) getExtensionPoints(plugins *estimatorapis.Plugins) []extensionPoint {
+func (f *frameworkImpl) getExtensionPoints(plugins *predictorapis.Plugins) []extensionPoint {
 	return []extensionPoint{
 		{&plugins.PreFilter, &f.preFilterPlugins},
 		{&plugins.Filter, &f.filterPlugins},
@@ -118,28 +118,28 @@ type frameworkOptions struct {
 // Option for the frameworkImpl.
 type Option func(*frameworkOptions)
 
-// WithClientSet sets clientSet for the estimating frameworkImpl.
+// WithClientSet sets clientSet for the predictor frameworkImpl.
 func WithClientSet(clientSet clientset.Interface) Option {
 	return func(o *frameworkOptions) {
 		o.clientSet = clientSet
 	}
 }
 
-// WithKubeConfig sets kubeConfig for the estimating frameworkImpl.
+// WithKubeConfig sets kubeConfig for the predictor frameworkImpl.
 func WithKubeConfig(kubeConfig *restclient.Config) Option {
 	return func(o *frameworkOptions) {
 		o.kubeConfig = kubeConfig
 	}
 }
 
-// WithEventRecorder sets clientSet for the estimating frameworkImpl.
+// WithEventRecorder sets clientSet for the predictor frameworkImpl.
 func WithEventRecorder(recorder record.EventRecorder) Option {
 	return func(o *frameworkOptions) {
 		o.eventRecorder = recorder
 	}
 }
 
-// WithInformerFactory sets informer factory for the estimating frameworkImpl.
+// WithInformerFactory sets informer factory for the predictor frameworkImpl.
 func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option {
 	return func(o *frameworkOptions) {
 		o.informerFactory = informerFactory
@@ -154,7 +154,7 @@ func WithRunAllFilters(runAllFilters bool) Option {
 	}
 }
 
-// WithParallelism sets parallelism for the estimating frameworkImpl.
+// WithParallelism sets parallelism for the predictor frameworkImpl.
 func WithParallelism(parallelism int) Option {
 	return func(o *frameworkOptions) {
 		o.parallelizer = parallelize.NewParallelizer(parallelism)
@@ -171,7 +171,7 @@ func defaultFrameworkOptions() frameworkOptions {
 var _ framework.Framework = &frameworkImpl{}
 
 // NewFramework initializes plugins given the configuration and the registry.
-func NewFramework(r Registry, plugins *estimatorapis.Plugins, opts ...Option) (framework.Framework, error) {
+func NewFramework(r Registry, plugins *predictorapis.Plugins, opts ...Option) (framework.Framework, error) {
 	options := defaultFrameworkOptions()
 	for _, opt := range opts {
 		opt(&options)
@@ -221,7 +221,7 @@ func NewFramework(r Registry, plugins *estimatorapis.Plugins, opts ...Option) (f
 	return f, nil
 }
 
-func updatePluginList(pluginList interface{}, pluginSet estimatorapis.PluginSet, pluginsMap map[string]framework.Plugin) error {
+func updatePluginList(pluginList interface{}, pluginSet predictorapis.PluginSet, pluginsMap map[string]framework.Plugin) error {
 	plugins := reflect.ValueOf(pluginList).Elem()
 	pluginType := plugins.Type().Elem()
 	set := sets.NewString()
@@ -249,7 +249,7 @@ func updatePluginList(pluginList interface{}, pluginSet estimatorapis.PluginSet,
 
 // RunPreFilterPlugins runs the set of configured PreFilter plugins. It returns
 // *Status and its code is set to non-success if any of the plugins returns
-// anything but Success. If a non-success status is returned, then the estimating
+// anything but Success. If a non-success status is returned, then the predicting
 // cycle is aborted.
 func (f *frameworkImpl) RunPreFilterPlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements) (status *framework.Status) {
 	startTime := time.Now()
@@ -260,7 +260,7 @@ func (f *frameworkImpl) RunPreFilterPlugins(ctx context.Context, requirements *a
 		status = f.runPreFilterPlugin(ctx, pl, requirements)
 		if !status.IsSuccess() {
 			status.SetFailedPlugin(pl.Name())
-			if status.IsInestimable() {
+			if status.IsUnpredictable() {
 				return status
 			}
 			return framework.AsStatus(fmt.Errorf("running PreFilter plugin %q: %w", pl.Name(), status.AsError())).WithFailedPlugin(pl.Name())
@@ -286,9 +286,9 @@ func (f *frameworkImpl) RunFilterPlugins(ctx context.Context, requirements *apps
 	for _, pl := range f.filterPlugins {
 		pluginStatus := f.runFilterPlugin(ctx, pl, requirements, nodeInfo)
 		if !pluginStatus.IsSuccess() {
-			if !pluginStatus.IsInestimable() {
+			if !pluginStatus.IsUnpredictable() {
 				// Filter plugins are not supposed to return any status other than
-				// Success or Inestimable.
+				// Success or Unpredictable.
 				errStatus := framework.AsStatus(fmt.Errorf("running %q filter plugin: %w", pl.Name(), pluginStatus.AsError())).WithFailedPlugin(pl.Name())
 				return map[string]*framework.Status{pl.Name(): errStatus}
 			}
@@ -320,8 +320,8 @@ func (f *frameworkImpl) RunPostFilterPlugins(ctx context.Context, requirements *
 		r, s := f.runPostFilterPlugin(ctx, pl, requirements, filteredNodeStatusMap)
 		if s.IsSuccess() {
 			return r, s
-		} else if !s.IsInestimable() {
-			// Any status other than Success or Inestimable is Error.
+		} else if !s.IsUnpredictable() {
+			// Any status other than Success or Unpredictable is Error.
 			return nil, framework.AsStatus(s.AsError())
 		}
 		statuses[pl.Name()] = s
@@ -347,7 +347,7 @@ func (f *frameworkImpl) RunPreComputePlugins(ctx context.Context, requirements *
 	for _, pl := range f.preComputePlugins {
 		status = f.runPreComputePlugin(ctx, pl, requirements, nodesInfo)
 		if !status.IsSuccess() {
-			return framework.AsStatus(fmt.Errorf("running PreEstimate plugin %q: %w", pl.Name(), status.AsError()))
+			return framework.AsStatus(fmt.Errorf("running PreCompute plugin %q: %w", pl.Name(), status.AsError()))
 		}
 	}
 
@@ -386,13 +386,13 @@ func (f *frameworkImpl) RunComputePlugins(ctx context.Context, requirements *app
 				// First plugin, just set the replicas.
 				availableList[index].MaxAvailableReplicas = replicas
 			} else {
-				// Get the minimum replicas from all estimators.
+				// Get the minimum replicas from all predictors.
 				availableList[index].MaxAvailableReplicas = utils.MinInt32(availableList[index].MaxAvailableReplicas, replicas)
 			}
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Estimate plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Compute plugins: %w", err))
 	}
 
 	return availableList, nil
@@ -603,24 +603,24 @@ func (f *frameworkImpl) HasAggregatePlugins() bool {
 
 // ListPlugins returns a map of extension point name to plugin names configured at each extension
 // point. Returns nil if no plugins where configured.
-func (f *frameworkImpl) ListPlugins() *estimatorapis.Plugins {
-	m := estimatorapis.Plugins{}
+func (f *frameworkImpl) ListPlugins() *predictorapis.Plugins {
+	m := predictorapis.Plugins{}
 
 	for _, e := range f.getExtensionPoints(&m) {
 		plugins := reflect.ValueOf(e.slicePtr).Elem()
 		extName := plugins.Type().Elem().Name()
-		var cfgs []estimatorapis.Plugin
+		var enabledPlugins []predictorapis.Plugin
 		for i := 0; i < plugins.Len(); i++ {
 			name := plugins.Index(i).Interface().(framework.Plugin).Name()
-			p := estimatorapis.Plugin{Name: name}
+			p := predictorapis.Plugin{Name: name}
 			if extName == "ScorePlugin" {
 				// Weights apply only to score plugins.
 				p.Weight = int32(f.scorePluginWeight[name])
 			}
-			cfgs = append(cfgs, p)
+			enabledPlugins = append(enabledPlugins, p)
 		}
-		if len(cfgs) > 0 {
-			e.plugins.Enabled = cfgs
+		if len(enabledPlugins) > 0 {
+			e.plugins.Enabled = enabledPlugins
 		}
 	}
 	return &m
@@ -646,7 +646,7 @@ func (f *frameworkImpl) SharedInformerFactory() informers.SharedInformerFactory 
 	return f.informerFactory
 }
 
-// Parallelizer returns a parallelizer holding parallelism for estimator.
+// Parallelizer returns a parallelizer holding parallelism for predictor.
 func (f *frameworkImpl) Parallelizer() parallelize.Parallelizer {
 	return f.parallelizer
 }
