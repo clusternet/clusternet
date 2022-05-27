@@ -167,10 +167,10 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 			return err
 		}
 
-		//TODO when to recycle resource controller or make they live forever as resource controller cache?
+		//DO NOT recycle resource controller so they live forever as resource controller cache
+		deployer.AddController(gvk, resourceController)
 		stopChan := make(chan struct{})
 		resourceController.Run(known.DefaultThreadiness, stopChan)
-		deployer.AddController(gvk, resourceController)
 	}
 	return nil
 }
