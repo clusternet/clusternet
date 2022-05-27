@@ -18,6 +18,7 @@ package utils
 
 import (
 	"sort"
+	"strings"
 )
 
 // Copied from k8s.io/kubernetes/pkg/utils/slice/slice.go
@@ -45,6 +46,16 @@ func SortStrings(s []string) []string {
 func ContainsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+// ContainsPrefix checks if a given slice of strings start with the provided string.
+func ContainsPrefix(slice []string, s string) bool {
+	for _, item := range slice {
+		if strings.HasPrefix(s, item) {
 			return true
 		}
 	}
