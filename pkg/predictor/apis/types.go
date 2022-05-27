@@ -28,7 +28,7 @@ import (
 // Enabled plugins are called in the order specified here, after default plugins. If they need to
 // be invoked before default plugins, default plugins must be disabled and re-enabled here in desired order.
 type Plugins struct {
-	// PreFilter is a list of plugins that should be invoked at "PreFilter" extension point of the estimating framework.
+	// PreFilter is a list of plugins that should be invoked at "PreFilter" extension point of the predictor framework.
 	PreFilter PluginSet
 
 	// Filter is a list of plugins that should be invoked when filtering out clusters that cannot run the requirements.
@@ -80,8 +80,8 @@ type Plugin struct {
  */
 const (
 	// DefaultPercentageOfNodesToScore defines the percentage of nodes of all nodes
-	// that once found feasible, the estimator stops looking for more nodes.
-	// A value of 0 means adaptive, meaning the estimator figures out a proper default.
+	// that once found feasible, the predictor stops looking for more nodes.
+	// A value of 0 means adaptive, meaning the predictor figures out a proper default.
 	DefaultPercentageOfNodesToScore = 0
 
 	// MaxCustomPriorityScore is the max score UtilizationShapePoint expects.

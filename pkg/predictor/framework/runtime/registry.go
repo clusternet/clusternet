@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 
-	framework "github.com/clusternet/clusternet/pkg/estimator/framework/interfaces"
+	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
 )
 
 // PluginFactory is a function that builds a plugin.

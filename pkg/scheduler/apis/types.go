@@ -39,11 +39,11 @@ type Plugins struct {
 	// PostFilter is a list of plugins that are invoked after filtering phase, no matter whether filtering succeeds or not.
 	PostFilter PluginSet
 
-	// PreEstimate is a list of plugins that are invoked before estimating.
-	PreEstimate PluginSet
+	// PrePredict is a list of plugins that are invoked before predicting.
+	PrePredict PluginSet
 
-	// Estimate is a list of plugins that should be invoked when estimate max available replicas for clusters that have passed the filtering phase.
-	Estimate PluginSet
+	// Predict is a list of plugins that should be invoked when predicting max available replicas for clusters that have passed the filtering phase.
+	Predict PluginSet
 
 	// PreScore is a list of plugins that are invoked before scoring.
 	PreScore PluginSet
@@ -123,8 +123,8 @@ func (p *Plugins) Names() []string {
 		p.Filter,
 		p.PostFilter,
 		p.Reserve,
-		p.PreEstimate,
-		p.Estimate,
+		p.PrePredict,
+		p.Predict,
 		p.PreScore,
 		p.Score,
 		p.PreAssign,

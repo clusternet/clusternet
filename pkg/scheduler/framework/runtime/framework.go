@@ -49,8 +49,8 @@ const (
 	maxTimeout              = 15 * time.Minute
 	preFilter               = "PreFilter"
 	postFilter              = "PostFilter"
-	preEstimate             = "PreEstimate"
-	estimate                = "Estimate"
+	prePredict              = "PrePredict"
+	predict                 = "Predict"
 	preScore                = "PreScore"
 	score                   = "Score"
 	preAssign               = "PreAssign"
@@ -72,8 +72,8 @@ type frameworkImpl struct {
 	preFilterPlugins     []framework.PreFilterPlugin
 	filterPlugins        []framework.FilterPlugin
 	postFilterPlugins    []framework.PostFilterPlugin
-	preEstimatePlugins   []framework.PreEstimatePlugin
-	estimatePlugins      []framework.EstimatePlugin
+	prePredictPlugins    []framework.PrePredictPlugin
+	predictPlugins       []framework.PredictPlugin
 	preScorePlugins      []framework.PreScorePlugin
 	scorePlugins         []framework.ScorePlugin
 	preAssignPlugins     []framework.PreAssignPlugin
@@ -117,8 +117,8 @@ func (f *frameworkImpl) getExtensionPoints(plugins *schedulerapis.Plugins) []ext
 		{&plugins.Filter, &f.filterPlugins},
 		{&plugins.PostFilter, &f.postFilterPlugins},
 		{&plugins.Reserve, &f.reservePlugins},
-		{&plugins.PreEstimate, &f.preEstimatePlugins},
-		{&plugins.Estimate, &f.estimatePlugins},
+		{&plugins.PrePredict, &f.prePredictPlugins},
+		{&plugins.Predict, &f.predictPlugins},
 		{&plugins.PreScore, &f.preScorePlugins},
 		{&plugins.Score, &f.scorePlugins},
 		{&plugins.PreAssign, &f.preAssignPlugins},
@@ -381,40 +381,40 @@ func (f *frameworkImpl) runPostFilterPlugin(ctx context.Context, pl framework.Po
 	return r, s
 }
 
-func (f *frameworkImpl) RunPreEstimatePlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (status *framework.Status) {
+func (f *frameworkImpl) RunPrePredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
-		metrics.FrameworkExtensionPointDuration.WithLabelValues(preEstimate, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(prePredict, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
-	for _, pl := range f.preEstimatePlugins {
-		status = f.runPreEstimatePlugin(ctx, pl, sub, finv, clusters)
+	for _, pl := range f.prePredictPlugins {
+		status = f.runPrePredictPlugin(ctx, pl, sub, finv, clusters)
 		if !status.IsSuccess() {
-			return framework.AsStatus(fmt.Errorf("running PreEstimate plugin %q: %w", pl.Name(), status.AsError()))
+			return framework.AsStatus(fmt.Errorf("running PrePredict plugin %q: %w", pl.Name(), status.AsError()))
 		}
 	}
 
 	return nil
 }
 
-func (f *frameworkImpl) runPreEstimatePlugin(ctx context.Context, pl framework.PreEstimatePlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *framework.Status {
+func (f *frameworkImpl) runPrePredictPlugin(ctx context.Context, pl framework.PrePredictPlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *framework.Status {
 	startTime := time.Now()
-	status := pl.PreEstimate(ctx, sub, finv, clusters)
-	f.metricsRecorder.observePluginDurationAsync(preEstimate, pl.Name(), status, metrics.SinceInSeconds(startTime))
+	status := pl.PrePredict(ctx, sub, finv, clusters)
+	f.metricsRecorder.observePluginDurationAsync(prePredict, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
 
-func (f *frameworkImpl) RunEstimatePlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster, availableList framework.ClusterScoreList) (res framework.ClusterScoreList, status *framework.Status) {
+func (f *frameworkImpl) RunPredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster, availableList framework.ClusterScoreList) (res framework.ClusterScoreList, status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
-		metrics.FrameworkExtensionPointDuration.WithLabelValues(estimate, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(predict, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	ctx, cancel := context.WithCancel(ctx)
 	errCh := parallelize.NewErrorChannel()
 
-	// Run Estimate method for each cluster in parallel.
+	// Run Predict method for each cluster in parallel.
 	f.Parallelizer().Until(ctx, len(clusters), func(index int) {
-		for i, pl := range f.estimatePlugins {
-			replicas, status := f.runEstimatePlugin(ctx, pl, sub, finv, clusters[index])
+		for i, pl := range f.predictPlugins {
+			replicas, status := f.runPredictPlugin(ctx, pl, sub, finv, clusters[index])
 			if !status.IsSuccess() {
 				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
@@ -424,22 +424,22 @@ func (f *frameworkImpl) RunEstimatePlugins(ctx context.Context, sub *appsapi.Sub
 				// First plugin, just set the replicas.
 				availableList[index].MaxAvailableReplicas = replicas
 			} else {
-				// Get the minimum replicas from all estimators.
+				// Get the minimum replicas from all predictors.
 				availableList[index].MaxAvailableReplicas = mergeFeedReplicas(availableList[index].MaxAvailableReplicas, replicas)
 			}
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Estimate plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Predict plugins: %w", err))
 	}
 
 	return availableList, nil
 }
 
-func (f *frameworkImpl) runEstimatePlugin(ctx context.Context, pl framework.EstimatePlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clusterapi.ManagedCluster) (framework.FeedReplicas, *framework.Status) {
+func (f *frameworkImpl) runPredictPlugin(ctx context.Context, pl framework.PredictPlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clusterapi.ManagedCluster) (framework.FeedReplicas, *framework.Status) {
 	startTime := time.Now()
-	replicas, status := pl.Estimate(ctx, sub, finv, cluster)
-	f.metricsRecorder.observePluginDurationAsync(estimate, pl.Name(), status, metrics.SinceInSeconds(startTime))
+	replicas, status := pl.Predict(ctx, sub, finv, cluster)
+	f.metricsRecorder.observePluginDurationAsync(predict, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return replicas, status
 }
 
@@ -850,9 +850,9 @@ func (f *frameworkImpl) HasScorePlugins() bool {
 	return len(f.scorePlugins) > 0
 }
 
-// HasEstimatePlugins returns true if at least one estimate plugin is defined.
-func (f *frameworkImpl) HasEstimatePlugins() bool {
-	return len(f.estimatePlugins) > 0
+// HasPredictPlugins returns true if at least one predict plugin is defined.
+func (f *frameworkImpl) HasPredictPlugins() bool {
+	return len(f.predictPlugins) > 0
 }
 
 // ListPlugins returns a map of extension point name to plugin names configured at each extension

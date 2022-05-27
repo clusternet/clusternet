@@ -27,59 +27,59 @@ import (
 )
 
 const (
-	// EstimatorSubsystem - subsystem name used by estimator
-	EstimatorSubsystem = "clusternet_estimator"
+	// PredictorSubsystem - subsystem name used by predictor
+	PredictorSubsystem = "clusternet_predictor"
 )
 
 // All the histogram based metrics have 1ms as size for the smallest bucket.
 var (
-	estimatorAttempts = metrics.NewCounterVec(
+	predictorAttempts = metrics.NewCounterVec(
 		&metrics.CounterOpts{
-			Subsystem:      EstimatorSubsystem,
-			Name:           "estimator_attempts_total",
-			Help:           "Number of attempts to estimator requirements, by the result. 'inestimable' means a requirement could not be estimated, while 'error' means an internal estimator problem.",
+			Subsystem:      PredictorSubsystem,
+			Name:           "predictor_attempts_total",
+			Help:           "Number of attempts to predictor requirements, by the result. 'Unpredictable' means a requirement could not be predicted, while 'error' means an internal predictor problem.",
 			StabilityLevel: metrics.ALPHA,
 		}, []string{"result", "profile"})
 
-	e2eEstimatorLatency = metrics.NewHistogramVec(
+	e2ePredictorLatency = metrics.NewHistogramVec(
 		&metrics.HistogramOpts{
-			Subsystem:      EstimatorSubsystem,
-			Name:           "e2e_estimator_duration_seconds",
-			Help:           "E2e estimator latency in seconds (estimator algorithm)",
+			Subsystem:      PredictorSubsystem,
+			Name:           "e2e_predictor_duration_seconds",
+			Help:           "E2e predictor latency in seconds (predictor algorithm)",
 			Buckets:        metrics.ExponentialBuckets(0.001, 2, 15),
 			StabilityLevel: metrics.ALPHA,
 		}, []string{"result", "profile"})
 
-	estimatorLatency = metrics.NewHistogramVec(
+	predictorLatency = metrics.NewHistogramVec(
 		&metrics.HistogramOpts{
-			Subsystem:      EstimatorSubsystem,
-			Name:           "estimator_attempt_duration_seconds",
-			Help:           "Estimator attempt latency in seconds (estimator algorithm)",
+			Subsystem:      PredictorSubsystem,
+			Name:           "predictor_attempt_duration_seconds",
+			Help:           "Predictor attempt latency in seconds (predictor algorithm)",
 			Buckets:        metrics.ExponentialBuckets(0.001, 2, 15),
 			StabilityLevel: metrics.STABLE,
 		}, []string{"result", "profile"})
 
-	EstimatorAlgorithmLatency = metrics.NewHistogram(
+	PredictorAlgorithmLatency = metrics.NewHistogram(
 		&metrics.HistogramOpts{
-			Subsystem:      EstimatorSubsystem,
-			Name:           "estimator_algorithm_duration_seconds",
-			Help:           "Estimator algorithm latency in seconds",
+			Subsystem:      PredictorSubsystem,
+			Name:           "predictor_algorithm_duration_seconds",
+			Help:           "Predictor algorithm latency in seconds",
 			Buckets:        metrics.ExponentialBuckets(0.001, 2, 15),
 			StabilityLevel: metrics.ALPHA,
 		},
 	)
 
-	EstimatorGoroutines = metrics.NewGaugeVec(
+	PredictorGoroutines = metrics.NewGaugeVec(
 		&metrics.GaugeOpts{
-			Subsystem:      EstimatorSubsystem,
-			Name:           "Estimator_goroutines",
+			Subsystem:      PredictorSubsystem,
+			Name:           "predictor_goroutines",
 			Help:           "Number of running goroutines split by the work they do.",
 			StabilityLevel: metrics.ALPHA,
 		}, []string{"work"})
 
 	FrameworkExtensionPointDuration = metrics.NewHistogramVec(
 		&metrics.HistogramOpts{
-			Subsystem: EstimatorSubsystem,
+			Subsystem: PredictorSubsystem,
 			Name:      "framework_extension_point_duration_seconds",
 			Help:      "Latency for running all plugins of a specific extension point.",
 			// Start with 0.1ms with the last bucket being [~200ms, Inf)
@@ -90,7 +90,7 @@ var (
 
 	PluginExecutionDuration = metrics.NewHistogramVec(
 		&metrics.HistogramOpts{
-			Subsystem: EstimatorSubsystem,
+			Subsystem: PredictorSubsystem,
 			Name:      "plugin_execution_duration_seconds",
 			Help:      "Duration for running a plugin at a specific extension point.",
 			// Start with 0.01ms with the last bucket being [~22ms, Inf). We use a small factor (1.5)
@@ -101,12 +101,12 @@ var (
 		[]string{"plugin", "extension_point", "status"})
 
 	metricsList = []metrics.Registerable{
-		estimatorAttempts,
-		e2eEstimatorLatency,
-		EstimatorAlgorithmLatency,
+		predictorAttempts,
+		e2ePredictorLatency,
+		PredictorAlgorithmLatency,
 		FrameworkExtensionPointDuration,
 		PluginExecutionDuration,
-		EstimatorGoroutines,
+		PredictorGoroutines,
 	}
 )
 

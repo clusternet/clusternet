@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This file defines the estimating framework plugin interfaces.
+// This file defines the predictor framework plugin interfaces.
 // The interfaces are copied from k8s.io/kubernetes/pkg/scheduler/framework/interface.go and modified
 
 package interfaces
@@ -30,7 +30,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	estimatorapis "github.com/clusternet/clusternet/pkg/estimator/apis"
+	predictorapis "github.com/clusternet/clusternet/pkg/predictor/apis"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 )
 
@@ -55,8 +55,8 @@ type NodeToStatusMap map[string]*Status
 
 // statusPrecedence defines a map from status to its precedence, larger value means higher precedent.
 var statusPrecedence = map[Code]int{
-	Error:       3,
-	Inestimable: 1,
+	Error:         3,
+	Unpredictable: 1,
 	// Any other statuses we know today, `Skip`, will take precedence over `Success`.
 	Success: -1,
 }
@@ -77,7 +77,7 @@ const (
 type PluginToStatus map[string]*Status
 
 // Merge merges the statuses in the map into one. The resulting status code have the following
-// precedence: Error, InEstimable.
+// precedence: Error, Unpredictable.
 func (p PluginToStatus) Merge() *Status {
 	if len(p) == 0 {
 		return nil
@@ -102,49 +102,49 @@ func (p PluginToStatus) Merge() *Status {
 	return finalStatus
 }
 
-// Plugin is the parent type for all the estimating framework plugins.
+// Plugin is the parent type for all the predictor framework plugins.
 type Plugin interface {
 	Name() string
 }
 
 // PreFilterPlugin is an interface that must be implemented by "PreFilter" plugins.
-// These plugins are called at the beginning of the estimating cycle.
+// These plugins are called at the beginning of the predicting cycle.
 type PreFilterPlugin interface {
 	Plugin
 
-	// PreFilter is called at the beginning of the estimating cycle. All PreFilter
+	// PreFilter is called at the beginning of the predicting cycle. All PreFilter
 	// plugins must return success or the requirements will be rejected.
 	PreFilter(ctx context.Context, requirements *appsapi.ReplicaRequirements) *Status
 }
 
 // FilterPlugin is an interface for Filter plugins. These plugins are called at the
 // filter extension point for filtering out hosts that cannot run a requirement.
-// This concept used to be called 'predicate' in the original estimator.
-// These plugins should return "Success", "InEstimable" or "Error" in Status.code.
-// However, the estimator accepts other valid codes as well.
+// This concept used to be called 'predicate' in the original scheduler.
+// These plugins should return "Success", "Unpredictable" or "Error" in Status.code.
+// However, the predictor accepts other valid codes as well.
 // Anything other than "Success" will lead to exclusion of the given host from
 // running the requirements.
 type FilterPlugin interface {
 	Plugin
 
-	// Filter is called by the estimating framework.
+	// Filter is called by the predictor framework.
 	// All FilterPlugins should return "Success" to declare that
 	// the given node fits the requirements. If Filter doesn't return "Success",
-	// it will return InEstimable or Error.
+	// it will return Unpredictable or Error.
 	// For the node being evaluated, Filter plugins should look at the passed
 	// nodeInfo 's information (e.g., requirement considered to be running on the node).
 	Filter(ctx context.Context, requirements *appsapi.ReplicaRequirements, nodeInfo *NodeInfo) *Status
 }
 
 // PostFilterPlugin is an interface for "PostFilter" plugins. These plugins are called
-// after requirements cannot be estimated.
+// after requirements cannot be predicted.
 type PostFilterPlugin interface {
 	Plugin
 
-	// PostFilter is called by the estimating framework.
+	// PostFilter is called by the predictor framework.
 	// A PostFilter plugin should return one of the following statuses:
-	// - InEstimable: the plugin gets executed successfully but the requirements cannot be made estimable.
-	// - Success: the plugin gets executed successfully and the requirements can be made estimable.
+	// - Unpredictable: the plugin gets executed successfully but the requirements cannot be made predictable.
+	// - Success: the plugin gets executed successfully and the requirements can be made predictable.
 	// - Error: the plugin aborts due to some internal error.
 	PostFilter(ctx context.Context, requirements *appsapi.ReplicaRequirements, filteredNodeStatusMap NodeToStatusMap) (*PostFilterResult, *Status)
 }
@@ -155,7 +155,7 @@ type PostFilterPlugin interface {
 type PreComputePlugin interface {
 	Plugin
 
-	// PreCompute is called by the estimating framework after a list of managed nodes
+	// PreCompute is called by the predictor framework after a list of managed nodes
 	// passed the filtering phase. All pre-compute plugins must return success or
 	// the requirements will be rejected.
 	PreCompute(ctx context.Context, requirements *appsapi.ReplicaRequirements, nodesInfo []*NodeInfo) *Status
@@ -178,7 +178,7 @@ type ComputePlugin interface {
 type PreScorePlugin interface {
 	Plugin
 
-	// PreScore is called by the estimating framework after a list of nodes
+	// PreScore is called by the predictor framework after a list of nodes
 	// passed the filtering phase. All preScore plugins must return success or
 	// the requirements will be rejected
 	PreScore(ctx context.Context, requirements *appsapi.ReplicaRequirements, nodes []*v1.Node) *Status
@@ -212,7 +212,7 @@ type ScorePlugin interface {
 type PreAggregatePlugin interface {
 	Plugin
 
-	// PreAggregate is called by the estimating framework after a list of managed Nodes
+	// PreAggregate is called by the predictor framework after a list of managed Nodes
 	// passed the filtering phase. All pre-aggregate plugins must return success or
 	// the requirements will be rejected.
 	PreAggregate(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores NodeScoreList) *Status
@@ -229,26 +229,26 @@ type AggregatePlugin interface {
 	Aggregate(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores NodeScoreList) (AcceptableReplicas, *Status)
 }
 
-// Framework manages the set of plugins in use by the estimating framework.
-// Configured plugins are called at specified points in an estimating context.
+// Framework manages the set of plugins in use by the predictor framework.
+// Configured plugins are called at specified points in an predictor context.
 type Framework interface {
 	Handle
 
 	// RunPreFilterPlugins runs the set of configured PreFilter plugins. It returns
 	// *Status and its code is set to non-success if any of the plugins returns
-	// anything but Success. If a non-success status is returned, then the estimating
+	// anything but Success. If a non-success status is returned, then the predicting
 	// cycle is aborted.
 	RunPreFilterPlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements) *Status
 
 	// RunPostFilterPlugins runs the set of configured PostFilter plugins.
 	// PostFilter plugins can either be informational, in which case should be configured
-	// to execute first and return InEstimable status, or ones that try to change the
-	// cluster state to make the requirements potentially estimable in a future estimating cycle.
+	// to execute first and return Unpredictable status, or ones that try to change the
+	// cluster state to make the requirements potentially predictable in a future predicting cycle.
 	RunPostFilterPlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, filteredNodeStatusMap NodeToStatusMap) (*PostFilterResult, *Status)
 
 	// RunPreComputePlugins runs the set of configured PreCompute plugins. It returns
 	// *Status and its code is set to non-success if any of the plugins returns
-	// anything but Success. If a non-success status is returned, then the estimating
+	// anything but Success. If a non-success status is returned, then the predicting
 	// cycle is aborted.
 	RunPreComputePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, nodesInfo []*NodeInfo) *Status
 
@@ -259,7 +259,7 @@ type Framework interface {
 
 	// RunPreAggregatePlugins runs the set of configured PreAggregate plugins. It returns
 	// *Status and its code is set to non-success if any of the plugins returns
-	// anything but Success. If a non-success status is returned, then the estimating
+	// anything but Success. If a non-success status is returned, then the predicting
 	// cycle is aborted.
 	RunPreAggregatePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores NodeScoreList) *Status
 
@@ -285,7 +285,7 @@ type Framework interface {
 	HasAggregatePlugins() bool
 
 	// ListPlugins returns a map of extension point name to list of configured Plugins.
-	ListPlugins() *estimatorapis.Plugins
+	ListPlugins() *predictorapis.Plugins
 
 	// ProfileName returns the profile name associated to this framework.
 	ProfileName() string
@@ -309,18 +309,18 @@ type Handle interface {
 
 	SharedInformerFactory() informers.SharedInformerFactory
 
-	// Parallelizer returns a parallelizer holding parallelism for estimator.
+	// Parallelizer returns a parallelizer holding parallelism for predictor.
 	Parallelizer() parallelize.Parallelizer
 }
 
-// PostFilterResult wraps needed info for estimator framework to act upon PostFilter phase.
+// PostFilterResult wraps needed info for predictor framework to act upon PostFilter phase.
 type PostFilterResult struct {
 	NominatedNodeName string
 }
 
 // PluginsRunner abstracts operations to run some plugins.
 // This is used by preemption PostFilter plugins when evaluating the feasibility of
-// estimate the replicas of requirements on nodes when certain running pods get evicted.
+// predicting the replicas of requirements on nodes when certain running pods get evicted.
 type PluginsRunner interface {
 	// RunPreScorePlugins runs the set of configured PreScore plugins. If any
 	// of these plugins returns any status other than "Success", the given requirements is rejected.

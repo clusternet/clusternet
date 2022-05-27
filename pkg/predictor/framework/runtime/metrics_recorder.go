@@ -21,8 +21,8 @@ import (
 
 	k8smetrics "k8s.io/component-base/metrics"
 
-	framework "github.com/clusternet/clusternet/pkg/estimator/framework/interfaces"
-	"github.com/clusternet/clusternet/pkg/estimator/metrics"
+	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
+	"github.com/clusternet/clusternet/pkg/predictor/metrics"
 )
 
 // frameworkMetric is the data structure passed in the buffer channel between the main framework thread
