@@ -197,27 +197,27 @@ type PostFilterPlugin interface {
 	PostFilter(ctx context.Context, sub *appsapi.Subscription, filteredClusterStatusMap ClusterToStatusMap) (*PostFilterResult, *Status)
 }
 
-// PreEstimatePlugin is an interface for "PreEstimate" plugin. PreEstimate is an
+// PrePredictPlugin is an interface for "PrePredict" plugin. PrePredict is an
 // informational extension point. Plugins will be called with a list of clusters
 // that passed the filtering phase.
-type PreEstimatePlugin interface {
+type PrePredictPlugin interface {
 	Plugin
 
-	// PreEstimate is called by the scheduling framework after a list of managed clusters
-	// passed the filtering phase. All pre-estimate plugins must return success or
+	// PrePredict is called by the scheduling framework after a list of managed clusters
+	// passed the filtering phase. All pre-predict plugins must return success or
 	// the subscription will be rejected.
-	PreEstimate(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
+	PrePredict(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
 }
 
-// EstimatePlugin is an interface that must be implemented by "Estimate" plugins to estimate
+// PredictPlugin is an interface that must be implemented by "Predict" plugins to predict
 // max available replicas for clusters that passed the filtering phase.
-type EstimatePlugin interface {
+type PredictPlugin interface {
 	Plugin
 
-	// Estimate is called on each filtered cluster. It must return success and available
-	// replicas indicating the feasible domain for sake of division. All estimate plugins
+	// Predict is called on each filtered cluster. It must return success and available
+	// replicas indicating the feasible domain for sake of division. All predict plugins
 	// must return success or the subscription will be rejected.
-	Estimate(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clusterapi.ManagedCluster) (FeedReplicas, *Status)
+	Predict(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clusterapi.ManagedCluster) (FeedReplicas, *Status)
 }
 
 // PreScorePlugin is an interface for "PreScore" plugin. PreScore is an
@@ -262,7 +262,7 @@ type PreAssignPlugin interface {
 	Plugin
 
 	// PreAssign is called by the scheduling framework after a list of managed clusters
-	// passed the filtering phase. All pre-estimate plugins must return success or
+	// passed the filtering phase. All pre-predict plugins must return success or
 	// the subscription will be rejected.
 	PreAssign(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas TargetClusters) *Status
 }
@@ -366,17 +366,17 @@ type Framework interface {
 	// cluster state to make the subscription potentially schedulable in a future scheduling cycle.
 	RunPostFilterPlugins(ctx context.Context, sub *appsapi.Subscription, filteredClusterStatusMap ClusterToStatusMap) (*PostFilterResult, *Status)
 
-	// RunPreEstimatePlugins runs the set of configured PreEstimate plugins. It returns
+	// RunPrePredictPlugins runs the set of configured PrePredict plugins. It returns
 	// *Status and its code is set to non-success if any of the plugins returns
 	// anything but Success. If a non-success status is returned, then the scheduling
 	// cycle is aborted.
-	RunPreEstimatePlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
+	RunPrePredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
 
-	// RunEstimatePlugins runs the set of configured Estimate plugins. It returns a map that
-	// stores for each Estimate plugin name the corresponding ClusterScoreList(s).
+	// RunPredictPlugins runs the set of configured Predict plugins. It returns a map that
+	// stores for each Predict plugin name the corresponding ClusterScoreList(s).
 	// It also returns *Status, which is set to non-success if any of the plugins returns
 	// a non-success status.
-	RunEstimatePlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster, availableList ClusterScoreList) (ClusterScoreList, *Status)
+	RunPredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster, availableList ClusterScoreList) (ClusterScoreList, *Status)
 
 	// RunPreAssignPlugins runs the set of configured PreAssign plugins. It returns
 	// *Status and its code is set to non-success if any of the plugins returns
@@ -438,8 +438,8 @@ type Framework interface {
 	// HasScorePlugins returns true if at least one Score plugin is defined.
 	HasScorePlugins() bool
 
-	// HasEstimatePlugins returns true if at least one Estimate plugin is defined.
-	HasEstimatePlugins() bool
+	// HasPredictPlugins returns true if at least one Predict plugin is defined.
+	HasPredictPlugins() bool
 
 	// ListPlugins returns a map of extension point name to list of configured Plugins.
 	ListPlugins() *schedulerapis.Plugins

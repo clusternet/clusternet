@@ -31,20 +31,20 @@ type Code int
 
 // These are predefined codes used in a Status.
 const (
-	// Success means that plugin ran correctly and found requirements estimable.
+	// Success means that plugin ran correctly and found requirements predictable.
 	// NOTE: A nil status is also considered as "Success".
 	Success Code = iota
 	// Error is used for internal plugin errors, unexpected input, etc.
 	Error
-	// Inestimable is used when a plugin finds a requirements Inestimable.
-	// The accompanying status message should explain why the requirements is Inestimable.
-	Inestimable
+	// Unpredictable is used when a plugin finds a requirements Unpredictable.
+	// The accompanying status message should explain why the requirements is Unpredictable.
+	Unpredictable
 	// Skip is used when a plugin chooses to skip.
 	Skip
 )
 
 // This list should be exactly the same as the codes iota defined above in the same order.
-var codes = []string{"Success", "Error", "Inestimable", "Skip"}
+var codes = []string{"Success", "Error", "Unpredictable", "Skip"}
 
 func (c Code) String() string {
 	return codes[c]
@@ -60,7 +60,7 @@ type Status struct {
 	reasons []string
 	err     error
 	// failedPlugin is an optional field that records the plugin name a requirement failed by.
-	// It's set by the framework when code is Error, Inestimable.
+	// It's set by the framework when code is Error, Unpredictable.
 	failedPlugin string
 }
 
@@ -112,10 +112,10 @@ func (s *Status) IsSuccess() bool {
 	return s.Code() == Success
 }
 
-// IsInestimable returns true if "Status" is Inestimable.
-func (s *Status) IsInestimable() bool {
+// IsUnpredictable returns true if "Status" is Unpredictable.
+func (s *Status) IsUnpredictable() bool {
 	code := s.Code()
-	return code == Inestimable
+	return code == Unpredictable
 }
 
 // AsError returns nil if the status is a success; otherwise returns an "error" object

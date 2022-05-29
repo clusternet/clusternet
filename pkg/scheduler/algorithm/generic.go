@@ -89,8 +89,8 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 		}
 	}
 
-	// Step 2: Estimate max available replicas if necessary.
-	availableList, err := estimateReplicas(ctx, fwk, sub, finv, feasibleClusters)
+	// Step 2: Predict max available replicas if necessary.
+	availableList, err := predictReplicas(ctx, fwk, sub, finv, feasibleClusters)
 	if err != nil {
 		return result, err
 	}
@@ -111,7 +111,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 	}, err
 }
 
-func estimateReplicas(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (framework.ClusterScoreList, error) {
+func predictReplicas(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (framework.ClusterScoreList, error) {
 	availableList := make(framework.ClusterScoreList, len(clusters))
 	for i := range clusters {
 		availableList[i] = framework.ClusterScore{
@@ -129,25 +129,25 @@ func estimateReplicas(ctx context.Context, fwk framework.Framework, sub *appsapi
 		availableList[i].MaxAvailableReplicas = make(framework.FeedReplicas, len(finv.Spec.Feeds))
 	}
 
-	if sub.Spec.DividingScheduling == nil || sub.Spec.DividingScheduling.Type == appsapi.StaticReplicaDividingType || !fwk.HasEstimatePlugins() {
+	if sub.Spec.DividingScheduling == nil || sub.Spec.DividingScheduling.Type == appsapi.StaticReplicaDividingType || !fwk.HasPredictPlugins() {
 		return availableList, nil
 	}
 
-	// Run PreEstimate plugins.
-	preEstimateStatus := fwk.RunPreEstimatePlugins(ctx, sub, finv, clusters)
-	if !preEstimateStatus.IsSuccess() {
-		return nil, preEstimateStatus.AsError()
+	// Run PrePredict plugins.
+	prePredictStatus := fwk.RunPrePredictPlugins(ctx, sub, finv, clusters)
+	if !prePredictStatus.IsSuccess() {
+		return nil, prePredictStatus.AsError()
 	}
 
-	// Run the Estimate plugins.
-	availableList, estimateStatus := fwk.RunEstimatePlugins(ctx, sub, finv, clusters, availableList)
-	if !estimateStatus.IsSuccess() {
-		return nil, estimateStatus.AsError()
+	// Run Predict plugins.
+	availableList, predictStatus := fwk.RunPredictPlugins(ctx, sub, finv, clusters, availableList)
+	if !predictStatus.IsSuccess() {
+		return nil, predictStatus.AsError()
 	}
 
 	if klog.V(10).Enabled() {
 		for i := range availableList {
-			klog.V(10).InfoS("Estimated cluster's max available replicas for subscription", "subscription", klog.KObj(sub), "cluster", availableList[i].NamespacedName, "max available replicas", availableList[i].MaxAvailableReplicas)
+			klog.V(10).InfoS("Predicting cluster's max available replicas for subscription", "subscription", klog.KObj(sub), "cluster", availableList[i].NamespacedName, "max available replicas", availableList[i].MaxAvailableReplicas)
 		}
 	}
 	return availableList, nil

@@ -306,7 +306,7 @@ type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
 
 func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
 	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder, dryApply bool,
-	callbackHandler ResourceCallbackHandler) error {
+	callbackHandler ResourceCallbackHandler, ignoreAdd bool) error {
 	klog.Infof("handle ApplyDescription %s.", klog.KObj(desc))
 	var allErrs []error
 	wg := sync.WaitGroup{}
@@ -335,7 +335,7 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 
 			// dryApply means do not apply resources, just add sub resource watcher.
 			if !dryApply {
-				retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+				retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource, ignoreAdd)
 				if retryErr != nil {
 					errCh <- retryErr
 					return
@@ -458,7 +458,8 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 	return err
 }
 
-func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
+func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
+	resource *unstructured.Unstructured, ignoreAdd bool) error {
 	// set UID as empty
 	resource.SetUID("")
 
@@ -487,8 +488,7 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 		} else {
 			lastError = nil
 		}
-
-		if ResourceNeedResync(curObj, resource) {
+		if ResourceNeedResync(resource, curObj, ignoreAdd) {
 			// try to update resource
 			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 				Update(context.TODO(), resource, metav1.UpdateOptions{})
@@ -642,14 +642,36 @@ func fieldsToBeIgnored() []string {
 		known.ManagedFields,
 		known.MetaUID,
 		known.MetaSelflink,
+		known.MetaResourceVersion,
 	}
+}
+
+func sectionToBeIgnored() []string {
+	return []string{
+		known.SectionStatus,
+	}
+}
+
+// shouldPatchBeIgnored used to decide if this patch operation should be ignored.
+func shouldPatchBeIgnored(operation jsonpatch.JsonPatchOperation) bool {
+	// some fields need to be ignore like meta.selfLink, meta.resourceVersion.
+	if ContainsString(fieldsToBeIgnored(), operation.Path) {
+		return true
+	}
+	// some sections like status section need to be ignored.
+	if ContainsPrefix(sectionToBeIgnored(), operation.Path) {
+		return true
+	}
+
+	return false
 }
 
 // ResourceNeedResync will compare fields and decide whether to sync back the current object.
 //
 // current is deployed resource, modified is changed resource.
+// ignoreAdd is true if you want to ignore add action.
 // The function will return the bool value to indicate whether to sync back the current object.
-func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object) bool {
+func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, ignoreAdd bool) bool {
 	currentBytes, err := json.Marshal(current)
 	if err != nil {
 		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
@@ -669,13 +691,17 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object) b
 	}
 	for _, operation := range patch {
 		// filter ignored paths
-		if ContainsString(fieldsToBeIgnored(), operation.Path) {
+		if shouldPatchBeIgnored(operation) {
 			continue
 		}
 
 		switch operation.Operation {
 		case "add":
-			continue
+			if ignoreAdd {
+				continue
+			} else {
+				return true
+			}
 		case "remove", "replace":
 			return true
 		default:

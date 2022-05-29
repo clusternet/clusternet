@@ -135,7 +135,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	if !utils.DeployableByAgent(deployer.syncMode, deployer.appPusherEnabled) {
 		klog.Infof("Description %s is not deployable by agent, skipping syncing", klog.KObj(desc))
 		return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-			deployer.discoveryRESTMapper, desc, deployer.recorder, true, deployer.ResourceCallbackHandler)
+			deployer.discoveryRESTMapper, desc, deployer.recorder, true, deployer.ResourceCallbackHandler, false)
 	}
 
 	if desc.DeletionTimestamp != nil {
@@ -144,7 +144,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	}
 
 	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, false, deployer.ResourceCallbackHandler)
+		deployer.discoveryRESTMapper, desc, deployer.recorder, false, deployer.ResourceCallbackHandler, false)
 }
 
 func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstructured) error {
@@ -170,10 +170,10 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 			return err
 		}
 
-		//TODO when to recycle resource controller or make they live forever as resource controller cache?
+		//DO NOT recycle resource controller so they live forever as resource controller cache
+		deployer.AddController(gvk, resourceController)
 		stopChan := make(chan struct{})
 		resourceController.Run(known.DefaultThreadiness, stopChan)
-		deployer.AddController(gvk, resourceController)
 	}
 	return nil
 }
@@ -215,7 +215,7 @@ func (deployer *Deployer) handleResource(ownedByValue string) error {
 		_ = deployer.SyncDescriptionStatus(deployer.clusternetClient, deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
 	} else {
 		err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-			deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil)
+			deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil, true)
 		if err == nil {
 			klog.V(4).Infof("successfully rollback Description %s", ownedByValue)
 		}
