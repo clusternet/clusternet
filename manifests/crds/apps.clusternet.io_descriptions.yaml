@@ -83,16 +83,55 @@ spec:
           status:
             description: DescriptionStatus defines the observed state of Description
             properties:
-              phase:
-                description: Phase denotes the phase of Description
-                enum:
-                - Pending
-                - Success
-                - Failure
-                type: string
-              reason:
-                description: Reason indicates the reason of DescriptionPhase
-                type: string
+              manifestStatus:
+                description: ManifestStatuses contains running status of manifests
+                  in spec.
+                items:
+                  properties:
+                    feed:
+                      description: feed
+                      properties:
+                        apiVersion:
+                          description: APIVersion defines the versioned schema of
+                            this representation of an object.
+                          type: string
+                        kind:
+                          description: Kind is a string value representing the REST
+                            resource this object represents. In CamelCase.
+                          type: string
+                        name:
+                          description: Name of the target resource.
+                          type: string
+                        namespace:
+                          description: Namespace of the target resource.
+                          type: string
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      type: object
+                    status:
+                      description: Status reflects running status of current manifest.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - feed
+                  type: object
+                type: array
+              phaseStatus:
+                description: PhaseStatus indicates the Phase and reason of DescriptionPhase
+                properties:
+                  phase:
+                    description: Phase denotes the phase of Description
+                    enum:
+                    - Pending
+                    - Success
+                    - Failure
+                    type: string
+                  reason:
+                    description: Reason indicates the reason of DescriptionPhase
+                    type: string
+                type: object
             type: object
         required:
         - spec

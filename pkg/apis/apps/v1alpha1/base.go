@@ -32,7 +32,8 @@ type Base struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec BaseSpec `json:"spec"`
+	Spec   BaseSpec   `json:"spec"`
+	Status BaseStatus `json:"status,omitempty"`
 }
 
 // BaseSpec defines the desired state of Base
@@ -42,6 +43,12 @@ type BaseSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	Feeds []Feed `json:"feeds"`
+}
+
+type BaseStatus struct {
+	// ManifestStatuses contains running status of manifests in spec.
+	// +optional
+	ManifestStatuses []ManifestStatus `json:"manifestStatus,omitempty"`
 }
 
 // +kubebuilder:object:root=true

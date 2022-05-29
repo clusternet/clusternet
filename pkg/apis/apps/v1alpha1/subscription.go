@@ -105,6 +105,25 @@ type SubscriptionStatus struct {
 	//
 	// +optional
 	CompletedReleases int `json:"completedReleases,omitempty"`
+
+	// Conditions contain the different condition statuses. Is SubscriptionSpec successfully distributed.
+	//
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// AggregatedStatus defines status list of the resource running in each member cluster.
+	//
+	// +optional
+	AggregatedStatus []AggregatedStatusItem `json:"aggregatedStatus,omitempty"`
+}
+
+// AggregatedStatusItem defines status of the resource running in a member cluster.
+type AggregatedStatusItem struct {
+	Cluster string `json:"cluster"`
+
+	// ManifestStatuses contains running status of manifests in spec.
+	// +optional
+	ManifestStatuses []ManifestStatus `json:"manifestStatus,omitempty"`
 }
 
 // Subscriber defines
@@ -180,6 +199,12 @@ type ReplicaDividingType string
 const (
 	// StaticReplicaDividingType divides replicas by a fixed weight.
 	StaticReplicaDividingType ReplicaDividingType = "Static"
+)
+
+// Conditions definition
+const (
+	// Scheduled represents the condition that the Subs has been scheduled.
+	Scheduled string = "Scheduled"
 )
 
 // +kubebuilder:object:root=true
