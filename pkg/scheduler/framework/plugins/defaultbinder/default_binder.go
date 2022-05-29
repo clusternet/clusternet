@@ -18,10 +18,13 @@ package defaultbinder
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -55,15 +58,40 @@ func (pl *DefaultBinder) Bind(ctx context.Context, sub *appsapi.Subscription, ta
 	// use an ordered list
 	sort.Stable(targetClusters)
 
-	subCopy := sub.DeepCopy()
-	subCopy.Status.BindingClusters = targetClusters.BindingClusters
-	subCopy.Status.Replicas = targetClusters.Replicas
-	subCopy.Status.SpecHash = utils.HashSubscriptionSpec(&subCopy.Spec)
-	subCopy.Status.DesiredReleases = len(targetClusters.BindingClusters)
+	Status := sub.Status.DeepCopy()
+	Status.BindingClusters = targetClusters.BindingClusters
+	Status.Replicas = targetClusters.Replicas
+	Status.SpecHash = utils.HashSubscriptionSpec(&sub.Spec)
+	Status.DesiredReleases = len(targetClusters.BindingClusters)
 
-	_, err := pl.handle.ClientSet().AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(ctx, subCopy, metav1.UpdateOptions{})
+	err := pl.UpdateSubscriptionStatus(sub, Status)
 	if err != nil {
 		return framework.AsStatus(err)
 	}
 	return nil
+}
+
+func (pl *DefaultBinder) UpdateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+
+	klog.V(5).Infof("try to update Subscription %q status", sub.Name)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		sub.Status = *status
+		_, err := pl.handle.ClientSet().AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(context.TODO(), sub, metav1.UpdateOptions{})
+		if err == nil {
+			//TODO
+			return nil
+		}
+
+		if updated, err := pl.handle.ClientSet().AppsV1alpha1().Subscriptions(sub.Namespace).Get(context.TODO(), sub.Name, metav1.GetOptions{}); err == nil {
+			// make a copy so we don't mutate the shared cache
+			sub = updated.DeepCopy()
+		} else {
+			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", sub.Name, err))
+		}
+		return err
+	})
 }

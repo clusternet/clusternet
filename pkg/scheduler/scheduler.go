@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
@@ -65,6 +66,12 @@ const (
 
 	// SchedulerError is the reason recorded for events when an error occurs during scheduling a subscription.
 	SchedulerError = "SchedulerError"
+
+	scheduleSuccessReason = "SubscriptionScheduled"
+
+	scheduleFailedReason = "SubscriptionFailedScheduling"
+
+	scheduleSuccessMessage = "Subscription has been scheduled"
 )
 
 // Scheduler defines configuration for clusternet scheduler
@@ -342,6 +349,9 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 			// Run "postbind" plugins.
 			sched.framework.RunPostBindPlugins(bindingCycleCtx, sub, targetClusters)
+
+			// TODO: update subscription condition
+			sched.updateSubscriptionSchedulingSuccess(sub)
 		}
 	}()
 }
@@ -383,6 +393,7 @@ func (sched *Scheduler) recordSchedulingFailure(sub *appsapi.Subscription, err e
 	sched.framework.EventRecorder().Event(sub, corev1.EventTypeWarning, "FailedScheduling", msg)
 
 	// TODO: update subscription condition
+	sched.updateSubscriptionSchedulingFailure(sub, err, "FailedScheduling")
 
 	// re-added to the queue for re-processing
 	sched.SchedulingQueue.AddRateLimited(klog.KObj(sub).String())
@@ -508,6 +519,111 @@ func (sched *Scheduler) addAllEventHandlers() {
 		},
 	})
 
+}
+
+func (sched *Scheduler) UpdateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+
+	klog.V(5).Infof("try to update Subscription %q status", sub.Name)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		sub.Status = *status
+		_, err := sched.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(context.TODO(), sub, metav1.UpdateOptions{})
+		if err == nil {
+			//TODO
+			return nil
+		}
+
+		if updated, err := sched.subsLister.Subscriptions(sub.Namespace).Get(sub.Name); err == nil {
+			// make a copy so we don't mutate the shared cache
+			sub = updated.DeepCopy()
+		} else {
+			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", sub.Name, err))
+		}
+		return err
+	})
+}
+
+//
+func (sched *Scheduler) updateSubscriptionSchedulingSuccess(sub *appsapi.Subscription) error {
+	Status := sub.Status.DeepCopy()
+	condition := &metav1.Condition{
+		Type:    appsapi.Scheduled,
+		Status:  metav1.ConditionTrue,
+		Reason:  scheduleSuccessReason,
+		Message: scheduleSuccessMessage,
+	}
+	if !UpdateSubsCondition(Status, condition) {
+		return nil
+	}
+
+	err := sched.UpdateSubscriptionStatus(sub, Status)
+	if err != nil {
+		klog.Infof("updateSubscriptionSchedulingSuccess failed. err: %s", err)
+	}
+	return err
+}
+
+//
+func (sched *Scheduler) updateSubscriptionSchedulingFailure(sub *appsapi.Subscription, errmess error, reason string) error {
+	Status := sub.Status.DeepCopy()
+	condition := &metav1.Condition{
+		Type:    appsapi.Scheduled,
+		Status:  metav1.ConditionFalse,
+		Reason:  reason,
+		Message: errmess.Error(),
+	}
+	if !UpdateSubsCondition(Status, condition) {
+		return nil
+	}
+
+	err := sched.UpdateSubscriptionStatus(sub, Status)
+	if err != nil {
+		klog.Infof("updateSubscriptionSchedulingFailure failed. err: %s", err)
+	}
+	return err
+}
+
+// Returns true if subs condition has changed or has been added.
+func UpdateSubsCondition(status *appsapi.SubscriptionStatus, condition *metav1.Condition) bool {
+	condition.LastTransitionTime = metav1.Now()
+	// Try to find this condition.
+	conditionIndex, oldCondition := GetSubsCondition(status, condition.Type)
+
+	if oldCondition == nil {
+		// We are adding new condition.
+		status.Conditions = append(status.Conditions, *condition)
+		return true
+	}
+	// We are updating an existing condition, so we need to check if it has changed.
+	if condition.Status == oldCondition.Status {
+		condition.LastTransitionTime = oldCondition.LastTransitionTime
+	}
+
+	isEqual := condition.Status == oldCondition.Status &&
+		condition.Reason == oldCondition.Reason &&
+		condition.Message == oldCondition.Message &&
+		condition.LastTransitionTime.Equal(&oldCondition.LastTransitionTime)
+
+	status.Conditions[conditionIndex] = *condition
+	// Return true if one of the fields have changed.
+	return !isEqual
+}
+
+// GetSubsCondition extracts the provided condition from the given status and returns that.
+// Returns nil and -1 if the condition is not present, and the index of the located condition.
+func GetSubsCondition(status *appsapi.SubscriptionStatus, conditionType string) (int, *metav1.Condition) {
+	if status == nil {
+		return -1, nil
+	}
+	for i := range status.Conditions {
+		if status.Conditions[i].Type == conditionType {
+			return i, &status.Conditions[i]
+		}
+	}
+	return -1, nil
 }
 
 // truncateMessage truncates a message if it hits the NoteLengthLimit.
