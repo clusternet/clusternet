@@ -19,6 +19,7 @@ package generic
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -27,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -34,6 +36,7 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -130,7 +133,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	}
 
 	if !utils.DeployableByAgent(deployer.syncMode, deployer.appPusherEnabled) {
-		klog.V(5).Infof("Description %s is not deployable by agent, skipping syncing", klog.KObj(desc))
+		klog.Infof("Description %s is not deployable by agent, skipping syncing", klog.KObj(desc))
 		return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
 			deployer.discoveryRESTMapper, desc, deployer.recorder, true, deployer.ResourceCallbackHandler)
 	}
@@ -177,13 +180,22 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 
 func (deployer *Deployer) handleResource(ownedByValue string) error {
 	// get description ns and name
+	klog.Infof("handle handleResource [%s]", ownedByValue)
 	parts := strings.Split(ownedByValue, ".")
 	if len(parts) < 2 {
 		return fmt.Errorf("unexpected value for annotation %s: %s", known.ObjectOwnedByDescriptionAnnotation, ownedByValue)
 	}
 	// namespace contains no ".", while name does
 	namespace := parts[0]
-	name := strings.TrimPrefix(ownedByValue, namespace+".")
+	name_event := strings.Split(parts[1], "/")
+	name := ""
+	event := ""
+	if len(name_event) < 2 {
+		name = strings.TrimPrefix(ownedByValue, namespace+".")
+	} else if len(name_event) == 2 {
+		name = name_event[0]
+		event = name_event[1]
+	}
 
 	desc, err := deployer.descLister.Descriptions(namespace).Get(name)
 	if err != nil {
@@ -199,10 +211,14 @@ func (deployer *Deployer) handleResource(ownedByValue string) error {
 		return nil
 	}
 
-	err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil)
-	if err == nil {
-		klog.V(4).Infof("successfully rollback Description %s", ownedByValue)
+	if event == "updateStatus" {
+		_ = deployer.SyncDescriptionStatus(deployer.clusternetClient, deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
+	} else {
+		err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+			deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil)
+		if err == nil {
+			klog.V(4).Infof("successfully rollback Description %s", ownedByValue)
+		}
 	}
 	return err
 }
@@ -225,4 +241,100 @@ func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller 
 	} else {
 		deployer.rsControllers[gvk] = controller
 	}
+}
+
+func (deployer *Deployer) SyncDescriptionStatus(clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
+	restMapper meta.RESTMapper, desc *appsapi.Description) error {
+	objectsToBeDeployed := desc.Spec.Raw
+	Status := desc.Status.DeepCopy()
+	for _, object := range objectsToBeDeployed {
+		resource := &unstructured.Unstructured{}
+		err := resource.UnmarshalJSON(object)
+		if err != nil {
+			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			continue
+		}
+
+		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		if err != nil {
+			klog.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
+			return err
+		}
+
+		// Get cluster Resource
+		resourceObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+			Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
+		if err != nil {
+			msg := fmt.Sprintf("failed to Get resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			return err
+		}
+		manifestStatus := appsapi.ManifestStatus{
+			Feed: appsapi.Feed{
+				Kind:       resourceObj.GetKind(),
+				APIVersion: resourceObj.GetAPIVersion(),
+				Namespace:  resourceObj.GetNamespace(),
+				Name:       resourceObj.GetName(),
+			},
+		}
+		statusMap, _, err := unstructured.NestedMap(resourceObj.Object, "status")
+		if err != nil {
+			klog.Errorf("Failed to get status field from %s(%s/%s), error: %v", resourceObj.GetKind(),
+				resourceObj.GetNamespace(), resourceObj.GetName(), err)
+			return err
+		}
+		result := &unstructured.Unstructured{}
+		result.SetUnstructuredContent(statusMap)
+
+		manifestStatus.Status.Reset()
+		manifestStatus.Status.Object = result.DeepCopyObject()
+
+		// update exit feed manifeststatus
+		feedExit := false
+		for index, status := range Status.ManifestStatuses {
+			if status.Feed.Namespace == manifestStatus.Feed.Namespace &&
+				status.Feed.Name == manifestStatus.Feed.Name {
+				Status.ManifestStatuses[index] = *manifestStatus.DeepCopy()
+				feedExit = true
+			}
+		}
+		if !feedExit {
+			Status.ManifestStatuses = append(Status.ManifestStatuses, *manifestStatus.DeepCopy())
+		}
+	}
+
+	// try to update Descriptions Status
+	if !reflect.DeepEqual(desc.Status.ManifestStatuses, Status.ManifestStatuses) {
+		//_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+		err := deployer.UpdateDescriptionStatus(desc, Status)
+		klog.V(5).Infof("SyncDescriptionStatus Descriptions manifestStatus has changed, UpdateStatus. err: %s", err)
+	}
+
+	return nil
+}
+
+func (deployer *Deployer) UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+
+	klog.V(5).Infof("try to update Description %q status", desc.Name)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		desc.Status = *status
+		_, err := deployer.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+		if err == nil {
+			//TODO
+			return nil
+		}
+
+		if updated, err := deployer.descLister.Descriptions(desc.Namespace).Get(desc.Name); err == nil {
+			// make a copy so we don't mutate the shared cache
+			desc = updated.DeepCopy()
+		} else {
+			utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err))
+		}
+		return err
+	})
 }

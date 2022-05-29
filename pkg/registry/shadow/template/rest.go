@@ -188,6 +188,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		}
 	}
 	result := newObj.(*unstructured.Unstructured)
+	//ResourceStatus, _, _ := unstructured.NestedMap(result.Object, "status")
 	r.trimResult(result)
 
 	// in case labels get changed
@@ -214,6 +215,8 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 
 	result, err = transformManifest(manifestCopy)
+
+	//unstructured.SetNestedField(result.Object, ResourceStatus, "status")
 	return result, err != nil, err
 }
 

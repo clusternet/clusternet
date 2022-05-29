@@ -92,6 +92,7 @@ func NewController(clusternetClient clusternetclientset.Interface,
 
 	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: c.deleteDescription,
+		UpdateFunc: c.updateDescription,
 	})
 
 	return c, nil
@@ -190,6 +191,30 @@ func (c *Controller) deleteDescription(obj interface{}) {
 		return
 	}
 	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
+	c.enqueue(base)
+}
+
+func (c *Controller) updateDescription(old, cur interface{}) {
+	oldDesc := old.(*appsapi.Description)
+	newDesc := cur.(*appsapi.Description)
+
+	// Decide whether discovery has reported a spec change.
+	if reflect.DeepEqual(oldDesc.Status, newDesc.Status) {
+		klog.V(4).Infof("no updates on the status of Description %s, skipping syncing", klog.KObj(oldDesc))
+		return
+	}
+
+	controllerRef := &metav1.OwnerReference{
+		Kind: newDesc.Labels[known.ConfigKindLabel],
+		Name: newDesc.Labels[known.ConfigNameLabel],
+		UID:  types.UID(newDesc.Labels[known.ConfigUIDLabel]),
+	}
+	base := c.resolveControllerRef(newDesc.Labels[known.ConfigNamespaceLabel], controllerRef)
+	if base == nil {
+		return
+	}
+
+	klog.V(4).Infof("updating Description Status %q", klog.KObj(oldDesc))
 	c.enqueue(base)
 }
 

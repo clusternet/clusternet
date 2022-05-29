@@ -41,6 +41,42 @@ const (
 	feedPatchPath = "/spec/feeds"
 )
 
+// Define resource kind.
+const (
+	// DeploymentKind indicates the target resource is a deployment
+	DeploymentKind = "Deployment"
+	// ServiceKind indicates the target resource is a service
+	ServiceKind = "Service"
+	// IngressKind indicates the target resource is a ingress
+	IngressKind = "Ingress"
+	// JobKind indicates the target resource is a job
+	JobKind = "Job"
+	// PodKind indicates the target resource is a pod
+	PodKind = "Pod"
+	// ServiceAccountKind indicates the target resource is a serviceaccount
+	ServiceAccountKind = "ServiceAccount"
+	// ReplicaSetKind indicates the target resource is a replicaset
+	ReplicaSetKind = "ReplicaSet"
+	// StatefulSetKind indicates the target resource is a statefulset
+	StatefulSetKind = "StatefulSet"
+	// DaemonSetKind indicates the target resource is a daemonset
+	DaemonSetKind = "DaemonSet"
+	// EndpointSliceKind indicates the target resource is a endpointslice
+	EndpointSliceKind = "EndpointSlice"
+	// PersistentVolumeClaimKind indicated the target resource is a persistentvolumeclaim
+	PersistentVolumeClaimKind = "PersistentVolumeClaim"
+	// HorizontalPodAutoscalerKind indicated the target resource is a horizontalpodautoscaler
+	HorizontalPodAutoscalerKind = "HorizontalPodAutoscaler"
+
+	// ServiceExportKind indicates the target resource is a serviceexport crd
+	ServiceExportKind = "ServiceExport"
+	// ServiceImportKind indicates the target resource is a serviceimport crd
+	ServiceImportKind = "ServiceImport"
+
+	// CRDKind indicated the target resource is a CustomResourceDefinition
+	CRDKind = "CustomResourceDefinition"
+)
+
 func GetLabelsSelectorFromFeed(feed appsapi.Feed) (labels.Selector, error) {
 	var gv schema.GroupVersion
 	var err error

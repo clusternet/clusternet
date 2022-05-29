@@ -18,6 +18,7 @@ package hub
 
 import (
 	"context"
+	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -44,6 +45,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/hub/options"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
+	"github.com/clusternet/clusternet/pkg/wrappers/clientgo"
 )
 
 // Hub defines configuration for clusternet-hub
@@ -85,6 +87,18 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client"))
 	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-client"))
 
+	// This is the ONLY place you need to wrap for Clusternet
+	kubectlClusternetconfig, err := utils.LoadsKubeConfig(&opts.ClientConnection)
+	if err != nil {
+		return nil, err
+	}
+	kubectlClusternetconfig.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return clientgo.NewClusternetTransport(kubectlClusternetconfig.Host, rt)
+	})
+
+	// now we could create and visit all the resources
+	kubectlClusternetclient := kubernetes.NewForConfigOrDie(kubectlClusternetconfig)
+
 	//deployer.broadcaster.StartStructuredLogging(5)
 	broadcaster := record.NewBroadcaster()
 	if kubeClient != nil {
@@ -115,7 +129,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	if deployerEnabled {
 		d, err = deployer.NewDeployer(config.Host, opts.LeaderElection.ResourceNamespace, opts.ReservedNamespace,
 			kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory,
-			recorder, opts.AnonymousAuthSupported)
+			recorder, opts.AnonymousAuthSupported, kubectlClusternetclient)
 		if err != nil {
 			return nil, err
 		}

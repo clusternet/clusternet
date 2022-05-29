@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -264,11 +265,11 @@ func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetcl
 			return nil
 		}
 		if status.Phase == release.StatusDeployed {
-			desc.Status.Phase = appsapi.DescriptionPhaseSuccess
-			desc.Status.Reason = ""
+			desc.Status.Phase.Phase = appsapi.DescriptionPhaseSuccess
+			desc.Status.Phase.Reason = ""
 		} else {
-			desc.Status.Phase = appsapi.DescriptionPhaseFailure
-			desc.Status.Reason = status.Notes
+			desc.Status.Phase.Phase = appsapi.DescriptionPhaseFailure
+			desc.Status.Phase.Reason = status.Notes
 		}
 		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
 		if err == nil {
@@ -306,6 +307,7 @@ type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
 func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
 	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder, dryApply bool,
 	callbackHandler ResourceCallbackHandler) error {
+	klog.Infof("handle ApplyDescription %s.", klog.KObj(desc))
 	var allErrs []error
 	wg := sync.WaitGroup{}
 	objectsToBeDeployed := desc.Spec.Raw
@@ -385,14 +387,20 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 	}
 
 	// update status
-	desc.Status.Phase = statusPhase
-	desc.Status.Reason = reason
-	_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+	Status := desc.Status.DeepCopy()
+	Status.Phase.Phase = statusPhase
+	Status.Phase.Reason = reason
+
+	if !reflect.DeepEqual(desc.Status.Phase, Status.Phase) {
+		//_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), descCopy, metav1.UpdateOptions{})
+		err := UpdateDescriptionStatus(desc, Status, clusternetClient)
+		klog.V(5).Infof("ApplyDescription phaseStatus has changed, UpdateStatus. err: %s", err)
+	}
 
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
 	}
-	return err
+	return nil
 }
 
 func OffloadDescription(ctx context.Context, clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
@@ -677,4 +685,29 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object) b
 	}
 
 	return false
+}
+
+func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus, clusternetClient *clusternetclientset.Clientset) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+
+	klog.V(5).Infof("try to update Description %q status", desc.Name)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		desc.Status = *status
+		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+		if err == nil {
+			//TODO
+			return nil
+		}
+
+		if updated, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(context.TODO(), desc.Name, metav1.GetOptions{}); err == nil {
+			// make a copy so we don't mutate the shared cache
+			desc = updated.DeepCopy()
+		} else {
+			utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err))
+		}
+		return err
+	})
 }

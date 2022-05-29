@@ -96,6 +96,7 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	})
 
 	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.updateBase,
 		DeleteFunc: c.deleteBase,
 	})
 
@@ -178,6 +179,24 @@ func (c *Controller) deleteSubscription(obj interface{}) {
 	}
 
 	klog.V(4).Infof("deleting Subscription %q", klog.KObj(sub))
+	c.enqueue(sub)
+}
+
+func (c *Controller) updateBase(old, cur interface{}) {
+	oldBase := old.(*appsapi.Base)
+	newBase := cur.(*appsapi.Base)
+
+	if reflect.DeepEqual(oldBase.Status, newBase.Status) {
+		// Decide whether discovery has reported labels or spec change.
+		klog.V(4).Infof("no updates on status of Base %s, skipping syncing", klog.KObj(oldBase))
+		return
+	}
+
+	sub := c.resolveControllerRef(oldBase.Labels[known.ConfigNameLabel], oldBase.Labels[known.ConfigNamespaceLabel], types.UID(oldBase.Labels[known.ConfigUIDLabel]))
+	if sub == nil {
+		return
+	}
+	klog.V(4).Infof("updating Base %q", klog.KObj(oldBase))
 	c.enqueue(sub)
 }
 

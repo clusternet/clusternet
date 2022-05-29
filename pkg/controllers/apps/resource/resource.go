@@ -18,6 +18,7 @@ package resource
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,18 +68,21 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 
 	ri := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			resource := obj.(*unstructured.Unstructured)
-			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
-			if ok {
-				klog.V(4).Infof("adding %s %q", c.name, klog.KObj(resource))
-				c.enqueue(val)
-			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			resource := oldObj.(*unstructured.Unstructured)
-			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
+			oldresource := oldObj.(*unstructured.Unstructured)
+			newresource := newObj.(*unstructured.Unstructured)
+			oldspec, _, _ := unstructured.NestedMap(oldresource.Object, "spec")
+			newspec, _, _ := unstructured.NestedMap(newresource.Object, "spec")
+			val, ok := oldresource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
+			if !reflect.DeepEqual(oldspec, newspec) {
+				val = val + "/updateSpec"
+			} else {
+				val = val + "/updateStatus"
+			}
+
 			if ok {
-				klog.V(4).Infof("updating %s %q", c.name, klog.KObj(resource))
+				klog.V(5).Infof("updating[%s] %s %q", val, c.name, klog.KObj(oldresource))
 				c.enqueue(val)
 			}
 		},
@@ -86,7 +90,8 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 			resource := obj.(*unstructured.Unstructured)
 			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
 			if ok {
-				klog.V(4).Infof("deleting %s %q", c.name, klog.KObj(resource))
+				val = val + "/deleting"
+				klog.V(5).Infof("deleting[%s]  %s %q", val, c.name, klog.KObj(resource))
 				c.enqueue(val)
 			}
 		},
