@@ -48,8 +48,8 @@ type Manager struct {
 	managedCluster *clusterapi.ManagedCluster
 }
 
-func NewStatusManager(ctx context.Context, apiserverURL, systemNamespace string, regOpts *ClusterRegistrationOptions, kubeClient kubernetes.Interface) *Manager {
-	retryCtx, retryCancel := context.WithTimeout(ctx, known.DefaultRetryPeriod)
+func NewStatusManager(apiserverURL, systemNamespace string, regOpts *ClusterRegistrationOptions, kubeClient kubernetes.Interface) *Manager {
+	retryCtx, retryCancel := context.WithTimeout(context.TODO(), known.DefaultRetryPeriod)
 	defer retryCancel()
 
 	secret := utils.GetDeployerCredentials(retryCtx, kubeClient, systemNamespace)
@@ -63,7 +63,7 @@ func NewStatusManager(ctx context.Context, apiserverURL, systemNamespace string,
 
 	return &Manager{
 		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
-		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL,
+		clusterStatusController: clusterstatus.NewController(apiserverURL,
 			kubeClient, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
 	}
 }

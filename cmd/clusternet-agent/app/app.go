@@ -45,29 +45,27 @@ func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 		Use:  cmdName,
 		Long: `Running in child cluster, responsible for cluster registration, tunnel setup, cluster heartbeat, etc`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := version.PrintAndExitIfRequested(cmdName); err != nil {
-				klog.Exit(err)
+			if err2 := version.PrintAndExitIfRequested(cmdName); err2 != nil {
+				klog.Exit(err2)
 			}
 
-			if err := opts.Complete(); err != nil {
-				klog.Exit(err)
+			if err2 := opts.Complete(); err2 != nil {
+				klog.Exit(err2)
 			}
-			if err := opts.Validate(); err != nil {
-				klog.Exit(err)
+			if err2 := opts.Validate(); err2 != nil {
+				klog.Exit(err2)
 			}
 
 			cmd.Flags().VisitAll(func(flag *pflag.Flag) {
 				klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 			})
 
-			agentCtx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			agent, err := agent.NewAgent(agentCtx, opts.clusterRegistration, opts.ControllerOptions)
-			if err != nil {
-				klog.Exit(err)
+			agent, err2 := agent.NewAgent(opts.clusterRegistration, opts.ControllerOptions)
+			if err2 != nil {
+				klog.Exit(err2)
 			}
-			if err = agent.Run(); err != nil {
-				klog.Exit(err)
+			if err2 = agent.Run(ctx); err2 != nil {
+				klog.Exit(err2)
 			}
 
 		},

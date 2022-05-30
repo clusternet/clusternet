@@ -54,8 +54,6 @@ const (
 
 // Agent defines configuration for clusternet-agent
 type Agent struct {
-	ctx context.Context
-
 	// Identity is the unique string identifying a lease holder across
 	// all participants in an election.
 	Identity string
@@ -87,7 +85,7 @@ type Agent struct {
 }
 
 // NewAgent returns a new Agent.
-func NewAgent(ctx context.Context, registrationOpts *ClusterRegistrationOptions, controllerOpts *utils.ControllerOptions) (*Agent, error) {
+func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *utils.ControllerOptions) (*Agent, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("unable to get hostname: %v", err)
@@ -110,13 +108,11 @@ func NewAgent(ctx context.Context, registrationOpts *ClusterRegistrationOptions,
 	}
 
 	agent := &Agent{
-		ctx:                 ctx,
 		Identity:            identity,
 		childKubeClientSet:  childKubeClientSet,
 		registrationOptions: registrationOpts,
 		controllerOptions:   controllerOpts,
 		statusManager: NewStatusManager(
-			ctx,
 			childKubeConfig.Host,
 			controllerOpts.LeaderElection.ResourceNamespace,
 			registrationOpts,
@@ -131,12 +127,12 @@ func NewAgent(ctx context.Context, registrationOpts *ClusterRegistrationOptions,
 	return agent, nil
 }
 
-func (agent *Agent) Run() error {
+func (agent *Agent) Run(ctx context.Context) error {
 	klog.Info("starting agent controller ...")
 
 	// if leader election is disabled, so runCommand inline until done.
 	if !agent.controllerOptions.LeaderElection.LeaderElect {
-		agent.run(agent.ctx)
+		agent.run(ctx)
 		klog.Warning("finished without leader elect")
 		return nil
 	}
@@ -174,7 +170,7 @@ func (agent *Agent) Run() error {
 	if err != nil {
 		return err
 	}
-	le.Run(agent.ctx)
+	le.Run(ctx)
 	return nil
 }
 
@@ -384,14 +380,14 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetcli
 
 	// once the request gets approved
 	// store auto-populated credentials to Secret "parent-cluster" in "clusternet-system" namespace
-	go agent.storeParentClusterCredentials(crr)
+	go agent.storeParentClusterCredentials(ctx, crr)
 
 	return nil
 }
 
-func (agent *Agent) storeParentClusterCredentials(crr *clusterapi.ClusterRegistrationRequest) {
+func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clusterapi.ClusterRegistrationRequest) {
 	klog.V(4).Infof("store parent cluster credentials to secret for later use")
-	secretCtx, cancel := context.WithCancel(agent.ctx)
+	secretCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	secret := &corev1.Secret{
