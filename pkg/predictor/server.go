@@ -56,8 +56,6 @@ const (
 type GetPodsAssignedToNodeFunc func(string) ([]*corev1.Pod, error)
 
 type PredictorServer struct {
-	ctx context.Context
-
 	kubeClient kubernetes.Interface
 
 	informerFactory informers.SharedInformerFactory
@@ -74,7 +72,6 @@ type PredictorServer struct {
 }
 
 func NewPredictorServer(
-	ctx context.Context,
 	clientConfig *restclient.Config,
 ) (*PredictorServer, error) {
 	// creating the clientset
@@ -92,7 +89,6 @@ func NewPredictorServer(
 	utilruntime.Must(clusterapi.AddToScheme(scheme.Scheme))
 	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-predictor"})
 	ps := &PredictorServer{
-		ctx:             ctx,
 		kubeClient:      kubeClient,
 		informerFactory: informerFactory,
 		nodeInformer:    informerFactory.Core().V1().Nodes(),
@@ -126,13 +122,13 @@ func NewPredictorServer(
 
 var _ schedulerapi.PredictorProvider = &PredictorServer{}
 
-func (ps *PredictorServer) Run() error {
+func (ps *PredictorServer) Run(ctx context.Context) error {
 	// Start all informers.
-	ps.informerFactory.Start(ps.ctx.Done())
+	ps.informerFactory.Start(ctx.Done())
 	// Wait for all caches to sync before scheduling.
-	ps.informerFactory.WaitForCacheSync(ps.ctx.Done())
+	ps.informerFactory.WaitForCacheSync(ctx.Done())
 
-	ps.run(ps.ctx)
+	ps.run(ctx)
 
 	return nil
 }

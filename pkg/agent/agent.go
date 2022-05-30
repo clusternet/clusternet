@@ -43,6 +43,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/predictor"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
@@ -81,6 +82,8 @@ type Agent struct {
 	statusManager *Manager
 
 	deployer *deployer.Deployer
+
+	predictor *predictor.PredictorServer
 }
 
 // NewAgent returns a new Agent.
@@ -101,6 +104,11 @@ func NewAgent(ctx context.Context, registrationOpts *ClusterRegistrationOptions,
 	// create clientset for child cluster
 	childKubeClientSet := kubernetes.NewForConfigOrDie(childKubeConfig)
 
+	predictor, err := predictor.NewPredictorServer(childKubeConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	agent := &Agent{
 		ctx:                 ctx,
 		Identity:            identity,
@@ -118,6 +126,7 @@ func NewAgent(ctx context.Context, registrationOpts *ClusterRegistrationOptions,
 			registrationOpts.ClusterSyncMode,
 			childKubeConfig.Host,
 			controllerOpts.LeaderElection.ResourceNamespace),
+		predictor: predictor,
 	}
 	return agent, nil
 }
@@ -194,6 +203,12 @@ func (agent *Agent) run(ctx context.Context) {
 			agent.DedicatedNamespace,
 			agent.ClusterID,
 			defaultThreadiness); err != nil {
+			klog.Error(err)
+		}
+	}, time.Duration(0))
+
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		if err := agent.predictor.Run(ctx); err != nil {
 			klog.Error(err)
 		}
 	}, time.Duration(0))
