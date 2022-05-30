@@ -63,16 +63,6 @@ type DescriptionSpec struct {
 
 // DescriptionStatus defines the observed state of Description
 type DescriptionStatus struct {
-	// PhaseStatus indicates the Phase and reason of DescriptionPhase
-	// +optional
-	Phase PhaseStatus `json:"phaseStatus,omitempty"`
-
-	// ManifestStatuses contains running status of manifests in spec.
-	// +optional
-	ManifestStatuses []ManifestStatus `json:"manifestStatus,omitempty"`
-}
-
-type PhaseStatus struct {
 	// Phase denotes the phase of Description
 	// +optional
 	// +kubebuilder:validation:Enum=Pending;Success;Failure
@@ -81,6 +71,10 @@ type PhaseStatus struct {
 	// Reason indicates the reason of DescriptionPhase
 	// +optional
 	Reason string `json:"reason,omitempty"`
+
+	// ManifestStatuses contains running status of manifests in spec.
+	// +optional
+	ManifestStatuses []ManifestStatus `json:"manifestStatuses,omitempty"`
 }
 
 type ManifestStatus struct {
@@ -91,7 +85,7 @@ type ManifestStatus struct {
 	// Status reflects running status of current manifest.
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
-	Status runtime.RawExtension `json:"status,omitempty"`
+	FeedStatus runtime.RawExtension `json:"feedStatus,omitempty"`
 }
 
 type DescriptionDeployer string

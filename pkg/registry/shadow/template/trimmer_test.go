@@ -148,7 +148,6 @@ func TestTrimBatchJob(t *testing.T) {
 					"kind":       "Job",
 					"metadata": map[string]interface{}{
 						"creationTimestamp": "2021-11-01T07:01:18Z",
-						"generation":        1,
 						"labels": map[string]string{
 							"clusternet.io/created-by": "clusternet-hub",
 						},
@@ -205,7 +204,6 @@ func TestTrimBatchJob(t *testing.T) {
 					"apiVersion": "batch/v1",
 					"kind":       "Job",
 					"metadata": map[string]interface{}{
-						"generation": 1,
 						"labels": map[string]string{
 							"clusternet.io/created-by": "clusternet-hub",
 						},
