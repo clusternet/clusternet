@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -70,6 +71,9 @@ type Agent struct {
 	// clientset for child cluster
 	childKubeClientSet kubernetes.Interface
 
+	// kube informer factory for child cluster
+	kubeInformerFactory kubeinformers.SharedInformerFactory
+
 	// dedicated kubeconfig for accessing parent cluster, which is auto populated by the parent cluster
 	// when cluster registration request gets approved
 	parentDedicatedKubeConfig *rest.Config
@@ -101,8 +105,10 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	}
 	// create clientset for child cluster
 	childKubeClientSet := kubernetes.NewForConfigOrDie(childKubeConfig)
+	// creates the informer factory
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(childKubeClientSet, known.DefaultResync)
 
-	predictor, err := predictor.NewPredictorServer(childKubeConfig)
+	predictor, err := predictor.NewPredictorServer(childKubeConfig, childKubeClientSet, kubeInformerFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -110,13 +116,14 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	agent := &Agent{
 		Identity:            identity,
 		childKubeClientSet:  childKubeClientSet,
+		kubeInformerFactory: kubeInformerFactory,
 		registrationOptions: registrationOpts,
 		controllerOptions:   controllerOpts,
 		statusManager: NewStatusManager(
 			childKubeConfig.Host,
-			controllerOpts.LeaderElection.ResourceNamespace,
 			registrationOpts,
 			childKubeClientSet,
+			kubeInformerFactory,
 		),
 		deployer: deployer.NewDeployer(
 			registrationOpts.ClusterSyncMode,
@@ -129,6 +136,8 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 
 func (agent *Agent) Run(ctx context.Context) error {
 	klog.Info("starting agent controller ...")
+
+	agent.kubeInformerFactory.Start(ctx.Done())
 
 	// if leader election is disabled, so runCommand inline until done.
 	if !agent.controllerOptions.LeaderElection.LeaderElect {
@@ -204,9 +213,7 @@ func (agent *Agent) run(ctx context.Context) {
 	}, time.Duration(0))
 
 	go wait.UntilWithContext(ctx, func(ctx context.Context) {
-		if err := agent.predictor.Run(ctx); err != nil {
-			klog.Error(err)
-		}
+		agent.predictor.Run(ctx)
 	}, time.Duration(0))
 
 	<-ctx.Done()
