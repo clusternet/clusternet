@@ -47,6 +47,7 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/controllers/apps/aggregatestatus"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/feedinventory"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
@@ -92,11 +93,12 @@ type Deployer struct {
 	clusternetClient *clusternetclientset.Clientset
 	kubeClient       *kubernetes.Clientset
 
-	subsController  *subscription.Controller
-	mfstController  *manifest.Controller
-	baseController  *base.Controller
-	chartController *helmchart.Controller
-	finvController  *feedinventory.Controller
+	subsController            *subscription.Controller
+	mfstController            *manifest.Controller
+	baseController            *base.Controller
+	chartController           *helmchart.Controller
+	finvController            *feedinventory.Controller
+	aggregatestatusController *aggregatestatus.Controller
 
 	helmDeployer    *helm.Deployer
 	genericDeployer *generic.Deployer
@@ -219,6 +221,14 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 	}
 	deployer.finvController = finv
 
+	aggregatestatusController, err := aggregatestatus.NewController(clusternetclient,
+		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
+		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+		deployer.recorder)
+	if err != nil {
+		return nil, err
+	}
+	deployer.aggregatestatusController = aggregatestatusController
 	return deployer, nil
 }
 
@@ -247,6 +257,7 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	go deployer.mfstController.Run(workers, stopCh)
 	go deployer.baseController.Run(workers, stopCh)
 	go deployer.localizer.Run(workers, stopCh)
+	go deployer.aggregatestatusController.Run(workers, stopCh)
 
 	// When using external FeedInventory controller, this feature gate should be closed
 	if utilfeature.DefaultFeatureGate.Enabled(features.FeedInventory) {
