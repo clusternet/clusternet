@@ -50,6 +50,8 @@ type Controller struct {
 	apiserverURL       string
 	appPusherEnabled   bool
 	useSocket          bool
+	predictorEnable    bool
+	predictorAddress   string
 	nodeLister         corev1lister.NodeLister
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
@@ -58,7 +60,7 @@ type Controller struct {
 	kubeInformerFactory informers.SharedInformerFactory
 }
 
-func NewController(apiserverURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
+func NewController(apiserverURL, predictorAddress string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
 	return &Controller{
 		kubeClient:          kubeClient,
@@ -68,6 +70,8 @@ func NewController(apiserverURL string, kubeClient kubernetes.Interface, collect
 		apiserverURL:        apiserverURL,
 		appPusherEnabled:    utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		useSocket:           utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		predictorEnable:     utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
+		predictorAddress:    predictorAddress,
 		nodeLister:          kubeInformerFactory.Core().V1().Nodes().Lister(),
 		nodeSynced:          kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
 		podLister:           kubeInformerFactory.Core().V1().Pods().Lister(),
@@ -131,6 +135,8 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.Capacity = capacity
 	status.HeartbeatFrequencySeconds = utilpointer.Int64Ptr(int64(c.heartbeatFrequency.Seconds()))
 	status.Conditions = []metav1.Condition{c.getCondition(status)}
+	status.PredictorEnabled = c.predictorEnable
+	status.PredictorAddress = c.predictorAddress
 	c.setClusterStatus(status)
 }
 

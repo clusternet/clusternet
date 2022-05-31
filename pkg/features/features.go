@@ -79,6 +79,14 @@ const (
 	// alpha: v0.9.0
 	// Setting on hub side.
 	FeedInventory featuregate.Feature = "FeedInventory"
+
+	// Predictor will predictor child cluster resource before scheduling.
+	// This feature gate need a running predictor , build-in agent or external predictor
+	//
+	// owner: @yinsenyan
+	// alpha: v0.10.0
+	// Setting on agent side
+	Predictor featuregate.Feature = "Predictor"
 )
 
 func init() {
@@ -96,4 +104,5 @@ var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	FeedInUseProtection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	Recovery:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	FeedInventory:       {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Predictor:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }
