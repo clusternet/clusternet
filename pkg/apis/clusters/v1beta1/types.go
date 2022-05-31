@@ -273,11 +273,11 @@ type ManagedClusterStatus struct {
 	// +optional
 	HeartbeatFrequencySeconds *int64 `json:"heartbeatFrequencySeconds,omitempty"`
 
-	// PredictorEnabled indicates whether to enabld predictor.
+	// PredictorEnabled indicates whether predictor is enabled.
 	// +optional
 	PredictorEnabled bool `json:"predictorEnabled,omitempty"`
 
-	// PredictorAddress
+	// PredictorAddress shows the predictor address
 	// +optional
 	PredictorAddress string `json:"predictorAddress,omitempty"`
 }

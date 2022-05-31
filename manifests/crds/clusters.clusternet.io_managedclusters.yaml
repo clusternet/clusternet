@@ -267,10 +267,10 @@ spec:
                 description: platform indicates the running platform of the cluster
                 type: string
               predictorAddress:
-                description: PredictorAddress
+                description: PredictorAddress shows the predictor address
                 type: string
               predictorEnabled:
-                description: PredictorEnabled indicates whether to enabld predictor.
+                description: PredictorEnabled indicates whether predictor is enabled.
                 type: boolean
               readyz:
                 description: Readyz indicates the readyz status of the cluster

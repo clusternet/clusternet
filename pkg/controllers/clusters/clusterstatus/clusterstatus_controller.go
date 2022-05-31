@@ -56,33 +56,33 @@ type Controller struct {
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
-
-	kubeInformerFactory informers.SharedInformerFactory
 }
 
-func NewController(apiserverURL, predictorAddress string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
-	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
+func NewController(
+	apiserverURL, predictorAddress string,
+	kubeClient kubernetes.Interface,
+	kubeInformerFactory informers.SharedInformerFactory,
+	collectingPeriod metav1.Duration,
+	heartbeatFrequency metav1.Duration,
+) *Controller {
 	return &Controller{
-		kubeClient:          kubeClient,
-		lock:                &sync.Mutex{},
-		collectingPeriod:    collectingPeriod,
-		heartbeatFrequency:  heartbeatFrequency,
-		apiserverURL:        apiserverURL,
-		appPusherEnabled:    utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
-		useSocket:           utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
-		predictorEnable:     utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
-		predictorAddress:    predictorAddress,
-		nodeLister:          kubeInformerFactory.Core().V1().Nodes().Lister(),
-		nodeSynced:          kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
-		podLister:           kubeInformerFactory.Core().V1().Pods().Lister(),
-		podSynced:           kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
-		kubeInformerFactory: kubeInformerFactory,
+		kubeClient:         kubeClient,
+		lock:               &sync.Mutex{},
+		collectingPeriod:   collectingPeriod,
+		heartbeatFrequency: heartbeatFrequency,
+		apiserverURL:       apiserverURL,
+		appPusherEnabled:   utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
+		useSocket:          utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		predictorEnable:    utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
+		predictorAddress:   predictorAddress,
+		nodeLister:         kubeInformerFactory.Core().V1().Nodes().Lister(),
+		nodeSynced:         kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
+		podLister:          kubeInformerFactory.Core().V1().Pods().Lister(),
+		podSynced:          kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
 	}
 }
 
 func (c *Controller) Run(ctx context.Context) {
-	c.kubeInformerFactory.Start(ctx.Done())
-
 	if !cache.WaitForNamedCacheSync("cluster-status-controller", ctx.Done(),
 		c.podSynced,
 		c.nodeSynced,

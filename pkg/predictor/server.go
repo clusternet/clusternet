@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
+	kubeinformers "k8s.io/client-go/informers"
 	informerv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -34,13 +35,11 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
-	"github.com/clusternet/clusternet/pkg/known"
 	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/predictor/framework/runtime"
@@ -73,14 +72,9 @@ type PredictorServer struct {
 
 func NewPredictorServer(
 	clientConfig *restclient.Config,
+	kubeClient kubernetes.Interface,
+	informerFactory kubeinformers.SharedInformerFactory,
 ) (*PredictorServer, error) {
-	// creating the clientset
-	rootClientBuilder := clientbuilder.SimpleControllerClientBuilder{
-		ClientConfig: clientConfig,
-	}
-	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-predictor"))
-	informerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
-
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
 		Interface: kubeClient.CoreV1().Events(""),
@@ -88,17 +82,9 @@ func NewPredictorServer(
 	utilruntime.Must(appsapi.AddToScheme(scheme.Scheme))
 	utilruntime.Must(clusterapi.AddToScheme(scheme.Scheme))
 	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-predictor"})
-	ps := &PredictorServer{
-		kubeClient:      kubeClient,
-		informerFactory: informerFactory,
-		nodeInformer:    informerFactory.Core().V1().Nodes(),
-		podInformer:     informerFactory.Core().V1().Pods(),
-		nodeLister:      informerFactory.Core().V1().Nodes().Lister(),
-		podLister:       informerFactory.Core().V1().Pods().Lister(),
-		registry:        plugins.NewInTreeRegistry(),
-	}
 
-	framework, err := frameworkruntime.NewFramework(ps.registry, getDefaultPlugins(),
+	registry := plugins.NewInTreeRegistry()
+	framework, err := frameworkruntime.NewFramework(registry, getDefaultPlugins(),
 		frameworkruntime.WithEventRecorder(recorder),
 		frameworkruntime.WithInformerFactory(informerFactory),
 		frameworkruntime.WithClientSet(kubeClient),
@@ -109,46 +95,45 @@ func NewPredictorServer(
 	if err != nil {
 		return nil, err
 	}
-	ps.framework = framework
 
-	getPodFunc, err := ps.BuildGetPodsAssignedToNodeFunc(ps.podInformer)
+	getPodFunc, err := BuildGetPodsAssignedToNodeFunc(informerFactory.Core().V1().Pods())
 	if err != nil {
 		return nil, err
 	}
-	ps.getPodFunc = getPodFunc
 
+	ps := &PredictorServer{
+		kubeClient:      kubeClient,
+		informerFactory: informerFactory,
+		nodeInformer:    informerFactory.Core().V1().Nodes(),
+		podInformer:     informerFactory.Core().V1().Pods(),
+		nodeLister:      informerFactory.Core().V1().Nodes().Lister(),
+		podLister:       informerFactory.Core().V1().Pods().Lister(),
+		registry:        registry,
+		framework:       framework,
+		getPodFunc:      getPodFunc,
+	}
 	return ps, nil
 }
 
 var _ schedulerapi.PredictorProvider = &PredictorServer{}
 
-func (ps *PredictorServer) Run(ctx context.Context) error {
-	// Start all informers.
-	ps.informerFactory.Start(ctx.Done())
-	// Wait for all caches to sync before scheduling.
-	ps.informerFactory.WaitForCacheSync(ctx.Done())
-
-	ps.run(ctx)
-
-	return nil
-}
-
-func (ps *PredictorServer) run(ctx context.Context) {
-	stopCh := ctx.Done()
+func (ps *PredictorServer) Run(ctx context.Context) {
 	klog.Infof("Starting clusternet predictor")
 	defer klog.Infof("Shutting down clusternet predictor")
 
-	ps.informerFactory.Start(stopCh)
+	// Wait for all caches to sync before scheduling.
 	if !cache.WaitForCacheSync(ctx.Done(), ps.podInformer.Informer().HasSynced, ps.nodeInformer.Informer().HasSynced) {
 		klog.Errorf("failed to wait for caches to sync")
 		return
 	}
+
 	// TODO: add communication interface to scheduler
+	<-ctx.Done()
 }
 
 // BuildGetPodsAssignedToNodeFunc establishes an indexer to map the pods and their assigned nodes.
 // It returns a function to help us get all the pods that assigned to a node based on the indexer.
-func (ps *PredictorServer) BuildGetPodsAssignedToNodeFunc(podInformer informerv1.PodInformer) (GetPodsAssignedToNodeFunc, error) {
+func BuildGetPodsAssignedToNodeFunc(podInformer informerv1.PodInformer) (GetPodsAssignedToNodeFunc, error) {
 	// Establish an indexer to map the pods and their assigned nodes.
 	err := podInformer.Informer().AddIndexers(cache.Indexers{
 		nodeNameKeyIndex: func(obj interface{}) ([]string, error) {
