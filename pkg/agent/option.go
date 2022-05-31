@@ -56,6 +56,9 @@ type ClusterRegistrationOptions struct {
 	// No tunnel logging by default
 	TunnelLogging bool
 
+	// PredictorAddress is the address of predictor
+	PredictorAddress string
+
 	// TODO: check ca hash
 }
 
@@ -95,6 +98,7 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
 		"Specifies how often the agent collects current child cluster status")
 	fs.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
+	fs.StringVar(&opts.PredictorAddress, "external-predictor-addr", opts.PredictorAddress, "Set address of predictor , if not set , use built-in predictor.")
 }
 
 // Complete completes all the required options.

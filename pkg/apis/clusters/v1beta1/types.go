@@ -272,6 +272,14 @@ type ManagedClusterStatus struct {
 	// heartbeatFrequencySeconds is the frequency at which the agent reports current cluster status
 	// +optional
 	HeartbeatFrequencySeconds *int64 `json:"heartbeatFrequencySeconds,omitempty"`
+
+	// PredictorEnabled indicates whether to enabld predictor.
+	// +optional
+	PredictorEnabled bool `json:"predictorEnabled,omitempty"`
+
+	// PredictorAddress
+	// +optional
+	PredictorAddress string `json:"predictorAddress,omitempty"`
 }
 
 // +genclient
