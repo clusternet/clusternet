@@ -180,6 +180,9 @@ type ReplicaDividingType string
 const (
 	// StaticReplicaDividingType divides replicas by a fixed weight.
 	StaticReplicaDividingType ReplicaDividingType = "Static"
+
+	// DynamicReplicaDividingType divides replicas by cluster resource predictor.
+	DynamicReplicaDividingType ReplicaDividingType = "Dynamic"
 )
 
 // +kubebuilder:object:root=true
