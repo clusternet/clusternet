@@ -17,6 +17,60 @@ type weightList struct {
 	weights   []int64
 }
 
+// DynamicDivideReplicas will fill the target replicas of all feeds based on predictor result and feed finv.
+func DynamicDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster, finv *appsapi.FeedInventory) error {
+	if selected.Replicas == nil {
+		selected.Replicas = make(map[string][]int32)
+	}
+	for _, feed := range sub.Spec.Feeds {
+		var order *appsapi.FeedOrder
+		for i := range finv.Spec.Feeds {
+			if feed == finv.Spec.Feeds[i].Feed {
+				order = &finv.Spec.Feeds[i]
+				break
+			}
+		}
+		if order != nil && order.DesiredReplicas != nil {
+			replicas := dymamicDivideReplicas(*order.DesiredReplicas, selected.Replicas[order.Name])
+			selected.Replicas[utils.GetFeedKey(order.Feed)] = replicas
+		} else {
+			selected.Replicas[utils.GetFeedKey(order.Feed)] = []int32{}
+		}
+	}
+	return nil
+}
+
+// dynamicDivideReplicas divides replicas by the MaxAvailableReplicas
+func dymamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) []int32 {
+	res := make([]int32, len(maxAvailableReplicas))
+	sumAvailableReplicas := sumArray(maxAvailableReplicas)
+
+	if desiredReplicas > sumAvailableReplicas {
+		return maxAvailableReplicas
+	}
+
+	for k := range res {
+		res[k] = (maxAvailableReplicas[k] / sumAvailableReplicas) * desiredReplicas
+	}
+
+	// Even out the rest replicas among all candidate clusters.
+	rest := desiredReplicas - sumArray(res)
+	if rest > 0 {
+		for i := 0; i < int(rest) && i < len(res); i++ {
+			res[i]++
+		}
+	}
+
+	return res
+}
+
+func sumArray(array []int32) (sum int32) {
+	for _, v := range array {
+		sum += v
+	}
+	return
+}
+
 // StaticDivideReplicas will fill the target replicas of all feeds based on a weight list and feed finv.
 func StaticDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster, finv *appsapi.FeedInventory) error {
 	wl := getWeightList(sub.Spec.Subscribers, clusters)

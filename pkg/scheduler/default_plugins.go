@@ -32,8 +32,12 @@ func getDefaultPlugins() *schedulerapis.Plugins {
 		},
 		PostFilter: schedulerapis.PluginSet{},
 		PrePredict: schedulerapis.PluginSet{},
-		Predict:    schedulerapis.PluginSet{},
-		PreScore:   schedulerapis.PluginSet{},
+		Predict: schedulerapis.PluginSet{
+			Enabled: []schedulerapis.Plugin{
+				{Name: names.Predictor},
+			},
+		},
+		PreScore: schedulerapis.PluginSet{},
 		Score: schedulerapis.PluginSet{
 			Enabled: []schedulerapis.Plugin{
 				{Name: names.TaintToleration, Weight: 3},
@@ -43,6 +47,7 @@ func getDefaultPlugins() *schedulerapis.Plugins {
 		Assign: schedulerapis.PluginSet{
 			Enabled: []schedulerapis.Plugin{
 				{Name: names.StaticAssigner},
+				{Name: names.DynamicAssigner},
 			},
 		},
 		Reserve: schedulerapis.PluginSet{},
