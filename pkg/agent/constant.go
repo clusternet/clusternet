@@ -49,6 +49,9 @@ const (
 
 	// ClusterStatusCollectFrequency flag specifies the cluster status collecting frequency
 	ClusterStatusCollectFrequency = "cluster-status-collect-frequency"
+
+	// EnableMetricServer flag specifies whether collect metrics from metricServer for the cluster
+	EnableMetricServer = "enable-metric-server"
 )
 
 // default values

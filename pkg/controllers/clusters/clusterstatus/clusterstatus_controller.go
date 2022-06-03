@@ -52,13 +52,14 @@ type Controller struct {
 	apiserverURL       string
 	appPusherEnabled   bool
 	useSocket          bool
+	useMetricServer    bool
 	nodeLister         corev1lister.NodeLister
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
 }
 
-func NewController(ctx context.Context, apiserverURL string, kubeClient kubernetes.Interface, metricClient *metricsv.Clientset, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
+func NewController(ctx context.Context, apiserverURL string, useMetricServer bool, kubeClient kubernetes.Interface, metricClient *metricsv.Clientset, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
 	kubeInformerFactory.Core().V1().Nodes().Informer()
 	kubeInformerFactory.Core().V1().Pods().Informer()
@@ -73,6 +74,7 @@ func NewController(ctx context.Context, apiserverURL string, kubeClient kubernet
 		apiserverURL:       apiserverURL,
 		appPusherEnabled:   utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		useSocket:          utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		useMetricServer:    useMetricServer,
 		nodeLister:         kubeInformerFactory.Core().V1().Nodes().Lister(),
 		nodeSynced:         kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
 		podLister:          kubeInformerFactory.Core().V1().Pods().Lister(),
@@ -106,9 +108,12 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 
 	nodeStatistics := getNodeStatistics(nodes)
 
-	podStatistics := getPodStatistics(c.metricClientset)
-
-	resourceUsage := getResourceUsage(c.metricClientset)
+	var podStatistics clusterapi.PodStatistics
+	var resourceUsage clusterapi.ResourceUsage 
+	if c.useMetricServer{
+		podStatistics = getPodStatistics(c.metricClientset)
+		resourceUsage = getResourceUsage(c.metricClientset)
+	}
 
 	capacity, allocatable := getNodeResource(nodes)
 
