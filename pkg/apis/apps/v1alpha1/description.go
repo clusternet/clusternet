@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // Important: Run "make generated" to regenerate code after modifying this file
@@ -70,6 +71,23 @@ type DescriptionStatus struct {
 	// Reason indicates the reason of DescriptionPhase
 	// +optional
 	Reason string `json:"reason,omitempty"`
+
+	// ManifestStatuses contains a list of running statuses of manifests in DescriptionSpec.
+	//
+	// +optional
+	ManifestStatuses []ManifestStatus `json:"manifestStatuses,omitempty"`
+}
+
+// ManifestStatus contains details for the current status of this feed.
+type ManifestStatus struct {
+	// Feed holds references to the resource.
+	Feed `json:",inline"`
+
+	// ObservedStatus reflects observed status of current feed.
+	//
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ObservedStatus runtime.RawExtension `json:"observedStatus,omitempty"`
 }
 
 type DescriptionDeployer string

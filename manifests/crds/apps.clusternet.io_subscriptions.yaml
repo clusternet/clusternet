@@ -205,6 +205,183 @@ spec:
           status:
             description: SubscriptionStatus defines the observed state of Subscription
             properties:
+              aggregatedStatuses:
+                description: AggregatedStatuses shows the aggregated statuses of feeds
+                  that are running in each child cluster.
+                items:
+                  description: AggregatedStatus contains aggregated status of current
+                    feed.
+                  properties:
+                    apiVersion:
+                      description: APIVersion defines the versioned schema of this
+                        representation of an object.
+                      type: string
+                    feedStatusDetails:
+                      description: FeedStatusDetails shows the feed statuses in each
+                        child cluster.
+                      items:
+                        description: FeedStatusPerCluster shows the feed status running
+                          in current cluster.
+                        properties:
+                          available:
+                            description: Available indicates whether the feed status
+                              is synced successfully to corresponding Description.
+                            type: boolean
+                          clusterId:
+                            description: ClusterID indicates the id of current cluster.
+                            pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+                            type: string
+                          clusterName:
+                            description: ClusterName is the cluster name.
+                            maxLength: 30
+                            pattern: '[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*'
+                            type: string
+                          replicaStatus:
+                            description: ReplicaStatus indicates the replica status
+                              of workload-type feed, such as Deployment/StatefulSet/Job.
+                            properties:
+                              active:
+                                description: The number of pending and running pods.
+                                format: int32
+                                type: integer
+                              availableReplicas:
+                                description: Total number of available pods (ready
+                                  for at least minReadySeconds) targeted by this workload.
+                                format: int32
+                                type: integer
+                              currentReplicas:
+                                description: currentReplicas is the number of Pods
+                                  created by the workload controller from the StatefulSet
+                                  version indicated by currentRevision.
+                                format: int32
+                                type: integer
+                              failed:
+                                description: The number of pods which reached phase
+                                  Failed.
+                                format: int32
+                                type: integer
+                              observedGeneration:
+                                description: The generation observed by the workload
+                                  controller.
+                                format: int64
+                                type: integer
+                              readyReplicas:
+                                description: readyReplicas is the number of pods targeted
+                                  by this workload with a Ready Condition.
+                                format: int32
+                                type: integer
+                              replicas:
+                                description: Total number of non-terminated pods targeted
+                                  by this workload (their labels match the selector).
+                                format: int32
+                                type: integer
+                              succeeded:
+                                description: The number of pods which reached phase
+                                  Succeeded.
+                                format: int32
+                                type: integer
+                              unavailableReplicas:
+                                description: Total number of unavailable pods targeted
+                                  by this workload. This is the total number of pods
+                                  that are still required for the workload to have
+                                  100% available capacity. They may either be pods
+                                  that are running but not yet available or pods that
+                                  still have not been created.
+                                format: int32
+                                type: integer
+                              updatedReplicas:
+                                description: Total number of non-terminated pods targeted
+                                  by this workload that have the desired template
+                                  spec.
+                                format: int32
+                                type: integer
+                            type: object
+                        type: object
+                      type: array
+                    feedStatusSummary:
+                      description: FeedStatusSummary aggregates the feed statuses
+                        from each child cluster.
+                      properties:
+                        available:
+                          description: Available indicates whether the feed status
+                            is synced successfully to corresponding Description.
+                          type: boolean
+                        replicaStatus:
+                          description: ReplicaStatus indicates the replica status
+                            of workload-type feed, such as Deployment/StatefulSet/Job.
+                          properties:
+                            active:
+                              description: The number of pending and running pods.
+                              format: int32
+                              type: integer
+                            availableReplicas:
+                              description: Total number of available pods (ready for
+                                at least minReadySeconds) targeted by this workload.
+                              format: int32
+                              type: integer
+                            currentReplicas:
+                              description: currentReplicas is the number of Pods created
+                                by the workload controller from the StatefulSet version
+                                indicated by currentRevision.
+                              format: int32
+                              type: integer
+                            failed:
+                              description: The number of pods which reached phase
+                                Failed.
+                              format: int32
+                              type: integer
+                            observedGeneration:
+                              description: The generation observed by the workload
+                                controller.
+                              format: int64
+                              type: integer
+                            readyReplicas:
+                              description: readyReplicas is the number of pods targeted
+                                by this workload with a Ready Condition.
+                              format: int32
+                              type: integer
+                            replicas:
+                              description: Total number of non-terminated pods targeted
+                                by this workload (their labels match the selector).
+                              format: int32
+                              type: integer
+                            succeeded:
+                              description: The number of pods which reached phase
+                                Succeeded.
+                              format: int32
+                              type: integer
+                            unavailableReplicas:
+                              description: Total number of unavailable pods targeted
+                                by this workload. This is the total number of pods
+                                that are still required for the workload to have 100%
+                                available capacity. They may either be pods that are
+                                running but not yet available or pods that still have
+                                not been created.
+                              format: int32
+                              type: integer
+                            updatedReplicas:
+                              description: Total number of non-terminated pods targeted
+                                by this workload that have the desired template spec.
+                              format: int32
+                              type: integer
+                          type: object
+                      type: object
+                    kind:
+                      description: Kind is a string value representing the REST resource
+                        this object represents. In CamelCase.
+                      type: string
+                    name:
+                      description: Name of the target resource.
+                      type: string
+                    namespace:
+                      description: Namespace of the target resource.
+                      type: string
+                  required:
+                  - apiVersion
+                  - kind
+                  - name
+                  type: object
+                type: array
               bindingClusters:
                 description: Namespaced names of targeted clusters that Subscription
                   binds to.
