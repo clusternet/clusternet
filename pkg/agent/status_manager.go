@@ -36,6 +36,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterstatus"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 type Manager struct {
@@ -51,6 +52,7 @@ func NewStatusManager(
 	apiserverURL string,
 	regOpts *ClusterRegistrationOptions,
 	kubeClient kubernetes.Interface,
+	metricClient *metricsv.Clientset,
 	kubeInformerFactory informers.SharedInformerFactory,
 ) *Manager {
 	return &Manager{
@@ -58,7 +60,9 @@ func NewStatusManager(
 		clusterStatusController: clusterstatus.NewController(
 			apiserverURL,
 			regOpts.PredictorAddress,
+			regOpts.UseMetricsServer,
 			kubeClient,
+			metricClient,
 			kubeInformerFactory,
 			regOpts.ClusterStatusCollectFrequency,
 			regOpts.ClusterStatusReportFrequency,
