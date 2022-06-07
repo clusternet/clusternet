@@ -266,6 +266,19 @@ spec:
               platform:
                 description: platform indicates the running platform of the cluster
                 type: string
+              podStatistics:
+                description: PodStatistics is the info summary of pods in the cluster
+                properties:
+                  runningPods:
+                    description: RunningPods is the number of running pods in the
+                      cluster
+                    format: int32
+                    type: integer
+                  totalPods:
+                    description: TotalPods is the number of all pods in the cluster
+                    format: int32
+                    type: integer
+                type: object
               predictorAddress:
                 description: PredictorAddress shows the predictor address
                 type: string
@@ -275,6 +288,27 @@ spec:
               readyz:
                 description: Readyz indicates the readyz status of the cluster
                 type: boolean
+              resourceUsage:
+                description: ResourceUsage is the cpu(m) and memory(Mi) already used
+                  in the cluster
+                properties:
+                  cpuUsage:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: CpuUsage is the total cpu(m) already used in the
+                      whole cluster, k8s reserved not include
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  memoryUsage:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: MemoryUsage is the total memory(Mi) already used
+                      in the whole cluster, k8s reserved not include
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                type: object
               serviceCIDR:
                 description: ServcieCIDR is the CIDR range of the services
                 type: string

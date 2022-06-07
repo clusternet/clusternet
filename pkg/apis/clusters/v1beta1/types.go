@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -265,6 +266,14 @@ type ManagedClusterStatus struct {
 	// +optional
 	NodeStatistics NodeStatistics `json:"nodeStatistics,omitempty"`
 
+	// PodStatistics is the info summary of pods in the cluster
+	// +optional
+	PodStatistics PodStatistics `json:"podStatistics,omitempty"`
+
+	// ResourceUsage is the cpu(m) and memory(Mi) already used in the cluster
+	// +optional
+	ResourceUsage ResourceUsage `json:"resourceUsage,omitempty"`
+
 	// Conditions is an array of current cluster conditions.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -328,4 +337,24 @@ type NodeStatistics struct {
 	// LostNodes is the number of states lost nodes in the cluster
 	// +optional
 	LostNodes int32 `json:"lostNodes,omitempty"`
+}
+
+type PodStatistics struct {
+	// RunningPods is the number of running pods in the cluster
+	// +optional
+	RunningPods int32 `json:"runningPods,omitempty"`
+
+	// TotalPods is the number of all pods in the cluster
+	// +optional
+	TotalPods int32 `json:"totalPods,omitempty"`
+}
+
+type ResourceUsage struct {
+	// CpuUsage is the total cpu(m) already used in the whole cluster, k8s reserved not include
+	// +optional
+	CpuUsage resource.Quantity `json:"cpuUsage,omitempty"`
+
+	// MemoryUsage is the total memory(Mi) already used in the whole cluster, k8s reserved not include
+	// +optional
+	MemoryUsage resource.Quantity `json:"memoryUsage,omitempty"`
 }

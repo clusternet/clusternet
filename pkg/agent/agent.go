@@ -46,6 +46,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/predictor"
 	"github.com/clusternet/clusternet/pkg/utils"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 const (
@@ -105,6 +106,10 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	}
 	// create clientset for child cluster
 	childKubeClientSet := kubernetes.NewForConfigOrDie(childKubeConfig)
+
+	// create metrics client for child cluster
+	metricClient := metricsv.NewForConfigOrDie(childKubeConfig)
+
 	// creates the informer factory
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(childKubeClientSet, known.DefaultResync)
 
@@ -123,6 +128,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 			childKubeConfig.Host,
 			registrationOpts,
 			childKubeClientSet,
+			metricClient,
 			kubeInformerFactory,
 		),
 		deployer: deployer.NewDeployer(
