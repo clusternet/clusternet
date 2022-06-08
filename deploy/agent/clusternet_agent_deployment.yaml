@@ -69,6 +69,7 @@ spec:
             - --cluster-reg-token=$(REG_TOKEN)
             - --cluster-reg-parent-url=$(PARENT_URL)
             - --cluster-sync-mode=Dual
+            - --use-metrics-server=false
             - --feature-gates=SocketConnection=true,AppPusher=true,Recovery=true,Predictor=true
             - --leader-elect-resource-namespace=$(AGENT_NAMESPACE)
             - --predictor-direct-access=false
