@@ -154,7 +154,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -191,7 +191,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -236,7 +236,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -281,7 +281,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -334,7 +334,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
