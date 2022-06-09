@@ -21,6 +21,7 @@ package algorithm
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +38,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/scheduler/metrics"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -64,7 +66,7 @@ type genericScheduler struct {
 // Schedule tries to schedule the given subscription to multiple clusters.
 // If it succeeds, it will return the namespaced names of ManagedClusters.
 // If it fails, it will return a FitError error with reasons.
-func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription) (result ScheduleResult, err error) {
+func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (result ScheduleResult, err error) {
 	trace := utiltrace.New("Scheduling", utiltrace.Field{Key: "namespace", Value: sub.Namespace}, utiltrace.Field{Key: "name", Value: sub.Name})
 	defer trace.LogIfLong(100 * time.Millisecond)
 
@@ -72,6 +74,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 		return result, ErrNoClustersAvailable
 	}
 
+	// Step 1: Filter clusters.
 	feasibleClusters, diagnosis, err := g.findClustersThatFitSubscription(ctx, fwk, sub)
 	if err != nil {
 		return result, err
@@ -86,12 +89,19 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 		}
 	}
 
-	priorityList, err := prioritizeClusters(ctx, fwk, sub, feasibleClusters)
+	// Step 2: Predict max available replicas if necessary.
+	availableList, err := predictReplicas(ctx, fwk, sub, finv, feasibleClusters)
 	if err != nil {
 		return result, err
 	}
 
-	clusters, err := g.selectClusters(priorityList, sub)
+	// Step 3: Prioritize clusters.
+	priorityList, err := prioritizeClusters(ctx, fwk, sub, feasibleClusters, availableList)
+	if err != nil {
+		return result, err
+	}
+
+	clusters, err := g.selectClusters(ctx, priorityList, fwk, sub, finv)
 	trace.Step("Prioritizing done")
 
 	return ScheduleResult{
@@ -101,19 +111,90 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 	}, err
 }
 
-// selectClusters takes a prioritized list of clusters and then picks a fraction of clusters
-// in a reservoir sampling manner from the clusters that had the highest score.
-func (g *genericScheduler) selectClusters(clusterScoreList framework.ClusterScoreList, _ *appsapi.Subscription) ([]string, error) {
-	if len(clusterScoreList) == 0 {
-		return nil, fmt.Errorf("empty clusterScoreList")
+func predictReplicas(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (framework.ClusterScoreList, error) {
+	availableList := make(framework.ClusterScoreList, len(clusters))
+	for i := range clusters {
+		availableList[i] = framework.ClusterScore{
+			NamespacedName: klog.KObj(clusters[i]).String(),
+		}
 	}
 
-	var selected []string
+	// If not dividing, finv does not exist.
+	if sub.Spec.SchedulingStrategy != appsapi.DividingSchedulingStrategyType {
+		return availableList, nil
+	}
+
+	// Initialize.
+	for i := range availableList {
+		availableList[i].MaxAvailableReplicas = make(framework.FeedReplicas, len(finv.Spec.Feeds))
+	}
+
+	if sub.Spec.DividingScheduling == nil || sub.Spec.DividingScheduling.Type == appsapi.StaticReplicaDividingType || !fwk.HasPredictPlugins() {
+		return availableList, nil
+	}
+
+	// Run PrePredict plugins.
+	prePredictStatus := fwk.RunPrePredictPlugins(ctx, sub, finv, clusters)
+	if !prePredictStatus.IsSuccess() {
+		return nil, prePredictStatus.AsError()
+	}
+
+	// Run Predict plugins.
+	availableList, predictStatus := fwk.RunPredictPlugins(ctx, sub, finv, clusters, availableList)
+	if !predictStatus.IsSuccess() {
+		return nil, predictStatus.AsError()
+	}
+
+	if klog.V(10).Enabled() {
+		for i := range availableList {
+			klog.V(10).InfoS("Predicting cluster's max available replicas for subscription", "subscription", klog.KObj(sub), "cluster", availableList[i].NamespacedName, "max available replicas", availableList[i].MaxAvailableReplicas)
+		}
+	}
+	return availableList, nil
+}
+
+// selectClusters takes a prioritized list of clusters and then picks a fraction of clusters
+// in a reservoir sampling manner from the clusters that had the highest score.
+func (g *genericScheduler) selectClusters(ctx context.Context, clusterScoreList framework.ClusterScoreList, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (framework.TargetClusters, error) {
+	if len(clusterScoreList) == 0 {
+		return framework.TargetClusters{}, fmt.Errorf("empty clusterScoreList")
+	}
+
+	var selected framework.TargetClusters
 	for _, clusterScore := range clusterScoreList {
 		// TODO: sampling with scores
-		selected = append(selected, clusterScore.NamespacedName)
+		selected.BindingClusters = append(selected.BindingClusters, clusterScore.NamespacedName)
 	}
-	return selected, nil
+
+	if sub.Spec.SchedulingStrategy != appsapi.DividingSchedulingStrategyType {
+		return selected, nil
+	}
+
+	selected.Replicas = make(map[string][]int32)
+	// transfer to available replicas
+	for _, clusterScore := range clusterScoreList {
+		for i := range finv.Spec.Feeds {
+			feed := &finv.Spec.Feeds[i].Feed
+			selected.Replicas[utils.GetFeedKey(*feed)] = append(selected.Replicas[utils.GetFeedKey(*feed)], clusterScore.MaxAvailableReplicas[i])
+		}
+	}
+
+	// Run PreAssign plugins.
+	preAssignStatus := fwk.RunPreAssignPlugins(ctx, sub, finv, selected)
+	if !preAssignStatus.IsSuccess() {
+		return framework.TargetClusters{}, preAssignStatus.AsError()
+	}
+
+	// Run the Assign plugins.
+	selected, assignStatus := fwk.RunAssignPlugins(ctx, sub, finv, selected)
+	if assignStatus.IsSuccess() {
+		return selected, nil
+	}
+	if assignStatus.Code() == framework.Error {
+		return framework.TargetClusters{}, assignStatus.AsError()
+	}
+
+	return framework.TargetClusters{}, fmt.Errorf("assign status: %s, %v", assignStatus.Code().String(), assignStatus.Message())
 }
 
 // numFeasibleClustersToFind returns the number of feasible clusters that once found, the scheduler stops
@@ -260,16 +341,12 @@ func (g *genericScheduler) findClustersThatPassFilters(ctx context.Context, fwk 
 // The scores from each plugin are added together to make the score for that cluster, then
 // any extenders are run as well.
 // All scores are finally combined (added) to get the total weighted scores of all clusters
-func prioritizeClusters(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster) (framework.ClusterScoreList, error) {
+func prioritizeClusters(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster, result framework.ClusterScoreList) (framework.ClusterScoreList, error) {
 	// If no priority configs are provided, then all clusters will have a score of one.
 	// This is required to generate the priority list in the required format
 	if !fwk.HasScorePlugins() {
-		result := make(framework.ClusterScoreList, 0, len(clusters))
-		for i := range clusters {
-			result = append(result, framework.ClusterScore{
-				NamespacedName: klog.KObj(clusters[i]).String(),
-				Score:          1,
-			})
+		for i := range result {
+			result[i].Score = 1
 		}
 		return result, nil
 	}
@@ -289,24 +366,21 @@ func prioritizeClusters(ctx context.Context, fwk framework.Framework, sub *appsa
 	if klog.V(10).Enabled() {
 		for plugin, clusterScoreList := range scoresMap {
 			for _, clusterScore := range clusterScoreList {
-				klog.InfoS("Plugin scored cluster for subscription", "subscription", klog.KObj(sub), "plugin", plugin, "cluster", clusterScore.NamespacedName, "score", clusterScore.Score)
+				klog.V(10).InfoS("Plugin scored cluster for subscription", "subscription", klog.KObj(sub), "plugin", plugin, "cluster", clusterScore.NamespacedName, "score", clusterScore.Score)
 			}
 		}
 	}
 
-	// Summarize all scores.
-	result := make(framework.ClusterScoreList, 0, len(clusters))
-
 	for i := range clusters {
-		result = append(result, framework.ClusterScore{NamespacedName: klog.KObj(clusters[i]).String(), Score: 0})
 		for j := range scoresMap {
 			result[i].Score += scoresMap[j][i].Score
 		}
 	}
+	sort.Sort(result)
 
 	if klog.V(10).Enabled() {
 		for i := range result {
-			klog.InfoS("Calculated cluster's final score for subscription", "subscription", klog.KObj(sub), "cluster", result[i].NamespacedName, "score", result[i].Score)
+			klog.V(10).InfoS("Calculated cluster's final score for subscription", "subscription", klog.KObj(sub), "cluster", result[i].NamespacedName, "score", result[i].Score)
 		}
 	}
 	return result, nil

@@ -41,7 +41,6 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
 - [Kubernetes Version Skew](#kubernetes-version-skew)
 - [Getting Started](#getting-started)
     - [Installing Clusternet](#installing-clusternet)
-    - [Checking Cluster Registration](#checking-cluster-registration)
     - [Visiting Managed Clusters With RBAC](#visiting-managed-clusters-with-rbac)
     - [How to Interact with Clusternet](#how-to-interact-with-clusternet)
     - [Deploying Applications to Multiple Clusters](#deploying-applications-to-multiple-clusters)
@@ -73,7 +72,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
         - Kubernetes native objects, such as `Deployment`, `StatefulSet`, etc
         - CRD
         - helm charts, including [OCI-based Helm charts](https://helm.sh/docs/topics/registries/)
-    - [Setting Overrides](https://github.com/clusternet/clusternet/blob/main/docs/tutorials/deploying-applications-to-multiple-clusters.md#setting-overrides)
+    - [Setting Overrides](./docs/tutorials/deploying-applications-to-multiple-clusters.md#setting-overrides)
         - two-stage priority based override strategies
         - easy to rollback
         - cross-cluster canary rollout
@@ -186,7 +185,8 @@ Please follow [this guide](./docs/tutorials/checking-cluster-registration.md) to
 
 ### Locally
 
-Apart from installing `Clusternet` in real cluster, please follow [this guide](./docs/tutorials/quick-installing-clusternet-locally.md) 
+Apart from installing `Clusternet` in real cluster, please
+follow [this guide](./docs/tutorials/quick-installing-clusternet-locally.md)
 to set up environment locally.
 
 ## Visiting Managed Clusters With RBAC

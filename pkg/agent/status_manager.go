@@ -21,12 +21,12 @@ import (
 	"errors"
 	"os"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
@@ -36,7 +36,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterstatus"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
-	"github.com/clusternet/clusternet/pkg/utils"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 type Manager struct {
@@ -48,23 +48,25 @@ type Manager struct {
 	managedCluster *clusterapi.ManagedCluster
 }
 
-func NewStatusManager(ctx context.Context, apiserverURL, systemNamespace string, regOpts *ClusterRegistrationOptions, kubeClient kubernetes.Interface) *Manager {
-	retryCtx, retryCancel := context.WithTimeout(ctx, known.DefaultRetryPeriod)
-	defer retryCancel()
-
-	secret := utils.GetDeployerCredentials(retryCtx, kubeClient, systemNamespace)
-	if secret != nil {
-		clusterStatusKubeConfig, err := utils.GenerateKubeConfigFromToken(apiserverURL,
-			string(secret.Data[corev1.ServiceAccountTokenKey]), secret.Data[corev1.ServiceAccountRootCAKey], 2)
-		if err == nil {
-			kubeClient = kubernetes.NewForConfigOrDie(clusterStatusKubeConfig)
-		}
-	}
-
+func NewStatusManager(
+	apiserverURL string,
+	regOpts *ClusterRegistrationOptions,
+	kubeClient kubernetes.Interface,
+	metricClient *metricsv.Clientset,
+	kubeInformerFactory informers.SharedInformerFactory,
+) *Manager {
 	return &Manager{
 		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
-		clusterStatusController: clusterstatus.NewController(ctx, apiserverURL,
-			kubeClient, regOpts.ClusterStatusCollectFrequency, regOpts.ClusterStatusReportFrequency),
+		clusterStatusController: clusterstatus.NewController(
+			apiserverURL,
+			regOpts.PredictorAddress,
+			regOpts.UseMetricsServer,
+			kubeClient,
+			metricClient,
+			kubeInformerFactory,
+			regOpts.ClusterStatusCollectFrequency,
+			regOpts.ClusterStatusReportFrequency,
+		),
 	}
 }
 

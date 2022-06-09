@@ -17,3 +17,5 @@ You can then run `helm search repo clusternet` to see the charts.
 - [installing `clusternet-hub` to parent cluster](https://github.com/clusternet/charts/tree/main/charts/clusternet-hub)
 - [installing `clusternet-scheduler` to parent cluster](https://github.com/clusternet/charts/tree/main/charts/clusternet-scheduler)
 - [installing `clusternet-agent` to child clusters](https://github.com/clusternet/charts/tree/main/charts/clusternet-agent)
+
+Please follow [this guide](./checking-cluster-registration.md) to check cluster registrations.

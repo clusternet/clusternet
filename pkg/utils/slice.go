@@ -18,6 +18,7 @@ package utils
 
 import (
 	"sort"
+	"strings"
 )
 
 // Copied from k8s.io/kubernetes/pkg/utils/slice/slice.go
@@ -51,6 +52,16 @@ func ContainsString(slice []string, s string) bool {
 	return false
 }
 
+// ContainsPrefix checks if a given slice of strings start with the provided string.
+func ContainsPrefix(slice []string, s string) bool {
+	for _, item := range slice {
+		if strings.HasPrefix(s, item) {
+			return true
+		}
+	}
+	return false
+}
+
 // RemoveString returns a newly created []string that contains all items from slice that
 // are not equal to s.
 func RemoveString(slice []string, s string) []string {
@@ -67,4 +78,32 @@ func RemoveString(slice []string, s string) []string {
 		newSlice = nil
 	}
 	return newSlice
+}
+
+func MaxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func MinInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func MaxInt32(a, b int32) int32 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func MinInt32(a, b int32) int32 {
+	if a < b {
+		return a
+	}
+	return b
 }

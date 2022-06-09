@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -43,7 +44,9 @@ import (
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/predictor"
 	"github.com/clusternet/clusternet/pkg/utils"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 const (
@@ -53,8 +56,6 @@ const (
 
 // Agent defines configuration for clusternet-agent
 type Agent struct {
-	ctx context.Context
-
 	// Identity is the unique string identifying a lease holder across
 	// all participants in an election.
 	Identity string
@@ -71,6 +72,9 @@ type Agent struct {
 	// clientset for child cluster
 	childKubeClientSet kubernetes.Interface
 
+	// kube informer factory for child cluster
+	kubeInformerFactory kubeinformers.SharedInformerFactory
+
 	// dedicated kubeconfig for accessing parent cluster, which is auto populated by the parent cluster
 	// when cluster registration request gets approved
 	parentDedicatedKubeConfig *rest.Config
@@ -81,10 +85,12 @@ type Agent struct {
 	statusManager *Manager
 
 	deployer *deployer.Deployer
+
+	predictor *predictor.PredictorServer
 }
 
 // NewAgent returns a new Agent.
-func NewAgent(ctx context.Context, registrationOpts *ClusterRegistrationOptions, controllerOpts *utils.ControllerOptions) (*Agent, error) {
+func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *utils.ControllerOptions) (*Agent, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, fmt.Errorf("unable to get hostname: %v", err)
@@ -101,33 +107,47 @@ func NewAgent(ctx context.Context, registrationOpts *ClusterRegistrationOptions,
 	// create clientset for child cluster
 	childKubeClientSet := kubernetes.NewForConfigOrDie(childKubeConfig)
 
+	// create metrics client for child cluster
+	metricClient := metricsv.NewForConfigOrDie(childKubeConfig)
+
+	// creates the informer factory
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(childKubeClientSet, known.DefaultResync)
+
+	predictor, err := predictor.NewPredictorServer(childKubeConfig, childKubeClientSet, kubeInformerFactory)
+	if err != nil {
+		return nil, err
+	}
+
 	agent := &Agent{
-		ctx:                 ctx,
 		Identity:            identity,
 		childKubeClientSet:  childKubeClientSet,
+		kubeInformerFactory: kubeInformerFactory,
 		registrationOptions: registrationOpts,
 		controllerOptions:   controllerOpts,
 		statusManager: NewStatusManager(
-			ctx,
 			childKubeConfig.Host,
-			controllerOpts.LeaderElection.ResourceNamespace,
 			registrationOpts,
 			childKubeClientSet,
+			metricClient,
+			kubeInformerFactory,
 		),
 		deployer: deployer.NewDeployer(
 			registrationOpts.ClusterSyncMode,
 			childKubeConfig.Host,
 			controllerOpts.LeaderElection.ResourceNamespace),
+		predictor: predictor,
 	}
 	return agent, nil
 }
 
-func (agent *Agent) Run() error {
+func (agent *Agent) Run(ctx context.Context) error {
 	klog.Info("starting agent controller ...")
+
+	agent.kubeInformerFactory.Start(ctx.Done())
 
 	// if leader election is disabled, so runCommand inline until done.
 	if !agent.controllerOptions.LeaderElection.LeaderElect {
-		agent.run(agent.ctx)
+		agent.run(ctx)
 		klog.Warning("finished without leader elect")
 		return nil
 	}
@@ -165,7 +185,7 @@ func (agent *Agent) Run() error {
 	if err != nil {
 		return err
 	}
-	le.Run(agent.ctx)
+	le.Run(ctx)
 	return nil
 }
 
@@ -196,6 +216,10 @@ func (agent *Agent) run(ctx context.Context) {
 			defaultThreadiness); err != nil {
 			klog.Error(err)
 		}
+	}, time.Duration(0))
+
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		agent.predictor.Run(ctx)
 	}, time.Duration(0))
 
 	<-ctx.Done()
@@ -369,14 +393,14 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetcli
 
 	// once the request gets approved
 	// store auto-populated credentials to Secret "parent-cluster" in "clusternet-system" namespace
-	go agent.storeParentClusterCredentials(crr)
+	go agent.storeParentClusterCredentials(ctx, crr)
 
 	return nil
 }
 
-func (agent *Agent) storeParentClusterCredentials(crr *clusterapi.ClusterRegistrationRequest) {
+func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clusterapi.ClusterRegistrationRequest) {
 	klog.V(4).Infof("store parent cluster credentials to secret for later use")
-	secretCtx, cancel := context.WithCancel(agent.ctx)
+	secretCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	secret := &corev1.Secret{

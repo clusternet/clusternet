@@ -67,16 +67,19 @@ const (
 	NoResyncPeriod = 0 * time.Second
 
 	// DefaultThreadiness defines default number of threads
-	DefaultThreadiness = 2
+	DefaultThreadiness = 10
 )
 
 // fields should be ignored when compared
 const (
-	MetaGeneration    = "/metadata/generation"
-	CreationTimestamp = "/metadata/creationTimestamp"
-	ManagedFields     = "/metadata/managedFields"
-	MetaUID           = "/metadata/uid"
-	MetaSelflink      = "/metadata/selfLink"
+	MetaGeneration      = "/metadata/generation"
+	CreationTimestamp   = "/metadata/creationTimestamp"
+	ManagedFields       = "/metadata/managedFields"
+	MetaUID             = "/metadata/uid"
+	MetaSelflink        = "/metadata/selfLink"
+	MetaResourceVersion = "/metadata/resourceVersion"
+
+	SectionStatus = "/status"
 )
 
 const (

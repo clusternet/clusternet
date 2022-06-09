@@ -174,3 +174,11 @@ func HashSubscriptionSpec(subscriptionSpec *appsapi.SubscriptionSpec) uint64 {
 	printer.Fprintf(hasher, "%#v", specJSON)
 	return uint64(hasher.Sum32())
 }
+
+func GetFeedKey(feed appsapi.Feed) string {
+	if len(feed.Namespace) != 0 {
+		return fmt.Sprintf("%s/%s/%s/%s", feed.APIVersion, feed.Kind, feed.Namespace, feed.Name)
+	} else {
+		return fmt.Sprintf("%s/%s/%s", feed.APIVersion, feed.Kind, feed.Name)
+	}
+}

@@ -33,6 +33,7 @@ import (
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	utilpointer "k8s.io/utils/pointer"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -43,6 +44,7 @@ import (
 // Controller is a controller that collects cluster status
 type Controller struct {
 	kubeClient         kubernetes.Interface
+	metricClientset    *metricsv.Clientset
 	lock               *sync.Mutex
 	clusterStatus      *clusterapi.ManagedClusterStatus
 	collectingPeriod   metav1.Duration
@@ -50,32 +52,41 @@ type Controller struct {
 	apiserverURL       string
 	appPusherEnabled   bool
 	useSocket          bool
+	predictorEnable    bool
+	useMetricsServer   bool
+	predictorAddress   string
 	nodeLister         corev1lister.NodeLister
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
 }
 
-func NewController(ctx context.Context, apiserverURL string, kubeClient kubernetes.Interface, collectingPeriod metav1.Duration, heartbeatFrequency metav1.Duration) *Controller {
-	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
-	kubeInformerFactory.Core().V1().Nodes().Informer()
-	kubeInformerFactory.Core().V1().Pods().Informer()
-	kubeInformerFactory.Start(ctx.Done())
-
+func NewController(
+	apiserverURL, predictorAddress string,
+	useMetricsServer bool,
+	kubeClient kubernetes.Interface,
+	metricClient *metricsv.Clientset,
+	kubeInformerFactory informers.SharedInformerFactory,
+	collectingPeriod metav1.Duration,
+	heartbeatFrequency metav1.Duration,
+) *Controller {
 	return &Controller{
 		kubeClient:         kubeClient,
+		metricClientset:    metricClient,
 		lock:               &sync.Mutex{},
 		collectingPeriod:   collectingPeriod,
 		heartbeatFrequency: heartbeatFrequency,
 		apiserverURL:       apiserverURL,
 		appPusherEnabled:   utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		useSocket:          utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		predictorEnable:    utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
+		useMetricsServer:   useMetricsServer,
+		predictorAddress:   predictorAddress,
 		nodeLister:         kubeInformerFactory.Core().V1().Nodes().Lister(),
 		nodeSynced:         kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
 		podLister:          kubeInformerFactory.Core().V1().Pods().Lister(),
 		podSynced:          kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
 	}
-
 }
 
 func (c *Controller) Run(ctx context.Context) {
@@ -103,6 +114,13 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 
 	nodeStatistics := getNodeStatistics(nodes)
 
+	var podStatistics clusterapi.PodStatistics
+	var resourceUsage clusterapi.ResourceUsage
+	if c.useMetricsServer {
+		podStatistics = getPodStatistics(c.metricClientset)
+		resourceUsage = getResourceUsage(c.metricClientset)
+	}
+
 	capacity, allocatable := getNodeResource(nodes)
 
 	clusterCIDR, err := c.discoverClusterCIDR()
@@ -127,10 +145,14 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.ClusterCIDR = clusterCIDR
 	status.ServiceCIDR = serviceCIDR
 	status.NodeStatistics = nodeStatistics
+	status.PodStatistics = podStatistics
+	status.ResourceUsage = resourceUsage
 	status.Allocatable = allocatable
 	status.Capacity = capacity
 	status.HeartbeatFrequencySeconds = utilpointer.Int64Ptr(int64(c.heartbeatFrequency.Seconds()))
 	status.Conditions = []metav1.Condition{c.getCondition(status)}
+	status.PredictorEnabled = c.predictorEnable
+	status.PredictorAddress = c.predictorAddress
 	c.setClusterStatus(status)
 }
 
@@ -169,7 +191,7 @@ func (c *Controller) getHealthStatus(ctx context.Context, path string) bool {
 }
 
 func (c *Controller) getCondition(status clusterapi.ManagedClusterStatus) metav1.Condition {
-	if status.Livez && status.Readyz {
+	if (status.Livez && status.Readyz) || status.Healthz {
 		return metav1.Condition{
 			Type:               clusterapi.ClusterReady,
 			Status:             metav1.ConditionTrue,
@@ -210,14 +232,58 @@ func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStat
 	return
 }
 
+// getPodStatistics returns the PodStatistics in the cluster
+// get pods num in running conditions and the total pods num in the cluster
+func getPodStatistics(clientset *metricsv.Clientset) (podStatistics clusterapi.PodStatistics) {
+	if clientset == nil {
+		klog.Warningf("empty metris client, will return directly ")
+		return
+	}
+	podStatistics = clusterapi.PodStatistics{}
+	podMetricsList, err := clientset.MetricsV1beta1().PodMetricses(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		klog.Warningf("failed to list podMetris with err: %v", err.Error)
+		return
+	}
+	for _, item := range podMetricsList.Items {
+		if len(item.Containers) != 0 {
+			podStatistics.RunningPods += 1
+		}
+	}
+	podStatistics.TotalPods = int32(len(podMetricsList.Items))
+
+	return
+}
+
+// getResourceUsage returns the ResourceUsage in the cluster
+// get cpu(m) and memory(Mi) used
+func getResourceUsage(clientset *metricsv.Clientset) (resourceUsage clusterapi.ResourceUsage) {
+	if clientset == nil {
+		klog.Warningf("empty metris client, will return directly ")
+		return
+	}
+	resourceUsage = clusterapi.ResourceUsage{}
+	nodeMetricsList, err := clientset.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		klog.Warningf("failed to list nodeMetris with err: %v", err.Error)
+		return
+	}
+	for _, item := range nodeMetricsList.Items {
+		resourceUsage.CpuUsage.Add(*(item.Usage.Cpu()))
+		resourceUsage.MemoryUsage.Add(*(item.Usage.Memory()))
+	}
+
+	return
+}
+
 // discoverServiceCIDR returns the service CIDR for the cluster.
 func (c *Controller) discoverServiceCIDR() (string, error) {
-	return findPodIPRange(c.nodeLister, c.podLister)
+	return findServiceIPRange(c.podLister)
 }
 
 // discoverClusterCIDR returns the cluster CIDR for the cluster.
 func (c *Controller) discoverClusterCIDR() (string, error) {
-	return findClusterIPRange(c.podLister)
+	return findPodIPRange(c.nodeLister, c.podLister)
 }
 
 // get node capacity and allocatable resource

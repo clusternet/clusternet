@@ -157,6 +157,11 @@ type HelmReleaseSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
 	TargetNamespace string `json:"targetNamespace"`
+
+	// Overrides specifies the override values for this release.
+	//
+	// +optional
+	Overrides []byte `json:"overrides,omitempty"`
 }
 
 // HelmReleaseStatus defines the observed state of HelmRelease

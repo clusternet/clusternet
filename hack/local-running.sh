@@ -42,6 +42,14 @@ function create_cluster() {
   echo "Cluster ${cluster_name} has been initialized"
 }
 
+function set_docker_desktop_address() {
+  local cluster_name=${1}
+  local kubeconfig=${2}
+
+  server_url="https://$(docker inspect --format='{{(index (index .NetworkSettings.Ports "6443/tcp") 0).HostIp}}:{{(index (index .NetworkSettings.Ports "6443/tcp") 0).HostPort}}' "${cluster_name}-control-plane")"
+  kubectl --kubeconfig="${kubeconfig}" config set-cluster "kind-${cluster_name}" --server="${server_url}"
+}
+
 mkdir -p KUBECONFIG_DIR
 
 create_cluster "${PARENT_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${PARENT_CLUSTER_NAME}.config" "${KIND_IMAGE_VERSION}"
@@ -50,6 +58,14 @@ PARENT_CLUSTER_SERVER=${kind_server}
 create_cluster "${CHILD_1_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_1_CLUSTER_NAME}.config" "${KIND_IMAGE_VERSION}"
 create_cluster "${CHILD_2_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_2_CLUSTER_NAME}.config" "${KIND_IMAGE_VERSION}"
 create_cluster "${CHILD_3_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_3_CLUSTER_NAME}.config" "${KIND_IMAGE_VERSION}"
+
+# for docker-desktop
+if docker version | grep -q "Server: Docker Desktop"; then
+   set_docker_desktop_address "${PARENT_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${PARENT_CLUSTER_NAME}.config"
+   set_docker_desktop_address "${CHILD_1_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_1_CLUSTER_NAME}.config"
+   set_docker_desktop_address "${CHILD_2_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_2_CLUSTER_NAME}.config"
+   set_docker_desktop_address "${CHILD_3_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_3_CLUSTER_NAME}.config"
+fi
 
 export KUBECONFIG="${KUBECONFIG_DIR}/${PARENT_CLUSTER_NAME}.config:${KUBECONFIG_DIR}/${CHILD_1_CLUSTER_NAME}.config:${KUBECONFIG_DIR}/${CHILD_2_CLUSTER_NAME}.config:${KUBECONFIG_DIR}/${CHILD_3_CLUSTER_NAME}.config"
 kubectl config view --flatten > "${KUBECONFIG_FILE}"
@@ -78,6 +94,7 @@ helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${CHILD_1_CLUSTER_NAME}" 
   clusternet-agent -n clusternet-system --create-namespace \
   --set parentURL="${PARENT_CLUSTER_SERVER}" \
   --set registrationToken=07401b.f395accd246ae52d \
+  --set extraArgs.cluster-reg-name=child1 \
   clusternet/clusternet-agent
 echo "Installing clusternet-agent into child1 finished"
 
@@ -86,6 +103,7 @@ helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${CHILD_2_CLUSTER_NAME}" 
   clusternet-agent -n clusternet-system --create-namespace \
   --set parentURL="${PARENT_CLUSTER_SERVER}" \
   --set registrationToken=07401b.f395accd246ae52d \
+  --set extraArgs.cluster-reg-name=child2 \
   clusternet/clusternet-agent
 echo "Installing clusternet-agent into child2 finished"
 
@@ -94,6 +112,7 @@ helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${CHILD_3_CLUSTER_NAME}" 
   clusternet-agent -n clusternet-system --create-namespace \
   --set parentURL="${PARENT_CLUSTER_SERVER}" \
   --set registrationToken=07401b.f395accd246ae52d \
+  --set extraArgs.cluster-reg-name=child3 \
   clusternet/clusternet-agent
 echo "Installing clusternet-agent into child3 finished"
 

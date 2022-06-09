@@ -132,7 +132,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	if !utils.DeployableByAgent(deployer.syncMode, deployer.appPusherEnabled) {
 		klog.V(5).Infof("Description %s is not deployable by agent, skipping syncing", klog.KObj(desc))
 		return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-			deployer.discoveryRESTMapper, desc, deployer.recorder, true, deployer.ResourceCallbackHandler)
+			deployer.discoveryRESTMapper, desc, deployer.recorder, true, deployer.ResourceCallbackHandler, false)
 	}
 
 	if desc.DeletionTimestamp != nil {
@@ -141,7 +141,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	}
 
 	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, false, deployer.ResourceCallbackHandler)
+		deployer.discoveryRESTMapper, desc, deployer.recorder, false, deployer.ResourceCallbackHandler, false)
 }
 
 func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstructured) error {
@@ -167,10 +167,10 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 			return err
 		}
 
-		//TODO when to recycle resource controller or make they live forever as resource controller cache?
+		//DO NOT recycle resource controller so they live forever as resource controller cache
+		deployer.AddController(gvk, resourceController)
 		stopChan := make(chan struct{})
 		resourceController.Run(known.DefaultThreadiness, stopChan)
-		deployer.AddController(gvk, resourceController)
 	}
 	return nil
 }
@@ -179,7 +179,7 @@ func (deployer *Deployer) handleResource(ownedByValue string) error {
 	// get description ns and name
 	parts := strings.Split(ownedByValue, ".")
 	if len(parts) < 2 {
-		return fmt.Errorf("unexpected value for label %s: %s", known.ObjectOwnedByDescriptionLabel, ownedByValue)
+		return fmt.Errorf("unexpected value for annotation %s: %s", known.ObjectOwnedByDescriptionAnnotation, ownedByValue)
 	}
 	// namespace contains no ".", while name does
 	namespace := parts[0]
@@ -194,8 +194,17 @@ func (deployer *Deployer) handleResource(ownedByValue string) error {
 		return err
 	}
 
-	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil)
+	if desc.DeletionTimestamp != nil {
+		klog.V(4).Infof("do not rollback in-deleting Description %s", ownedByValue)
+		return nil
+	}
+
+	err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+		deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil, true)
+	if err == nil {
+		klog.V(4).Infof("successfully rollback Description %s", ownedByValue)
+	}
+	return err
 }
 
 func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool {

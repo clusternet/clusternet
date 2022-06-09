@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -545,6 +546,12 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	labels[known.ObjectCreatedByLabel] = known.ClusternetHubName
 	u.SetLabels(labels)
 
+	annotations := u.GetAnnotations()
+	// skip validating when SkipValidatingAnnotation is true
+	if annotations != nil && annotations[known.SkipValidatingAnnotation] == "true" {
+		return u, nil
+	}
+
 	if r.kind != "Namespace" && r.namespaced {
 		u.SetNamespace(r.reservedNamespace)
 	}
@@ -570,7 +577,18 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 		Body(body)
 	err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
 	if err != nil {
-		return nil, err
+		if !errors.IsAlreadyExists(err) {
+			return nil, err
+		}
+
+		// already exists
+		uCopy := u.DeepCopy()
+		uCopy.SetName(fmt.Sprintf("%s%s", u.GetName(), utilrand.String(3)))
+		result, err = r.dryRunCreate(ctx, uCopy, nil, options)
+		if err == nil {
+			result.SetName(u.GetName())
+		}
+		return result, err
 	}
 
 	if r.kind != "Namespace" && r.namespaced {

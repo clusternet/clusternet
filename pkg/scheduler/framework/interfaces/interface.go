@@ -33,17 +33,44 @@ import (
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
+	"github.com/clusternet/clusternet/pkg/scheduler/cache"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 )
 
 // ClusterScoreList declares a list of clusters and their scores.
 type ClusterScoreList []ClusterScore
 
+func (cs ClusterScoreList) Len() int {
+	return len(cs)
+}
+
+func (cs ClusterScoreList) Less(i, j int) bool {
+	return cs[i].Score > cs[j].Score
+}
+
+func (cs ClusterScoreList) Swap(i, j int) {
+	cs[i], cs[j] = cs[j], cs[i]
+}
+
 // ClusterScore is a struct with cluster id and score.
 type ClusterScore struct {
-	NamespacedName string // the namespaced name key of a ManagedCluster
-	Score          int64
+	NamespacedName       string // the namespaced name key of a ManagedCluster
+	Score                int64
+	MaxAvailableReplicas FeedReplicas
 }
+
+func (cs ClusterScoreList) ClusterNames() []string {
+	clusters := make([]string, 0, len(cs))
+	for _, score := range cs {
+		clusters = append(clusters, score.NamespacedName)
+	}
+	return clusters
+}
+
+type FeedReplicas []int32
+
+// PluginToClusterReplicas declares a map from plugin name to its ClusterScoreList.
+type PluginToClusterReplicas map[string]ClusterScoreList
 
 // PluginToClusterScores declares a map from plugin name to its ClusterScoreList.
 type PluginToClusterScores map[string]ClusterScoreList
@@ -170,6 +197,29 @@ type PostFilterPlugin interface {
 	PostFilter(ctx context.Context, sub *appsapi.Subscription, filteredClusterStatusMap ClusterToStatusMap) (*PostFilterResult, *Status)
 }
 
+// PrePredictPlugin is an interface for "PrePredict" plugin. PrePredict is an
+// informational extension point. Plugins will be called with a list of clusters
+// that passed the filtering phase.
+type PrePredictPlugin interface {
+	Plugin
+
+	// PrePredict is called by the scheduling framework after a list of managed clusters
+	// passed the filtering phase. All pre-predict plugins must return success or
+	// the subscription will be rejected.
+	PrePredict(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
+}
+
+// PredictPlugin is an interface that must be implemented by "Predict" plugins to predict
+// max available replicas for clusters that passed the filtering phase.
+type PredictPlugin interface {
+	Plugin
+
+	// Predict is called on each filtered cluster. It must return success and available
+	// replicas indicating the feasible domain for sake of division. All predict plugins
+	// must return success or the subscription will be rejected.
+	Predict(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clusterapi.ManagedCluster) (FeedReplicas, *Status)
+}
+
 // PreScorePlugin is an interface for "PreScore" plugin. PreScore is an
 // informational extension point. Plugins will be called with a list of clusters
 // that passed the filtering phase. A plugin may use this data to update internal
@@ -205,6 +255,29 @@ type ScorePlugin interface {
 	ScoreExtensions() ScoreExtensions
 }
 
+// PreAssignPlugin is an interface for "PreAssign" plugin. PreAssign is an
+// informational extension point. These are meant to prepare the state of
+// the assign.
+type PreAssignPlugin interface {
+	Plugin
+
+	// PreAssign is called by the scheduling framework after a list of managed clusters
+	// passed the filtering phase. All pre-predict plugins must return success or
+	// the subscription will be rejected.
+	PreAssign(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas TargetClusters) *Status
+}
+
+// AssignPlugin is an interface that must be implemented by "Assign" plugins to assign replicas
+// for each selected cluster.
+type AssignPlugin interface {
+	Plugin
+
+	// Assign is called on each selected cluster. It will assign replicas for each
+	// selected cluster. The return result is a map whose key is feed key and
+	// value is respective assigned replicas for each selected cluster.
+	Assign(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas TargetClusters) (TargetClusters, *Status)
+}
+
 // ReservePlugin is an interface for plugins with Reserve and Unreserve
 // methods. These are meant to update the state of the plugin. This concept
 // used to be called 'assume' in the original scheduler. These plugins should
@@ -217,13 +290,13 @@ type ReservePlugin interface {
 	// Reserve is called by the scheduling framework when the scheduler cache is
 	// updated. If this method returns a failed Status, the scheduler will call
 	// the Unreserve method for all enabled ReservePlugins.
-	Reserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	Reserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 	// Unreserve is called by the scheduling framework when a reserved subscription was
 	// rejected, an error occurred during reservation of subsequent plugins, or
 	// in a later phase. The Unreserve method implementation must be idempotent
 	// and may be called by the scheduler even if the corresponding Reserve
 	// method for the same plugin was not called.
-	Unreserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	Unreserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 }
 
 // PreBindPlugin is an interface that must be implemented by "PreBind" plugins.
@@ -233,7 +306,7 @@ type PreBindPlugin interface {
 
 	// PreBind is called before binding a subscription. All prebind plugins must return
 	// success or the subscription will be rejected and won't be sent for binding.
-	PreBind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	PreBind(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 }
 
 // PostBindPlugin is an interface that must be implemented by "PostBind" plugins.
@@ -245,7 +318,7 @@ type PostBindPlugin interface {
 	// informational. A common application of this extension point is for cleaning
 	// up. If a plugin needs to clean-up its state after a subscription is scheduled and
 	// bound, PostBind is the extension point that it should register.
-	PostBind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	PostBind(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 }
 
 // PermitPlugin is an interface that must be implemented by "Permit" plugins.
@@ -259,7 +332,7 @@ type PermitPlugin interface {
 	// The subscription will also be rejected if the wait timeout or the subscription is rejected while
 	// waiting. Note that if the plugin returns "wait", the framework will wait only
 	// after running the remaining plugins given that no other plugin rejects the subscription.
-	Permit(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (*Status, time.Duration)
+	Permit(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) (*Status, time.Duration)
 }
 
 // BindPlugin is an interface that must be implemented by "Bind" plugins. Bind
@@ -273,7 +346,7 @@ type BindPlugin interface {
 	// remaining bind plugins are skipped. When a bind plugin does not handle a Subscription,
 	// it must return Skip in its Status code. If a bind plugin returns an Error, the
 	// subscription is rejected and will not be bound.
-	Bind(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	Bind(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 }
 
 // Framework manages the set of plugins in use by the scheduling framework.
@@ -293,15 +366,40 @@ type Framework interface {
 	// cluster state to make the subscription potentially schedulable in a future scheduling cycle.
 	RunPostFilterPlugins(ctx context.Context, sub *appsapi.Subscription, filteredClusterStatusMap ClusterToStatusMap) (*PostFilterResult, *Status)
 
+	// RunPrePredictPlugins runs the set of configured PrePredict plugins. It returns
+	// *Status and its code is set to non-success if any of the plugins returns
+	// anything but Success. If a non-success status is returned, then the scheduling
+	// cycle is aborted.
+	RunPrePredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *Status
+
+	// RunPredictPlugins runs the set of configured Predict plugins. It returns a map that
+	// stores for each Predict plugin name the corresponding ClusterScoreList(s).
+	// It also returns *Status, which is set to non-success if any of the plugins returns
+	// a non-success status.
+	RunPredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster, availableList ClusterScoreList) (ClusterScoreList, *Status)
+
+	// RunPreAssignPlugins runs the set of configured PreAssign plugins. It returns
+	// *Status and its code is set to non-success if any of the plugins returns
+	// anything but Success. If a non-success status is returned, then the scheduling
+	// cycle is aborted.
+	RunPreAssignPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, selected TargetClusters) *Status
+
+	// RunAssignPlugins runs the set of configured Assign plugins. An Assign plugin may choose
+	// whether to handle the given subscription. If an Assign plugin chooses to skip the
+	// assigning, it should return code=5("skip") status. Otherwise, it should return "Error"
+	// or "Success". If none of the plugins handled assigning, RunAssignPlugins returns
+	// code=5("skip") status.
+	RunAssignPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, selected TargetClusters) (TargetClusters, *Status)
+
 	// RunReservePluginsReserve runs the Reserve method of the set of
 	// configured Reserve plugins. If any of these calls returns an error, it
 	// does not continue running the remaining ones and returns the error. In
 	// such case, subscription will not be scheduled.
-	RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// RunReservePluginsUnreserve runs the Unreserve method of the set of
 	// configured Reserve plugins.
-	RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 
 	// RunPermitPlugins runs the set of configured Permit plugins. If any of these
 	// plugins returns a status other than "Success" or "Wait", it does not continue
@@ -309,7 +407,7 @@ type Framework interface {
 	// plugins returns "Wait", then this function will create and add waiting subscription
 	// to a map of currently waiting subscriptions and return status with "Wait" code.
 	// Subscription will remain waiting subscription for the minimum duration returned by the Permit plugins.
-	RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// WaitOnPermit will block, if the subscription is a waiting subscription, until the waiting subscription is rejected or allowed.
 	WaitOnPermit(ctx context.Context, sub *appsapi.Subscription) *Status
@@ -319,17 +417,17 @@ type Framework interface {
 	// anything but Success. If the Status code is Unschedulable, it is
 	// considered as a scheduling check failure, otherwise, it is considered as an
 	// internal error. In either case the subscription is not going to be bound.
-	RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// RunPostBindPlugins runs the set of configured PostBind plugins.
-	RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string)
+	RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters)
 
 	// RunBindPlugins runs the set of configured Bind plugins. A Bind plugin may choose
 	// whether or not to handle the given subscription. If a Bind plugin chooses to skip the
 	// binding, it should return code=5("skip") status. Otherwise, it should return "Error"
 	// or "Success". If none of the plugins handled binding, RunBindPlugins returns
 	// code=5("skip") status.
-	RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) *Status
+	RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters TargetClusters) *Status
 
 	// HasFilterPlugins returns true if at least one Filter plugin is defined.
 	HasFilterPlugins() bool
@@ -339,6 +437,9 @@ type Framework interface {
 
 	// HasScorePlugins returns true if at least one Score plugin is defined.
 	HasScorePlugins() bool
+
+	// HasPredictPlugins returns true if at least one Predict plugin is defined.
+	HasPredictPlugins() bool
 
 	// ListPlugins returns a map of extension point name to list of configured Plugins.
 	ListPlugins() *schedulerapis.Plugins
@@ -353,6 +454,9 @@ type Framework interface {
 type Handle interface {
 	// PluginsRunner abstracts operations to run some plugins.
 	PluginsRunner
+
+	// ClusterCache returns a cluster cache.
+	ClusterCache() cache.Cache
 
 	// IterateOverWaitingSubscriptions acquires a read lock and iterates over the WaitingSubscriptions map.
 	IterateOverWaitingSubscriptions(callback func(WaitingSubscription))
@@ -380,7 +484,7 @@ type Handle interface {
 
 // PostFilterResult wraps needed info for scheduler framework to act upon PostFilter phase.
 type PostFilterResult struct {
-	NominatedNamespacedClusters []string
+	NominatedtargetClusters TargetClusters
 }
 
 // PluginsRunner abstracts operations to run some plugins.

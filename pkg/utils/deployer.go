@@ -130,15 +130,15 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 
 	// delete helm release
 	if hr.DeletionTimestamp != nil {
-		err := UninstallRelease(cfg, hr)
-		if err != nil {
-			return err
+		err2 := UninstallRelease(cfg, hr)
+		if err2 != nil {
+			return err2
 		}
 
 		hrCopy := hr.DeepCopy()
 		hrCopy.Finalizers = RemoveString(hrCopy.Finalizers, known.AppFinalizer)
-		_, err = clusternetClient.AppsV1alpha1().HelmReleases(hrCopy.Namespace).Update(context.TODO(), hrCopy, metav1.UpdateOptions{})
-		return err
+		_, err2 = clusternetClient.AppsV1alpha1().HelmReleases(hrCopy.Namespace).Update(context.TODO(), hrCopy, metav1.UpdateOptions{})
+		return err2
 	}
 
 	// install or upgrade helm release
@@ -159,22 +159,26 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 		return err
 	}
 
-	overrideValues, err := GetOverrides(descLister, hr, recorder)
-	if err != nil {
-		return err
+	releaseName := getReleaseName(hr)
+	var overrideValues map[string]interface{}
+	if len(strings.TrimSpace(string(hr.Spec.Overrides))) > 0 {
+		if err = json.Unmarshal(hr.Spec.Overrides, &overrideValues); err != nil {
+			return err
+		}
 	}
 
 	var rel *release.Release
 	// check whether the release is deployed
-	rel, err = cfg.Releases.Deployed(hr.Name)
+	rel, err = cfg.Releases.Deployed(releaseName)
 	if err != nil {
 		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
-			rel, err = InstallRelease(cfg, hr, chart, overrideValues)
+			rel, err = InstallRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		}
 	} else {
 		// verify the release is changed or not
 		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
-			rel, err = UpgradeRelease(cfg, hr, chart, overrideValues)
+			klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
+			rel, err = UpgradeRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		} else {
 			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
 		}
@@ -204,52 +208,15 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 			hrStatus.Notes = rel.Info.Notes
 		}
 	}
-	return UpdateHelmReleaseStatus(ctx, clusternetClient,
+
+	err3 := UpdateHelmReleaseStatus(ctx, clusternetClient,
 		hrLister, descLister, hr, hrStatus)
-}
-
-func GetOverrides(descLister applisters.DescriptionLister, hr *appsapi.HelmRelease, recorder record.EventRecorder) (map[string]interface{}, error) {
-	var overrideValues map[string]interface{}
-	if hr.DeletionTimestamp != nil {
-		return overrideValues, nil
+	if err3 != nil {
+		// above "err" may not be nil, but we still need to update HelmRelease status
+		// "err" will aggregate "err3" as well
+		err = err3
 	}
-
-	// get overrides
-	controllerRef := metav1.GetControllerOf(hr)
-	if controllerRef != nil {
-		desc := resolveControllerRef(descLister, hr.Namespace, controllerRef)
-		if desc == nil {
-			return overrideValues, nil
-		}
-
-		var found bool
-		var index int
-		for idx, chart := range desc.Spec.Charts {
-			if GenerateHelmReleaseName(desc.Name, chart) == hr.Name {
-				found = true
-				index = idx
-				break
-			}
-		}
-		if !found {
-			msg := fmt.Sprintf("Description %s has no connection with HelmRelease %s", klog.KObj(desc), klog.KObj(hr))
-			klog.WarningDepth(5, msg)
-			recorder.Event(desc, corev1.EventTypeWarning, "DescriptionNotRelated", msg)
-			return overrideValues, nil
-		}
-		if len(desc.Spec.Raw) < index {
-			msg := fmt.Sprintf("unequal lengths of Spec.Raw and Spec.Charts in Description %s", klog.KObj(desc))
-			klog.ErrorDepth(5, msg)
-			recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
-			return nil, errors.New(msg)
-		}
-		if len(strings.TrimSpace(string(desc.Spec.Raw[index]))) == 0 {
-			return overrideValues, nil
-		}
-		err := json.Unmarshal(desc.Spec.Raw[index], &overrideValues)
-		return overrideValues, err
-	}
-	return overrideValues, nil
+	return err
 }
 
 func GenerateHelmReleaseName(descName string, chartRef appsapi.ChartReference) string {
@@ -338,7 +305,7 @@ type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
 
 func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
 	discoveryRESTMapper meta.RESTMapper, desc *appsapi.Description, recorder record.EventRecorder, dryApply bool,
-	callbackHandler ResourceCallbackHandler) error {
+	callbackHandler ResourceCallbackHandler, ignoreAdd bool) error {
 	var allErrs []error
 	wg := sync.WaitGroup{}
 	objectsToBeDeployed := desc.Spec.Raw
@@ -354,19 +321,19 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			continue
 		}
 
-		labels := resource.GetLabels()
-		if labels == nil {
-			labels = map[string]string{}
+		annotations := resource.GetAnnotations()
+		if annotations == nil {
+			annotations = map[string]string{}
 		}
-		labels[known.ObjectOwnedByDescriptionLabel] = desc.Namespace + "." + desc.Name
-		resource.SetLabels(labels)
+		annotations[known.ObjectOwnedByDescriptionAnnotation] = desc.Namespace + "." + desc.Name
+		resource.SetAnnotations(annotations)
 		wg.Add(1)
 		go func(resource *unstructured.Unstructured) {
 			defer wg.Done()
 
 			// dryApply means do not apply resources, just add sub resource watcher.
 			if !dryApply {
-				retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+				retryErr := ApplyResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource, ignoreAdd)
 				if retryErr != nil {
 					errCh <- retryErr
 					return
@@ -483,7 +450,8 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 	return err
 }
 
-func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
+func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
+	resource *unstructured.Unstructured, ignoreAdd bool) error {
 	// set UID as empty
 	resource.SetUID("")
 
@@ -512,8 +480,7 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 		} else {
 			lastError = nil
 		}
-
-		if ResourceNeedResync(curObj, resource) {
+		if ResourceNeedResync(resource, curObj, ignoreAdd) {
 			// try to update resource
 			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
 				Update(context.TODO(), resource, metav1.UpdateOptions{})
@@ -667,14 +634,36 @@ func fieldsToBeIgnored() []string {
 		known.ManagedFields,
 		known.MetaUID,
 		known.MetaSelflink,
+		known.MetaResourceVersion,
 	}
+}
+
+func sectionToBeIgnored() []string {
+	return []string{
+		known.SectionStatus,
+	}
+}
+
+// shouldPatchBeIgnored used to decide if this patch operation should be ignored.
+func shouldPatchBeIgnored(operation jsonpatch.JsonPatchOperation) bool {
+	// some fields need to be ignore like meta.selfLink, meta.resourceVersion.
+	if ContainsString(fieldsToBeIgnored(), operation.Path) {
+		return true
+	}
+	// some sections like status section need to be ignored.
+	if ContainsPrefix(sectionToBeIgnored(), operation.Path) {
+		return true
+	}
+
+	return false
 }
 
 // ResourceNeedResync will compare fields and decide whether to sync back the current object.
 //
 // current is deployed resource, modified is changed resource.
+// ignoreAdd is true if you want to ignore add action.
 // The function will return the bool value to indicate whether to sync back the current object.
-func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object) bool {
+func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, ignoreAdd bool) bool {
 	currentBytes, err := json.Marshal(current)
 	if err != nil {
 		klog.ErrorDepth(5, fmt.Sprintf("Error marshal json: %v", err))
@@ -694,13 +683,17 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object) b
 	}
 	for _, operation := range patch {
 		// filter ignored paths
-		if ContainsString(fieldsToBeIgnored(), operation.Path) {
+		if shouldPatchBeIgnored(operation) {
 			continue
 		}
 
 		switch operation.Operation {
 		case "add":
-			continue
+			if ignoreAdd {
+				continue
+			} else {
+				return true
+			}
 		case "remove", "replace":
 			return true
 		default:

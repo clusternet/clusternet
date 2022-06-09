@@ -9,35 +9,36 @@
 # review when someone opens a pull request.
 *       @dixudx
 
-.github     @clusternet/clusternet-admin
+.github @clusternet/sig-admin
 
-Dockerfile  @clusternet/clusternet-admin
-Makefile    @clusternet/clusternet-admin
+Dockerfile @clusternet/sig-admin
+Makefile @clusternet/sig-admin
 
 # cmd
-/cmd    @clusternet/clusternet-admin
+/cmd @clusternet/sig-admin
 
 # deploy
-/deploy     @clusternet/clusternet-admin
+/deploy @clusternet/sig-admin
 
 # hack scripts
-/hack   @clusternet/sig-utils
+/hack @clusternet/sig-utils
 
 # manifests
-/manifests  @clusternet/clusternet-admin
+/manifests @clusternet/sig-admin
 
 # pkg
-/pkg   @clusternet/clusternet-admin
+/pkg @clusternet/sig-admin
 
-/pkg/agent  @clusternet/clusternet-admin
-/pkg/hub    @clusternet/clusternet-admin
+/pkg/agent     @clusternet/sig-admin
+/pkg/hub       @clusternet/sig-admin
+/pkg/scheduler @clusternet/sig-scheduler @clusternet/sig-admin
 
-/pkg/apis           @clusternet/sig-apis
-/pkg/apis/clusters  @clusternet/sig-clusters @clusternet/sig-apis
-/pkg/apis/proxies   @clusternet/sig-network @clusternet/sig-apis
-/pkg/apis/apps      @clusternet/sig-apps @clusternet/sig-apis
+/pkg/apis          @clusternet/sig-apis
+/pkg/apis/clusters @clusternet/sig-clusters @clusternet/sig-apis
+/pkg/apis/proxies  @clusternet/sig-network @clusternet/sig-apis
+/pkg/apis/apps     @clusternet/sig-apps @clusternet/sig-apis
 
 /pkg/registry   @clusternet/sig-apis
 /pkg/exchanger  @clusternet/sig-network
-/pkg/features   @clusternet/clusternet-admin
+/pkg/features   @clusternet/sig-admin
 /pkg/utils      @clusternet/sig-utils

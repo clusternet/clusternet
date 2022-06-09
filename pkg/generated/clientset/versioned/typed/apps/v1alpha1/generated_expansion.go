@@ -21,6 +21,8 @@ type BaseExpansion interface{}
 
 type DescriptionExpansion interface{}
 
+type FeedInventoryExpansion interface{}
+
 type GlobalizationExpansion interface{}
 
 type HelmChartExpansion interface{}

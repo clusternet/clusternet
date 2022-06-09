@@ -23,4 +23,11 @@ const (
 
 	// FeedProtectionAnnotation passes detailed message on protecting current object as a feed
 	FeedProtectionAnnotation = "apps.clusternet.io/feed-protection"
+
+	// SkipValidatingAnnotation indicates no validations will be applied when dry-run on shadow resources.
+	// This is useful when you want to create a CR, but you don't want to declare a CRD in the parent kube-apiserver.
+	SkipValidatingAnnotation = "apps.clusternet.io/skip-validating"
+
+	//ObjectOwnedByDescriptionAnnotation is the name of an annotation which contains the description of the object owned by
+	ObjectOwnedByDescriptionAnnotation = "apps.clusternet.io/owned-by-description"
 )

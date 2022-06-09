@@ -47,6 +47,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
+	"github.com/clusternet/clusternet/pkg/controllers/apps/feedinventory"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/helmchart"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/manifest"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/subscription"
@@ -80,6 +81,10 @@ type Deployer struct {
 	mfstSynced  cache.InformerSynced
 	subLister   applisters.SubscriptionLister
 	subSynced   cache.InformerSynced
+	finvLister  applisters.FeedInventoryLister
+	finvSynced  cache.InformerSynced
+	locLister   applisters.LocalizationLister
+	locSynced   cache.InformerSynced
 	nsLister    corev1lister.NamespaceLister
 	nsSynced    cache.InformerSynced
 
@@ -90,6 +95,7 @@ type Deployer struct {
 	mfstController  *manifest.Controller
 	baseController  *base.Controller
 	chartController *helmchart.Controller
+	finvController  *feedinventory.Controller
 
 	helmDeployer    *helm.Deployer
 	genericDeployer *generic.Deployer
@@ -124,6 +130,10 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 		mfstSynced:        clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
 		subLister:         clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
 		subSynced:         clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().HasSynced,
+		finvLister:        clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Lister(),
+		finvSynced:        clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().HasSynced,
+		locLister:         clusternetInformerFactory.Apps().V1alpha1().Localizations().Lister(),
+		locSynced:         clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer().HasSynced,
 		nsLister:          kubeInformerFactory.Core().V1().Namespaces().Lister(),
 		nsSynced:          kubeInformerFactory.Core().V1().Namespaces().Informer().HasSynced,
 		clusternetClient:  clusternetclient,
@@ -196,6 +206,18 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 	}
 	deployer.localizer = l
 
+	finv, err := feedinventory.NewController(clusternetclient,
+		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
+		clusternetInformerFactory.Apps().V1alpha1().FeedInventories(),
+		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
+		deployer.recorder,
+		feedinventory.NewInTreeRegistry(),
+		reservedNamespace)
+	if err != nil {
+		return nil, err
+	}
+	deployer.finvController = finv
+
 	return deployer, nil
 }
 
@@ -211,6 +233,8 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 		deployer.mfstSynced,
 		deployer.subSynced,
 		deployer.nsSynced,
+		deployer.finvSynced,
+		deployer.locSynced,
 	) {
 		return
 	}
@@ -222,6 +246,11 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	go deployer.mfstController.Run(workers, stopCh)
 	go deployer.baseController.Run(workers, stopCh)
 	go deployer.localizer.Run(workers, stopCh)
+
+	// When using external FeedInventory controller, this feature gate should be closed
+	if utilfeature.DefaultFeatureGate.Enabled(features.FeedInventory) {
+		go deployer.finvController.Run(workers, stopCh)
+	}
 
 	<-stopCh
 }
@@ -270,7 +299,8 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 		return err
 	}
 
-	err := deployer.populateBases(sub)
+	// populate Base and Localization (for dividing scheduling)
+	err := deployer.populateBasesAndLocalizations(sub)
 	if err != nil {
 		return err
 	}
@@ -278,7 +308,9 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 	return nil
 }
 
-func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
+// populateBasesAndLocalizations will populate a group of Base(s) from Subscription.
+// Localization(s) will be populated as well for dividing scheduling.
+func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscription) error {
 	allExistingBases, listErr := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
 		known.ConfigKindLabel:      subscriptionKind.Kind,
 		known.ConfigNameLabel:      sub.Name,
@@ -295,7 +327,7 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 	}
 
 	var allErrs []error
-	for _, namespacedName := range sub.Status.BindingClusters {
+	for idx, namespacedName := range sub.Status.BindingClusters {
 		// Convert the namespacedName/name string into a distinct namespacedName and name
 		namespace, _, err := cache.SplitMetaNamespaceKey(namespacedName)
 		if err != nil {
@@ -303,15 +335,15 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 			continue
 		}
 
-		ns, listErr := deployer.nsLister.Get(namespace)
-		if listErr != nil {
-			if apierrors.IsNotFound(listErr) {
+		ns, err2 := deployer.nsLister.Get(namespace)
+		if err2 != nil {
+			if apierrors.IsNotFound(err2) {
 				continue
 			}
 			return fmt.Errorf("failed to populate Bases for Subscription %s: %v", klog.KObj(sub), err)
 		}
 
-		base := &appsapi.Base{
+		baseTemplate := &appsapi.Base{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      sub.Name,
 				Namespace: namespace,
@@ -336,18 +368,26 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 			},
 		}
 		if ns.Labels != nil {
-			base.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
-			base.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
+			baseTemplate.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
+			baseTemplate.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
 		}
 
-		err = deployer.syncBase(sub, base)
+		basesToBeDeleted.Delete(klog.KObj(baseTemplate).String())
+		base, err := deployer.syncBase(sub, baseTemplate)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(base), err)
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingBase", msg)
+			continue
 		}
-		basesToBeDeleted.Delete(klog.KObj(base).String())
+
+		// populate Localizations for dividing scheduling.
+		err = deployer.populateLocalizations(sub, base, idx)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			klog.ErrorDepth(5, fmt.Sprintf("Failed to sync Localizations: %v", err))
+		}
 	}
 
 	for key := range basesToBeDeleted {
@@ -360,51 +400,51 @@ func (deployer *Deployer) populateBases(sub *appsapi.Subscription) error {
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) syncBase(sub *appsapi.Subscription, base *appsapi.Base) error {
-	if curBase, err := deployer.baseLister.Bases(base.Namespace).Get(base.Name); err == nil {
-		if curBase.DeletionTimestamp != nil {
-			return fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(curBase))
-		}
-
-		// update it
-		if !reflect.DeepEqual(curBase.Spec, base.Spec) {
-			curBaseCopy := curBase.DeepCopy()
-			if curBaseCopy.Labels == nil {
-				curBaseCopy.Labels = make(map[string]string)
-			}
-			for key, value := range base.Labels {
-				curBaseCopy.Labels[key] = value
-			}
-
-			curBaseCopy.Spec = base.Spec
-			if !utils.ContainsString(curBaseCopy.Finalizers, known.AppFinalizer) {
-				curBaseCopy.Finalizers = append(curBaseCopy.Finalizers, known.AppFinalizer)
-			}
-
-			_, err = deployer.clusternetClient.AppsV1alpha1().Bases(curBaseCopy.Namespace).Update(context.TODO(),
-				curBaseCopy, metav1.UpdateOptions{})
-			if err == nil {
-				msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(curBaseCopy))
-				klog.V(4).Info(msg)
-				deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
-			}
-			return err
-		}
-		return nil
-	} else {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	_, err := deployer.clusternetClient.AppsV1alpha1().Bases(base.Namespace).Create(context.TODO(),
-		base, metav1.CreateOptions{})
+func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *appsapi.Base) (*appsapi.Base, error) {
+	base, err := deployer.clusternetClient.AppsV1alpha1().Bases(baseTemplate.Namespace).Create(context.TODO(),
+		baseTemplate, metav1.CreateOptions{})
 	if err == nil {
-		msg := fmt.Sprintf("Base %s is created successfully", klog.KObj(base))
+		msg := fmt.Sprintf("Base %s is created successfully", klog.KObj(baseTemplate))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseCreated", msg)
+		return base, nil
 	}
-	return err
+
+	if !apierrors.IsAlreadyExists(err) {
+		return nil, err
+	}
+
+	// update it
+	base, err = deployer.baseLister.Bases(baseTemplate.Namespace).Get(baseTemplate.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	if base.DeletionTimestamp != nil {
+		return nil, fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(base))
+	}
+
+	baseCopy := base.DeepCopy()
+	if baseCopy.Labels == nil {
+		baseCopy.Labels = make(map[string]string)
+	}
+	for key, value := range baseTemplate.Labels {
+		baseCopy.Labels[key] = value
+	}
+
+	baseCopy.Spec = baseTemplate.Spec
+	if !utils.ContainsString(baseCopy.Finalizers, known.AppFinalizer) {
+		baseCopy.Finalizers = append(baseCopy.Finalizers, known.AppFinalizer)
+	}
+
+	base, err = deployer.clusternetClient.AppsV1alpha1().Bases(baseCopy.Namespace).Update(context.TODO(),
+		baseCopy, metav1.UpdateOptions{})
+	if err == nil {
+		msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(baseCopy))
+		klog.V(4).Info(msg)
+		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
+	}
+	return base, err
 }
 
 func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) error {
@@ -424,6 +464,156 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 	}
 
 	err = deployer.clusternetClient.AppsV1alpha1().Bases(ns).Delete(ctx, name, metav1.DeleteOptions{
+		PropagationPolicy: &deletePropagationBackground,
+	})
+	if err != nil && apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base *appsapi.Base, clusterIndex int) error {
+	if len(base.UID) == 0 {
+		return fmt.Errorf("waiting for UID set for Base %s", klog.KObj(base))
+	}
+
+	if sub.Spec.SchedulingStrategy != appsapi.DividingSchedulingStrategyType {
+		return nil
+	}
+
+	finv, err := deployer.finvLister.FeedInventories(sub.Namespace).Get(sub.Name)
+	if err != nil {
+		klog.WarningDepth(5, fmt.Sprintf("failed to get FeedInventory %s: %v", klog.KObj(sub), err))
+		return err
+	}
+
+	allExistingLocalizations, err := deployer.locLister.Localizations(base.Namespace).List(labels.SelectorFromSet(labels.Set{
+		string(sub.UID): subscriptionKind.Kind,
+	}))
+	if err != nil {
+		return err
+	}
+	// Localizations to be deleted
+	locsToBeDeleted := sets.String{}
+	for _, loc := range allExistingLocalizations {
+		locsToBeDeleted.Insert(klog.KObj(loc).String())
+	}
+
+	var allErrs []error
+	for _, feedOrder := range finv.Spec.Feeds {
+		replicas, ok := sub.Status.Replicas[utils.GetFeedKey(feedOrder.Feed)]
+		if !ok {
+			continue
+		}
+
+		if len(replicas) == 0 {
+			continue
+		}
+
+		if len(feedOrder.ReplicaJsonPath) == 0 {
+			msg := fmt.Sprintf("no valid JSONPath is set for %s in FeedInventory %s",
+				utils.FormatFeed(feedOrder.Feed), klog.KObj(finv))
+			klog.ErrorDepth(5, msg)
+			allErrs = append(allErrs, errors.New(msg))
+			deployer.recorder.Event(finv, corev1.EventTypeWarning, "ReplicaJsonPathUnset", msg)
+			continue
+		}
+
+		if len(replicas) < clusterIndex {
+			msg := fmt.Sprintf("the length of status.Replicas for %s in Subscription %s is not matched with status.BindingClusters",
+				utils.FormatFeed(feedOrder.Feed), klog.KObj(sub))
+			klog.ErrorDepth(5, msg)
+			allErrs = append(allErrs, errors.New(msg))
+			deployer.recorder.Event(sub, corev1.EventTypeWarning, "BadSchedulingResult", msg)
+			continue
+		}
+
+		suffixName := feedOrder.Feed.Name
+		if len(feedOrder.Feed.Namespace) > 0 {
+			suffixName = fmt.Sprintf("%s.%s", feedOrder.Feed.Namespace, feedOrder.Feed.Name)
+		}
+		loc := GenerateLocalizationTemplate(base, appsapi.ApplyNow)
+		loc.Name = fmt.Sprintf("%s-%s-%s", base.Name, strings.ToLower(feedOrder.Feed.Kind), suffixName)
+		loc.Labels[string(sub.UID)] = subscriptionKind.Kind
+		loc.Spec.Feed = feedOrder.Feed
+		loc.Spec.Overrides = []appsapi.OverrideConfig{
+			{
+				Name:  "dividing scheduling replicas",
+				Value: fmt.Sprintf(`[{"path":%q,"value":%d,"op":"replace"}]`, feedOrder.ReplicaJsonPath, replicas[clusterIndex]),
+				Type:  appsapi.JSONPatchType,
+			},
+		}
+
+		err = deployer.syncLocalization(loc)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("Failed to sync Localization %s: %v", klog.KObj(loc), err)
+			klog.ErrorDepth(5, msg)
+			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingLocalization", msg)
+		}
+		locsToBeDeleted.Delete(klog.KObj(loc).String())
+	}
+
+	for key := range locsToBeDeleted {
+		err := deployer.deleteLocalization(context.TODO(), key)
+		if err != nil {
+			allErrs = append(allErrs, err)
+		}
+	}
+
+	return utilerrors.NewAggregate(allErrs)
+}
+
+func (deployer *Deployer) syncLocalization(loc *appsapi.Localization) error {
+	_, err := deployer.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Create(context.TODO(), loc, metav1.CreateOptions{})
+	if err == nil {
+		klog.V(4).Infof("Localization %s is created successfully", klog.KObj(loc))
+		return nil
+	}
+
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+
+	// update it
+	curLoc, err := deployer.locLister.Localizations(loc.Namespace).Get(loc.Name)
+	if err != nil {
+		return err
+	}
+	curLocCopy := curLoc.DeepCopy()
+
+	if curLocCopy.Labels == nil {
+		curLocCopy.Labels = make(map[string]string)
+	}
+	for key, value := range loc.Labels {
+		curLocCopy.Labels[key] = value
+	}
+
+	if curLocCopy.Annotations == nil {
+		curLocCopy.Annotations = make(map[string]string)
+	}
+	for key, value := range loc.Annotations {
+		curLocCopy.Annotations[key] = value
+	}
+
+	curLocCopy.Spec = loc.Spec
+
+	_, err = deployer.clusternetClient.AppsV1alpha1().Localizations(curLocCopy.Namespace).Update(context.TODO(), curLocCopy, metav1.UpdateOptions{})
+	if err == nil {
+		klog.V(4).Infof("Localization %s is updated successfully", klog.KObj(curLocCopy))
+	}
+
+	return err
+}
+
+func (deployer *Deployer) deleteLocalization(ctx context.Context, namespacedKey string) error {
+	// Convert the namespace/name string into a distinct namespace and name
+	ns, name, err := cache.SplitMetaNamespaceKey(namespacedKey)
+	if err != nil {
+		return err
+	}
+
+	err = deployer.clusternetClient.AppsV1alpha1().Localizations(ns).Delete(ctx, name, metav1.DeleteOptions{
 		PropagationPolicy: &deletePropagationBackground,
 	})
 	if err != nil && apierrors.IsNotFound(err) {
@@ -583,18 +773,9 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 			Finalizers: []string{
 				known.AppFinalizer,
 			},
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         baseKind.Version,
-					Kind:               baseKind.Kind,
-					Name:               base.Name,
-					UID:                base.UID,
-					Controller:         utilpointer.BoolPtr(true),
-					BlockOwnerDeletion: utilpointer.BoolPtr(true),
-				},
-			},
 		},
 	}
+	descTemplate.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(base, baseKind)})
 
 	var allErrs []error
 	if len(allChartRefs) > 0 {

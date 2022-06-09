@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -103,4 +104,21 @@ func removeFeedFromAllMatchingSubscriptions(clusternetClient *clusternetclientse
 		allErrs = append(allErrs, err)
 	}
 	return utilerrors.NewAggregate(allErrs)
+}
+
+func GenerateLocalizationTemplate(base *appsapi.Base, overridePolicy appsapi.OverridePolicy) *appsapi.Localization {
+	loc := &appsapi.Localization{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: base.Namespace,
+			Labels: map[string]string{
+				known.ObjectCreatedByLabel: known.ClusternetHubName,
+			},
+		},
+		Spec: appsapi.LocalizationSpec{
+			OverridePolicy: overridePolicy,
+			Priority:       1000, // with the highest priority
+		},
+	}
+	loc.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(base, baseKind)})
+	return loc
 }

@@ -331,7 +331,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	manifest.Kind = controllerKind.Kind
-	manifest.APIVersion = controllerKind.Version
+	manifest.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(manifest)
 	if err != nil {
 		c.recorder.Event(manifest, corev1.EventTypeWarning, "FailedSynced", err.Error())

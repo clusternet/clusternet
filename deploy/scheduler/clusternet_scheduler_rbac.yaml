@@ -5,7 +5,7 @@ metadata:
   name: clusternet:scheduler
 rules:
   - apiGroups: [ "apps.clusternet.io" ]
-    resources: [ "subscriptions" ]
+    resources: [ "subscriptions", "feedinventories" ]
     verbs: [ "get", "list", "watch" ]
   - apiGroups: [ "apps.clusternet.io" ]
     resources: [ "subscriptions/status" ]

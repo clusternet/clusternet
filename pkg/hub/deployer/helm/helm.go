@@ -18,8 +18,10 @@ package helm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +33,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -111,7 +115,6 @@ func NewDeployer(apiserverURL, systemNamespace string,
 	}
 
 	hrController, err := helmrelease.NewController(clusternetClient,
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
 		deployer.handleHelmRelease)
@@ -257,8 +260,15 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 		hrsToBeDeleted.Insert(klog.KObj(hr).String())
 	}
 
+	if len(desc.Spec.Raw) != len(desc.Spec.Charts) {
+		msg := fmt.Sprintf("unequal lengths of Spec.Raw and Spec.Charts in Description %s", klog.KObj(desc))
+		klog.ErrorDepth(5, msg)
+		deployer.recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
+		return errors.New(msg)
+	}
+
 	var allErrs []error
-	for _, chartRef := range desc.Spec.Charts {
+	for idx, chartRef := range desc.Spec.Charts {
 		chart, err := deployer.chartLister.HelmCharts(chartRef.Namespace).Get(chartRef.Name)
 		if err != nil {
 			return err
@@ -284,23 +294,15 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 				Finalizers: []string{
 					known.AppFinalizer,
 				},
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion:         descriptionKind.Version,
-						Kind:               descriptionKind.Kind,
-						Name:               desc.Name,
-						UID:                desc.UID,
-						Controller:         utilpointer.BoolPtr(true),
-						BlockOwnerDeletion: utilpointer.BoolPtr(true),
-					},
-				},
 			},
 			Spec: appsapi.HelmReleaseSpec{
 				ReleaseName:     utilpointer.String(chart.Name), // default to be the HelmChart name
 				TargetNamespace: chart.Spec.TargetNamespace,
 				HelmOptions:     chart.Spec.HelmOptions,
+				Overrides:       []byte(strings.TrimSpace(string(desc.Spec.Raw[idx]))),
 			},
 		}
+		hr.SetOwnerReferences([]metav1.OwnerReference{*metav1.NewControllerRef(desc, descriptionKind)})
 		hrsToBeDeleted.Delete(klog.KObj(hr).String())
 
 		err = deployer.syncHelmRelease(desc, hr)
@@ -425,7 +427,9 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return err
 	}
 
-	deployCtx, err := utils.NewDeployContext(config)
+	deployCtx, err := utils.NewDeployContext(config, &clientcmd.ConfigOverrides{Context: clientcmdapi.Context{
+		Namespace: hr.Spec.TargetNamespace,
+	}})
 	if err != nil {
 		return err
 	}

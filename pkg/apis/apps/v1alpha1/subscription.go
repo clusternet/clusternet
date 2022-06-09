@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Important: Run "make generated" to regenerate code after modifying this file
@@ -77,11 +78,6 @@ type SubscriptionSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	Feeds []Feed `json:"feeds"`
-
-	// Namespaced names of targeted clusters that Subscription binds to.
-	//
-	// +optional
-	BindingClusters []string `json:"bindingClusters,omitempty"`
 }
 
 // SubscriptionStatus defines the observed state of Subscription
@@ -89,8 +85,12 @@ type SubscriptionStatus struct {
 	// Namespaced names of targeted clusters that Subscription binds to.
 	//
 	// +optional
-	// Deprecated: Will be moved into `SubscriptionSpec`.
 	BindingClusters []string `json:"bindingClusters,omitempty"`
+
+	// Desired replicas of targeted clusters for each feed.
+	//
+	// +optional
+	Replicas map[string][]int32 `json:"replicas,omitempty"`
 
 	// SpecHash calculates the hash value of current SubscriptionSpec.
 	//
@@ -106,6 +106,109 @@ type SubscriptionStatus struct {
 	//
 	// +optional
 	CompletedReleases int `json:"completedReleases,omitempty"`
+
+	// AggregatedStatuses shows the aggregated statuses of feeds that are running in each child cluster.
+	//
+	// +optional
+	AggregatedStatuses []AggregatedStatus `json:"aggregatedStatuses,omitempty"`
+}
+
+// AggregatedStatus contains aggregated status of current feed.
+type AggregatedStatus struct {
+	// Feed holds references to the resource.
+	Feed `json:",inline"`
+
+	// FeedStatusSummary aggregates the feed statuses from each child cluster.
+	//
+	// +optional
+	FeedStatusSummary FeedStatus `json:"feedStatusSummary,omitempty"`
+
+	// FeedStatusDetails shows the feed statuses in each child cluster.
+	//
+	// +optional
+	FeedStatusDetails []FeedStatusPerCluster `json:"feedStatusDetails,omitempty"`
+}
+
+// FeedStatusPerCluster shows the feed status running in current cluster.
+type FeedStatusPerCluster struct {
+	// ClusterID indicates the id of current cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+	ClusterID types.UID `json:"clusterId,omitempty"`
+
+	// ClusterName is the cluster name.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=30
+	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
+	ClusterName string `json:"clusterName,omitempty"`
+
+	// FeedStatus contains the brief feed status in child cluster.
+	//
+	// +optional
+	FeedStatus `json:",inline"`
+}
+
+// FeedStatus defines the feed status.
+type FeedStatus struct {
+	// Available indicates whether the feed status is synced successfully to corresponding Description.
+	//
+	// +optional
+	Available bool `json:"available,omitempty"`
+
+	// ReplicaStatus indicates the replica status of workload-type feed, such as Deployment/StatefulSet/Job.
+	//
+	// +optional
+	ReplicaStatus `json:"replicaStatus,omitempty"`
+}
+
+// ReplicaStatus represents brief information about feed replicas running in child cluster.
+// This is used for workload-type feeds.
+type ReplicaStatus struct {
+	// The generation observed by the workload controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Total number of non-terminated pods targeted by this workload (their labels match the selector).
+	// +optional
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// Total number of non-terminated pods targeted by this workload that have the desired template spec.
+	// +optional
+	UpdatedReplicas int32 `json:"updatedReplicas,omitempty"`
+
+	// currentReplicas is the number of Pods created by the workload controller from the StatefulSet version
+	// indicated by currentRevision.
+	CurrentReplicas int32 `json:"currentReplicas,omitempty"`
+
+	// readyReplicas is the number of pods targeted by this workload with a Ready Condition.
+	// +optional
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
+
+	// Total number of available pods (ready for at least minReadySeconds) targeted by this workload.
+	// +optional
+	AvailableReplicas int32 `json:"availableReplicas,omitempty"`
+
+	// Total number of unavailable pods targeted by this workload. This is the total number of
+	// pods that are still required for the workload to have 100% available capacity. They may
+	// either be pods that are running but not yet available or pods that still have not been created.
+	// +optional
+	UnavailableReplicas int32 `json:"unavailableReplicas,omitempty"`
+
+	// The number of pending and running pods.
+	// +optional
+	Active int32 `json:"active,omitempty"`
+
+	// The number of pods which reached phase Succeeded.
+	// +optional
+	Succeeded int32 `json:"succeeded,omitempty"`
+
+	// The number of pods which reached phase Failed.
+	// +optional
+	Failed int32 `json:"failed,omitempty"`
 }
 
 // Subscriber defines
@@ -120,8 +223,8 @@ type Subscriber struct {
 	// Present only for static divided scheduling.
 	//
 	// +optional
-	// +kubebuilder:validation:Minimum=1
-	Weight *int32 `json:"weight,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	Weight int32 `json:"weight,omitempty"`
 }
 
 // Feed defines the resource to be selected.
@@ -152,12 +255,6 @@ type Feed struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
 	Name string `json:"name"`
-
-	// Number of desired pods in child clusters if necessary.
-	// The indices are corresponding with the scheduled clusters.
-	//
-	// +optional
-	Replicas []int32 `json:"replicas,omitempty"`
 }
 
 // DividingSchedulingStrategy describes how to divide replicas into target clusters.
@@ -168,6 +265,7 @@ type DividingSchedulingStrategy struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=Static
 	// +kubebuilder:validation:Type=string
+	// +kubebuilder:default=Static
 	Type ReplicaDividingType `json:"type"`
 }
 
@@ -186,6 +284,9 @@ type ReplicaDividingType string
 const (
 	// StaticReplicaDividingType divides replicas by a fixed weight.
 	StaticReplicaDividingType ReplicaDividingType = "Static"
+
+	// DynamicReplicaDividingType divides replicas by cluster resource predictor.
+	DynamicReplicaDividingType ReplicaDividingType = "Dynamic"
 )
 
 // +kubebuilder:object:root=true

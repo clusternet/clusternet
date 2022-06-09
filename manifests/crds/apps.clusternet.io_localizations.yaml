@@ -63,13 +63,6 @@ spec:
                   namespace:
                     description: Namespace of the target resource.
                     type: string
-                  replicas:
-                    description: Number of desired pods in child clusters if necessary.
-                      The indices are corresponding with the scheduled clusters.
-                    items:
-                      format: int32
-                      type: integer
-                    type: array
                 required:
                 - apiVersion
                 - kind

@@ -35,9 +35,11 @@ import (
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
+	"github.com/clusternet/clusternet/pkg/scheduler/cache"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/metrics"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -47,8 +49,12 @@ const (
 	maxTimeout              = 15 * time.Minute
 	preFilter               = "PreFilter"
 	postFilter              = "PostFilter"
+	prePredict              = "PrePredict"
+	predict                 = "Predict"
 	preScore                = "PreScore"
 	score                   = "Score"
+	preAssign               = "PreAssign"
+	assign                  = "Assign"
 	scoreExtensionNormalize = "ScoreExtensionNormalize"
 	preBind                 = "PreBind"
 	bind                    = "Bind"
@@ -66,8 +72,12 @@ type frameworkImpl struct {
 	preFilterPlugins     []framework.PreFilterPlugin
 	filterPlugins        []framework.FilterPlugin
 	postFilterPlugins    []framework.PostFilterPlugin
+	prePredictPlugins    []framework.PrePredictPlugin
+	predictPlugins       []framework.PredictPlugin
 	preScorePlugins      []framework.PreScorePlugin
 	scorePlugins         []framework.ScorePlugin
+	preAssignPlugins     []framework.PreAssignPlugin
+	assignPlugins        []framework.AssignPlugin
 	reservePlugins       []framework.ReservePlugin
 	preBindPlugins       []framework.PreBindPlugin
 	bindPlugins          []framework.BindPlugin
@@ -78,6 +88,7 @@ type frameworkImpl struct {
 	kubeConfig      *restclient.Config
 	eventRecorder   record.EventRecorder
 	informerFactory informers.SharedInformerFactory
+	cache           cache.Cache
 
 	metricsRecorder *metricsRecorder
 	profileName     string
@@ -106,8 +117,12 @@ func (f *frameworkImpl) getExtensionPoints(plugins *schedulerapis.Plugins) []ext
 		{&plugins.Filter, &f.filterPlugins},
 		{&plugins.PostFilter, &f.postFilterPlugins},
 		{&plugins.Reserve, &f.reservePlugins},
+		{&plugins.PrePredict, &f.prePredictPlugins},
+		{&plugins.Predict, &f.predictPlugins},
 		{&plugins.PreScore, &f.preScorePlugins},
 		{&plugins.Score, &f.scorePlugins},
+		{&plugins.PreAssign, &f.preAssignPlugins},
+		{&plugins.Assign, &f.assignPlugins},
 		{&plugins.PreBind, &f.preBindPlugins},
 		{&plugins.Bind, &f.bindPlugins},
 		{&plugins.PostBind, &f.postBindPlugins},
@@ -118,6 +133,7 @@ func (f *frameworkImpl) getExtensionPoints(plugins *schedulerapis.Plugins) []ext
 type frameworkOptions struct {
 	clientSet       clusternet.Interface
 	kubeConfig      *restclient.Config
+	cache           cache.Cache
 	eventRecorder   record.EventRecorder
 	informerFactory informers.SharedInformerFactory
 	runAllFilters   bool
@@ -153,6 +169,13 @@ func WithEventRecorder(recorder record.EventRecorder) Option {
 func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option {
 	return func(o *frameworkOptions) {
 		o.informerFactory = informerFactory
+	}
+}
+
+// WithCache sets scheduler cache for the scheduling frameworkImpl.
+func WithCache(cache cache.Cache) Option {
+	return func(o *frameworkOptions) {
+		o.cache = cache
 	}
 }
 
@@ -198,6 +221,7 @@ func NewFramework(r Registry, plugins *schedulerapis.Plugins, opts ...Option) (f
 		runAllFilters:        options.runAllFilters,
 		parallelizer:         options.parallelizer,
 		profileName:          "default",
+		cache:                options.cache,
 	}
 
 	if r == nil {
@@ -357,6 +381,68 @@ func (f *frameworkImpl) runPostFilterPlugin(ctx context.Context, pl framework.Po
 	return r, s
 }
 
+func (f *frameworkImpl) RunPrePredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (status *framework.Status) {
+	startTime := time.Now()
+	defer func() {
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(prePredict, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
+	}()
+	for _, pl := range f.prePredictPlugins {
+		status = f.runPrePredictPlugin(ctx, pl, sub, finv, clusters)
+		if !status.IsSuccess() {
+			return framework.AsStatus(fmt.Errorf("running PrePredict plugin %q: %w", pl.Name(), status.AsError()))
+		}
+	}
+
+	return nil
+}
+
+func (f *frameworkImpl) runPrePredictPlugin(ctx context.Context, pl framework.PrePredictPlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) *framework.Status {
+	startTime := time.Now()
+	status := pl.PrePredict(ctx, sub, finv, clusters)
+	f.metricsRecorder.observePluginDurationAsync(prePredict, pl.Name(), status, metrics.SinceInSeconds(startTime))
+	return status
+}
+
+func (f *frameworkImpl) RunPredictPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster, availableList framework.ClusterScoreList) (res framework.ClusterScoreList, status *framework.Status) {
+	startTime := time.Now()
+	defer func() {
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(predict, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
+	}()
+	ctx, cancel := context.WithCancel(ctx)
+	errCh := parallelize.NewErrorChannel()
+
+	// Run Predict method for each cluster in parallel.
+	f.Parallelizer().Until(ctx, len(clusters), func(index int) {
+		for i, pl := range f.predictPlugins {
+			replicas, status := f.runPredictPlugin(ctx, pl, sub, finv, clusters[index])
+			if !status.IsSuccess() {
+				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+				errCh.SendErrorWithCancel(err, cancel)
+				return
+			}
+			if i == 0 {
+				// First plugin, just set the replicas.
+				availableList[index].MaxAvailableReplicas = replicas
+			} else {
+				// Get the minimum replicas from all predictors.
+				availableList[index].MaxAvailableReplicas = mergeFeedReplicas(availableList[index].MaxAvailableReplicas, replicas)
+			}
+		}
+	})
+	if err := errCh.ReceiveError(); err != nil {
+		return nil, framework.AsStatus(fmt.Errorf("running Predict plugins: %w", err))
+	}
+
+	return availableList, nil
+}
+
+func (f *frameworkImpl) runPredictPlugin(ctx context.Context, pl framework.PredictPlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clusterapi.ManagedCluster) (framework.FeedReplicas, *framework.Status) {
+	startTime := time.Now()
+	replicas, status := pl.Predict(ctx, sub, finv, cluster)
+	f.metricsRecorder.observePluginDurationAsync(predict, pl.Name(), status, metrics.SinceInSeconds(startTime))
+	return replicas, status
+}
+
 // RunPreScorePlugins runs the set of configured pre-score plugins. If any
 // of these plugins returns any status other than "Success", the given subscription is rejected.
 func (f *frameworkImpl) RunPreScorePlugins(ctx context.Context, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster) (status *framework.Status) {
@@ -473,16 +559,69 @@ func (f *frameworkImpl) runScoreExtension(ctx context.Context, pl framework.Scor
 	return status
 }
 
+func (f *frameworkImpl) RunPreAssignPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (status *framework.Status) {
+	startTime := time.Now()
+	defer func() {
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(preAssign, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
+	}()
+	for _, pl := range f.preAssignPlugins {
+		status = f.runPreAssignPlugin(ctx, pl, sub, finv, availableReplicas)
+		if !status.IsSuccess() {
+			err := status.AsError()
+			klog.ErrorS(err, "Failed running PreAssign plugin", "plugin", pl.Name(), "sub", klog.KObj(sub))
+			return framework.AsStatus(fmt.Errorf("running PreAssign plugin %q: %w", pl.Name(), err))
+		}
+	}
+	return nil
+}
+
+func (f *frameworkImpl) runPreAssignPlugin(ctx context.Context, pl framework.PreAssignPlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) *framework.Status {
+	startTime := time.Now()
+	status := pl.PreAssign(ctx, sub, finv, availableReplicas)
+	f.metricsRecorder.observePluginDurationAsync(preAssign, pl.Name(), status, metrics.SinceInSeconds(startTime))
+	return status
+}
+
+func (f *frameworkImpl) RunAssignPlugins(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (result framework.TargetClusters, status *framework.Status) {
+	startTime := time.Now()
+	defer func() {
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(assign, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
+	}()
+	if len(f.assignPlugins) == 0 {
+		return framework.TargetClusters{}, framework.NewStatus(framework.Skip, "empty assign plugins")
+	}
+	for _, ap := range f.assignPlugins {
+		result, status = f.runAssignPlugin(ctx, ap, sub, finv, availableReplicas)
+		if status != nil && status.Code() == framework.Skip {
+			continue
+		}
+		if !status.IsSuccess() {
+			err := status.AsError()
+			klog.ErrorS(err, "Failed running Assign plugin", "plugin", ap.Name(), "sub", klog.KObj(sub))
+			return framework.TargetClusters{}, framework.AsStatus(fmt.Errorf("running Assign plugin %q: %w", ap.Name(), err))
+		}
+		return result, status
+	}
+	return result, status
+}
+
+func (f *frameworkImpl) runAssignPlugin(ctx context.Context, ap framework.AssignPlugin, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (framework.TargetClusters, *framework.Status) {
+	startTime := time.Now()
+	result, status := ap.Assign(ctx, sub, finv, availableReplicas)
+	f.metricsRecorder.observePluginDurationAsync(assign, ap.Name(), status, metrics.SinceInSeconds(startTime))
+	return result, status
+}
+
 // RunPreBindPlugins runs the set of configured prebind plugins. It returns a
 // failure (bool) if any of the plugins returns an error. It also returns an
 // error containing the rejection message or the error occurred in the plugin.
-func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
+func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(preBind, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	for _, pl := range f.preBindPlugins {
-		status = f.runPreBindPlugin(ctx, pl, sub, namespacedClusters)
+		status = f.runPreBindPlugin(ctx, pl, sub, targetClusters)
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running PreBind plugin", "plugin", pl.Name(), "sub", klog.KObj(sub))
@@ -492,15 +631,15 @@ func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, sub *appsapi.Subs
 	return nil
 }
 
-func (f *frameworkImpl) runPreBindPlugin(ctx context.Context, pl framework.PreBindPlugin, sub *appsapi.Subscription, namespacedClusters []string) *framework.Status {
+func (f *frameworkImpl) runPreBindPlugin(ctx context.Context, pl framework.PreBindPlugin, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
 	startTime := time.Now()
-	status := pl.PreBind(ctx, sub, namespacedClusters)
+	status := pl.PreBind(ctx, sub, targetClusters)
 	f.metricsRecorder.observePluginDurationAsync(preBind, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
 
 // RunBindPlugins runs the set of configured bind plugins until one returns a non `Skip` status.
-func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
+func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(bind, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -509,7 +648,7 @@ func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscri
 		return framework.NewStatus(framework.Skip, "")
 	}
 	for _, bp := range f.bindPlugins {
-		status = f.runBindPlugin(ctx, bp, sub, namespacedClusters)
+		status = f.runBindPlugin(ctx, bp, sub, targetClusters)
 		if status != nil && status.Code() == framework.Skip {
 			continue
 		}
@@ -523,27 +662,27 @@ func (f *frameworkImpl) RunBindPlugins(ctx context.Context, sub *appsapi.Subscri
 	return status
 }
 
-func (f *frameworkImpl) runBindPlugin(ctx context.Context, bp framework.BindPlugin, sub *appsapi.Subscription, namespacedClusters []string) *framework.Status {
+func (f *frameworkImpl) runBindPlugin(ctx context.Context, bp framework.BindPlugin, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
 	startTime := time.Now()
-	status := bp.Bind(ctx, sub, namespacedClusters)
+	status := bp.Bind(ctx, sub, targetClusters)
 	f.metricsRecorder.observePluginDurationAsync(bind, bp.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
 
 // RunPostBindPlugins runs the set of configured postbind plugins.
-func (f *frameworkImpl) RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) {
+func (f *frameworkImpl) RunPostBindPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(postBind, framework.Success.String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	for _, pl := range f.postBindPlugins {
-		f.runPostBindPlugin(ctx, pl, sub, namespacedClusters)
+		f.runPostBindPlugin(ctx, pl, sub, targetClusters)
 	}
 }
 
-func (f *frameworkImpl) runPostBindPlugin(ctx context.Context, pl framework.PostBindPlugin, sub *appsapi.Subscription, namespacedClusters []string) {
+func (f *frameworkImpl) runPostBindPlugin(ctx context.Context, pl framework.PostBindPlugin, sub *appsapi.Subscription, targetClusters framework.TargetClusters) {
 	startTime := time.Now()
-	pl.PostBind(ctx, sub, namespacedClusters)
+	pl.PostBind(ctx, sub, targetClusters)
 	f.metricsRecorder.observePluginDurationAsync(postBind, pl.Name(), nil, metrics.SinceInSeconds(startTime))
 }
 
@@ -552,13 +691,13 @@ func (f *frameworkImpl) runPostBindPlugin(ctx context.Context, pl framework.Post
 // continue running the remaining ones and returns the error. In such a case,
 // the subscription will not be scheduled and the caller will be expected to call
 // RunReservePluginsUnreserve.
-func (f *frameworkImpl) RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
+func (f *frameworkImpl) RunReservePluginsReserve(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(reserve, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
 	}()
 	for _, pl := range f.reservePlugins {
-		status = f.runReservePluginReserve(ctx, pl, sub, namespacedClusters)
+		status = f.runReservePluginReserve(ctx, pl, sub, targetClusters)
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running Reserve plugin", "plugin", pl.Name(), "subscription", klog.KObj(sub))
@@ -568,16 +707,16 @@ func (f *frameworkImpl) RunReservePluginsReserve(ctx context.Context, sub *appsa
 	return nil
 }
 
-func (f *frameworkImpl) runReservePluginReserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, namespacedClusters []string) *framework.Status {
+func (f *frameworkImpl) runReservePluginReserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
 	startTime := time.Now()
-	status := pl.Reserve(ctx, sub, namespacedClusters)
+	status := pl.Reserve(ctx, sub, targetClusters)
 	f.metricsRecorder.observePluginDurationAsync(reserve, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }
 
 // RunReservePluginsUnreserve runs the Unreserve method in the set of
 // configured reserve plugins.
-func (f *frameworkImpl) RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) {
+func (f *frameworkImpl) RunReservePluginsUnreserve(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(unreserve, framework.Success.String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -585,13 +724,13 @@ func (f *frameworkImpl) RunReservePluginsUnreserve(ctx context.Context, sub *app
 	// Execute the Unreserve operation of each reserve plugin in the
 	// *reverse* order in which the Reserve operation was executed.
 	for i := len(f.reservePlugins) - 1; i >= 0; i-- {
-		f.runReservePluginUnreserve(ctx, f.reservePlugins[i], sub, namespacedClusters)
+		f.runReservePluginUnreserve(ctx, f.reservePlugins[i], sub, targetClusters)
 	}
 }
 
-func (f *frameworkImpl) runReservePluginUnreserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, namespacedClusters []string) {
+func (f *frameworkImpl) runReservePluginUnreserve(ctx context.Context, pl framework.ReservePlugin, sub *appsapi.Subscription, targetClusters framework.TargetClusters) {
 	startTime := time.Now()
-	pl.Unreserve(ctx, sub, namespacedClusters)
+	pl.Unreserve(ctx, sub, targetClusters)
 	f.metricsRecorder.observePluginDurationAsync(unreserve, pl.Name(), nil, metrics.SinceInSeconds(startTime))
 }
 
@@ -601,7 +740,7 @@ func (f *frameworkImpl) runReservePluginUnreserve(ctx context.Context, pl framew
 // plugins returns "Wait", then this function will create and add waiting subscription
 // to a map of currently waiting subs and return status with "Wait" code.
 // Subscription will remain waiting subscription for the minimum duration returned by the permit plugins.
-func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, namespacedClusters []string) (status *framework.Status) {
+func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(permit, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -609,7 +748,7 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subsc
 	pluginsWaitTime := make(map[string]time.Duration)
 	statusCode := framework.Success
 	for _, pl := range f.permitPlugins {
-		status, timeout := f.runPermitPlugin(ctx, pl, sub, namespacedClusters)
+		status, timeout := f.runPermitPlugin(ctx, pl, sub, targetClusters)
 		if !status.IsSuccess() {
 			if status.IsUnschedulable() {
 				msg := fmt.Sprintf("rejected subscription %q by permit plugin %q: %v", sub.Name, pl.Name(), status.Message())
@@ -641,9 +780,9 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, sub *appsapi.Subsc
 	return nil
 }
 
-func (f *frameworkImpl) runPermitPlugin(ctx context.Context, pl framework.PermitPlugin, sub *appsapi.Subscription, namespacedClusters []string) (*framework.Status, time.Duration) {
+func (f *frameworkImpl) runPermitPlugin(ctx context.Context, pl framework.PermitPlugin, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (*framework.Status, time.Duration) {
 	startTime := time.Now()
-	status, timeout := pl.Permit(ctx, sub, namespacedClusters)
+	status, timeout := pl.Permit(ctx, sub, targetClusters)
 	f.metricsRecorder.observePluginDurationAsync(permit, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status, timeout
 }
@@ -711,6 +850,11 @@ func (f *frameworkImpl) HasScorePlugins() bool {
 	return len(f.scorePlugins) > 0
 }
 
+// HasPredictPlugins returns true if at least one predict plugin is defined.
+func (f *frameworkImpl) HasPredictPlugins() bool {
+	return len(f.predictPlugins) > 0
+}
+
 // ListPlugins returns a map of extension point name to plugin names configured at each extension
 // point. Returns nil if no plugins where configured.
 func (f *frameworkImpl) ListPlugins() *schedulerapis.Plugins {
@@ -764,4 +908,23 @@ func (f *frameworkImpl) ProfileName() string {
 // Parallelizer returns a parallelizer holding parallelism for scheduler.
 func (f *frameworkImpl) Parallelizer() parallelize.Parallelizer {
 	return f.parallelizer
+}
+
+// ClusterCache returns a cluster cache.
+func (f *frameworkImpl) ClusterCache() cache.Cache {
+	return f.cache
+}
+
+func mergeFeedReplicas(a, b framework.FeedReplicas) framework.FeedReplicas {
+	if len(a) < len(b) {
+		a, b = b, a
+	}
+	res := make(framework.FeedReplicas, len(a))
+	for i := 0; i < len(b); i++ {
+		res[i] = utils.MinInt32(a[i], b[i])
+	}
+	for i := len(b); i < len(a); i++ {
+		res[i] = a[i]
+	}
+	return res
 }

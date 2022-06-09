@@ -39,11 +39,23 @@ type Plugins struct {
 	// PostFilter is a list of plugins that are invoked after filtering phase, no matter whether filtering succeeds or not.
 	PostFilter PluginSet
 
+	// PrePredict is a list of plugins that are invoked before predicting.
+	PrePredict PluginSet
+
+	// Predict is a list of plugins that should be invoked when predicting max available replicas for clusters that have passed the filtering phase.
+	Predict PluginSet
+
 	// PreScore is a list of plugins that are invoked before scoring.
 	PreScore PluginSet
 
 	// Score is a list of plugins that should be invoked when ranking clusters that have passed the filtering phase.
 	Score PluginSet
+
+	// PreAssign is a list of plugins that are invoked before assigning.
+	PreAssign PluginSet
+
+	// Assign is a list of plugins that should be invoked when assigning replicas.
+	Assign PluginSet
 
 	// Reserve is a list of plugins invoked when reserving/unreserving resources
 	// after a cluster is assigned to run the Subscription.
@@ -111,8 +123,12 @@ func (p *Plugins) Names() []string {
 		p.Filter,
 		p.PostFilter,
 		p.Reserve,
+		p.PrePredict,
+		p.Predict,
 		p.PreScore,
 		p.Score,
+		p.PreAssign,
+		p.Assign,
 		p.PreBind,
 		p.Bind,
 		p.PostBind,
