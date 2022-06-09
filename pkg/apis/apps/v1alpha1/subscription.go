@@ -57,10 +57,10 @@ type SubscriptionSpec struct {
 	// +kubebuilder:default=Replication
 	SchedulingStrategy SchedulingStrategyType `json:"schedulingStrategy,omitempty"`
 
-	// Dividing scheduling config params. Present only if SchedulingStrategyType = Dividing.
+	// Dividing scheduling config params. Present only if SchedulingStrategy = Dividing.
 	//
 	// +optional
-	DividingScheduling *DividingSchedulingStrategy `json:"dividingSchedulingStrategy,omitempty"`
+	DividingScheduling *DividingScheduling `json:"dividingScheduling,omitempty"`
 
 	// Subscribers subscribes
 	//
@@ -257,16 +257,58 @@ type Feed struct {
 	Name string `json:"name"`
 }
 
-// DividingSchedulingStrategy describes how to divide replicas into target clusters.
-type DividingSchedulingStrategy struct {
+// DividingScheduling describes how to divide replicas into target clusters.
+type DividingScheduling struct {
 	// Type of dividing replica scheduling.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=Static
+	// +kubebuilder:validation:Enum=Static;Dynamic
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:default=Static
 	Type ReplicaDividingType `json:"type"`
+
+	// DynamicDividing describes how to divide replicas into target clusters dynamically.
+	//
+	// +optional
+	DynamicDividing *DynamicDividing `json:"dynamicDividing,omitempty"`
+}
+
+// DynamicDividing describes how to divide replicas into target clusters dynamically.
+type DynamicDividing struct {
+	// Type of dynamic dividing replica strategy.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=Spread;Binpack
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:default=Spread
+	Strategy DynamicDividingStrategy `json:"strategy"`
+
+	// TopologySpreadConstraints describes how a group of replicas ought to spread across topology
+	// domains. Scheduler will schedule pods in a way which abides by the constraints.
+	// All topologySpreadConstraints are ANDed.
+	// Present only for spread divided scheduling.
+	//
+	// +optional
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+
+	// PreferredClusters describes the assigning preference. If we have a preference for cluster group A
+	// compared to cluster group B (i.e., group A has a larger Weight), desired replicas will be assigned
+	// to cluster group A as many as possible, while the rest ones will be assigned to cluster group B.
+	//
+	// +optional
+	PreferredClusters []corev1.PreferredSchedulingTerm `json:"preferredClusters,omitempty"`
+
+	// MinClusters describes the lower bound number of target clusters.
+	//
+	// +optional
+	MinClusters *int32 `json:"minClusters,omitempty"`
+
+	// MaxClusters describes the upper bound number of target clusters.
+	//
+	// +optional
+	MaxClusters *int32 `json:"maxClusters,omitempty"`
 }
 
 type SchedulingStrategyType string
@@ -287,6 +329,16 @@ const (
 
 	// DynamicReplicaDividingType divides replicas by cluster resource predictor.
 	DynamicReplicaDividingType ReplicaDividingType = "Dynamic"
+)
+
+type DynamicDividingStrategy string
+
+const (
+	// SpreadDividingStrategy spreads out replicas as much as possible.
+	SpreadDividingStrategy DynamicDividingStrategy = "Spread"
+
+	// BinpackDividingStrategy aggregates replicas as much as possible.
+	BinpackDividingStrategy DynamicDividingStrategy = "Binpack"
 )
 
 // +kubebuilder:object:root=true
