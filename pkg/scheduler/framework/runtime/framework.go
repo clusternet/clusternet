@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"time"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	restclient "k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ import (
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
+	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis/config"
 	"github.com/clusternet/clusternet/pkg/scheduler/cache"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/metrics"
@@ -204,7 +205,7 @@ func defaultFrameworkOptions() frameworkOptions {
 var _ framework.Framework = &frameworkImpl{}
 
 // NewFramework initializes plugins given the configuration and the registry.
-func NewFramework(r Registry, plugins *schedulerapis.Plugins, opts ...Option) (framework.Framework, error) {
+func NewFramework(r Registry, profile *schedulerapis.SchedulerProfile, opts ...Option) (framework.Framework, error) {
 	options := defaultFrameworkOptions()
 	for _, opt := range opts {
 		opt(&options)
@@ -227,24 +228,60 @@ func NewFramework(r Registry, plugins *schedulerapis.Plugins, opts ...Option) (f
 	if r == nil {
 		return f, nil
 	}
+	if profile == nil {
+		return f, nil
+	}
+
+	f.profileName = profile.SchedulerName
+	if profile.Plugins == nil {
+		return f, nil
+	}
+	// get needed plugins from config
+	pg := f.pluginsNeeded(profile.Plugins)
+
+	pluginConfig := make(map[string]runtime.Object, len(profile.PluginConfig))
+	for i := range profile.PluginConfig {
+		name := profile.PluginConfig[i].Name
+		if _, ok := pluginConfig[name]; ok {
+			return nil, fmt.Errorf("repeated config for plugin %s", name)
+		}
+		pluginConfig[name] = profile.PluginConfig[i].Args
+	}
+	outputProfile := schedulerapis.SchedulerProfile{
+		SchedulerName: f.profileName,
+		Plugins:       profile.Plugins,
+		PluginConfig:  make([]schedulerapis.PluginConfig, 0, len(pg)),
+	}
 
 	// initialize plugins per individual extension points
 	pluginsMap := make(map[string]framework.Plugin)
 	for name, factory := range r {
-		p, err := factory(nil, f)
+		// initialize only needed plugins.
+		if _, ok := pg[name]; !ok {
+			continue
+		}
+
+		args := pluginConfig[name]
+		if args != nil {
+			outputProfile.PluginConfig = append(outputProfile.PluginConfig, schedulerapis.PluginConfig{
+				Name: name,
+				Args: args,
+			})
+		}
+		p, err := factory(args, f)
 		if err != nil {
 			return nil, fmt.Errorf("initializing plugin %q: %w", name, err)
 		}
 		pluginsMap[name] = p
 	}
 
-	for _, e := range f.getExtensionPoints(plugins) {
+	for _, e := range f.getExtensionPoints(profile.Plugins) {
 		if err := updatePluginList(e.slicePtr, *e.plugins, pluginsMap); err != nil {
 			return nil, err
 		}
 	}
 
-	for _, scorePlugin := range plugins.Score.Enabled {
+	for _, scorePlugin := range profile.Plugins.Score.Enabled {
 		// a weight of zero is not permitted, plugins can be disabled explicitly
 		// when configured.
 		if scorePlugin.Weight == 0 {
@@ -913,6 +950,24 @@ func (f *frameworkImpl) Parallelizer() parallelize.Parallelizer {
 // ClusterCache returns a cluster cache.
 func (f *frameworkImpl) ClusterCache() cache.Cache {
 	return f.cache
+}
+
+func (f *frameworkImpl) pluginsNeeded(plugins *schedulerapis.Plugins) map[string]schedulerapis.Plugin {
+	pgMap := make(map[string]schedulerapis.Plugin)
+
+	if plugins == nil {
+		return pgMap
+	}
+
+	find := func(pgs *schedulerapis.PluginSet) {
+		for _, pg := range pgs.Enabled {
+			pgMap[pg.Name] = pg
+		}
+	}
+	for _, e := range f.getExtensionPoints(plugins) {
+		find(e.plugins)
+	}
+	return pgMap
 }
 
 func mergeFeedReplicas(a, b framework.FeedReplicas) framework.FeedReplicas {

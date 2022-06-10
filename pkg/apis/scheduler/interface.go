@@ -24,6 +24,11 @@ import (
 	"github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
+const (
+	// DefaultSchedulerName is the default scheduler name
+	DefaultSchedulerName = "default"
+)
+
 // PredictorProvider is an interface that provides replicas predictions.
 type PredictorProvider interface {
 	// MaxAcceptableReplicas indicates the maximum acceptable replicas that the cluster could admit.
