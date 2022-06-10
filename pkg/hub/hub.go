@@ -19,14 +19,15 @@ package hub
 import (
 	"context"
 
+	"github.com/clusternet/clusternet/pkg/hub/apiserver"
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
@@ -163,48 +164,107 @@ func (hub *Hub) Run(ctx context.Context) error {
 		return err
 	}
 
-	server.GenericAPIServer.AddPostStartHookOrDie("start-shared-informers-controllers",
-		func(context genericapiserver.PostStartHookContext) error {
-			klog.Infof("starting Clusternet informers ...")
-			// Start the informer factories to begin populating the informer caches
-			// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-			hub.kubeInformerFactory.Start(context.StopCh)
-			hub.clusternetInformerFactory.Start(context.StopCh)
-			hub.aggregatorInformerFactory.Start(context.StopCh)
-			config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
-			// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
-			// hub.options.LoopbackSharedInformerFactory.Start(context.StopCh)
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
 
-			klog.Infof("starting Clusternet controllers ...")
-			// waits for all started informers' cache got synced
-			hub.kubeInformerFactory.WaitForCacheSync(context.StopCh)
-			hub.clusternetInformerFactory.WaitForCacheSync(context.StopCh)
-			hub.aggregatorInformerFactory.WaitForCacheSync(context.StopCh)
-			// TODO: uncomment this when module "k8s.io/apiserver" gets bumped to a higher version.
-			// 		supports k8s.io/apiserver version skew (clusternet/clusternet#137)
-			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(context.StopCh)
+	hub.waitForCacheSync(config, ctx.Done())
+	hub.runServer(ctx, cancel, server)
 
-			go func() {
-				hub.crrApprover.Run(hub.options.Threadiness, context.StopCh)
-			}()
+	if !hub.options.LeaderElection.LeaderElect {
+		hub.runController(ctx.Done())
+		return nil
+	}
 
-			if hub.deployerEnabled {
-				go func() {
-					hub.deployer.Run(hub.options.Threadiness, context.StopCh)
-				}()
-			}
-
-			go func() {
-				hub.clusterLifecycle.Run(hub.options.Threadiness, context.StopCh)
-			}()
-
-			select {
-			case <-context.StopCh:
-			}
-
-			return nil
+	// leader election is enabled, runCommand via LeaderElector until done and exit.
+	curIdentity, err := utils.GenerateIdentity()
+	if err != nil {
+		return err
+	}
+	le, err := leaderelection.NewLeaderElector(*utils.NewLeaderElectionConfigWithDefaultValue(
+		curIdentity,
+		hub.options.LeaderElection.ResourceName,
+		hub.options.LeaderElection.ResourceNamespace,
+		hub.options.LeaderElection.LeaseDuration.Duration,
+		hub.options.LeaderElection.RenewDeadline.Duration,
+		hub.options.LeaderElection.RetryPeriod.Duration,
+		hub.kubeClient,
+		leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				hub.runController(ctx.Done())
+			},
+			OnStoppedLeading: func() {
+				klog.Fatal("leader election got lost")
+			},
+			OnNewLeader: func(identity string) {
+				// we're notified when new leader elected
+				if identity == curIdentity {
+					// I just got the lock
+					return
+				}
+				klog.Infof("new leader elected: %s", identity)
+			},
 		},
-	)
+	))
+	if err != nil {
+		return err
+	}
+	le.Run(ctx)
+	return nil
+}
 
-	return server.GenericAPIServer.PrepareRun().Run(ctx.Done())
+func (hub *Hub) runServer(ctx context.Context, cancel context.CancelFunc, server *apiserver.HubAPIServer) {
+	go func() {
+		klog.Info("starting hub server")
+		//  It only returns if stopCh is closed or the secure port cannot be listened on initially.
+		err := server.GenericAPIServer.PrepareRun().Run(ctx.Done())
+		if err != nil {
+			klog.Errorf("failed run hub server: %v", err)
+			cancel()
+			return
+		}
+	}()
+	return
+}
+
+func (hub *Hub) waitForCacheSync(config *apiserver.Config, stopCh <-chan struct{}) {
+	klog.Infof("starting Clusternet informers ...")
+	// Start the informer factories to begin populating the informer caches
+	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
+	hub.kubeInformerFactory.Start(stopCh)
+	hub.clusternetInformerFactory.Start(stopCh)
+	hub.aggregatorInformerFactory.Start(stopCh)
+	config.GenericConfig.SharedInformerFactory.Start(stopCh)
+	// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
+	// hub.options.LoopbackSharedInformerFactory.Start(stopCh)
+
+	// waits for all started informers' cache got synced
+	hub.kubeInformerFactory.WaitForCacheSync(stopCh)
+	hub.clusternetInformerFactory.WaitForCacheSync(stopCh)
+	hub.aggregatorInformerFactory.WaitForCacheSync(stopCh)
+	// TODO: uncomment this when module "k8s.io/apiserver" gets bumped to a higher version.
+	// 		supports k8s.io/apiserver version skew (clusternet/clusternet#137)
+	// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(stopCh)
+}
+
+func (hub *Hub) runController(stopCh <-chan struct{}) {
+	klog.Infof("starting Clusternet controllers ...")
+
+	go func() {
+		hub.crrApprover.Run(hub.options.Threadiness, stopCh)
+	}()
+
+	if hub.deployerEnabled {
+		go func() {
+			hub.deployer.Run(hub.options.Threadiness, stopCh)
+		}()
+	}
+
+	go func() {
+		hub.clusterLifecycle.Run(hub.options.Threadiness, stopCh)
+	}()
+
+	select {
+	case <-stopCh:
+	}
+	return
 }
