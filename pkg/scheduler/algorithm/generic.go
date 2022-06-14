@@ -32,7 +32,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
+	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis/config"
 	schedulercache "github.com/clusternet/clusternet/pkg/scheduler/cache"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"

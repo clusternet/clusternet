@@ -26,6 +26,9 @@ import (
 
 const (
 	DefaultAcceptableReplicasKey = "default"
+
+	// DefaultSchedulerName is the default scheduler name
+	DefaultSchedulerName = "default"
 )
 
 // PredictorReplicas indicates a map of label to replicas with this constraint. Here the label constraint

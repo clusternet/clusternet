@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright 2022 The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,59 @@ limitations under the License.
 
 // This file was copied from k8s.io/kubernetes/pkg/scheduler/apis/config/types.go and modified
 
-package apis
+package config
 
 import (
 	"math"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// SchedulerConfiguration configures a scheduler
+type SchedulerConfiguration struct {
+	metav1.TypeMeta
+
+	// Profiles are scheduling profiles that clusternet-scheduler supports. subscription can
+	// choose to be scheduled under a particular profile by setting its associated
+	// scheduler name. subscription that don't specify any scheduler name are scheduled
+	// with the "default" profile, if present here.
+	Profiles []SchedulerProfile
+}
+
+// SchedulerProfile is a scheduling profile.
+type SchedulerProfile struct {
+	// SchedulerName is the name of the scheduler associated to this profile.
+	// If SchedulerName matches with the pod's "spec.schedulerName", then the pod
+	// is scheduled with this profile.
+	SchedulerName string
+
+	// Plugins specify the set of plugins that should be enabled or disabled.
+	// Enabled plugins are the ones that should be enabled in addition to the
+	// default plugins. Disabled plugins are any of the default plugins that
+	// should be disabled.
+	// When no enabled or disabled plugin is specified for an extension point,
+	// default plugins for that extension point will be used if there is any.
+	Plugins *Plugins
+
+	// PluginConfig is an optional set of custom plugin arguments for each plugin.
+	// Omitting config args for a plugin is equivalent to using the default config
+	// for that plugin.
+	PluginConfig []PluginConfig
+}
+
+// PluginConfig specifies arguments that should be passed to a plugin at the time of initialization.
+// A plugin that is invoked at multiple extension points is initialized once. Args can have arbitrary structure.
+// It is up to the plugin to process these Args.
+type PluginConfig struct {
+	// Name defines the name of plugin being configured
+	Name string
+	// Args defines the arguments passed to the plugins at the time of initialization. Args can have arbitrary structure.
+	Args runtime.Object
+}
 
 // Plugins include multiple extension points. When specified, the list of plugins for
 // a particular extension point are the only ones enabled. If an extension point is

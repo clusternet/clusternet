@@ -17,16 +17,25 @@ limitations under the License.
 package options
 
 import (
-	"github.com/spf13/pflag"
-	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"fmt"
+	"io/ioutil"
 
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/scheduler/apis/config"
+	"github.com/clusternet/clusternet/pkg/scheduler/apis/config/scheme"
+	"github.com/clusternet/clusternet/pkg/scheduler/apis/config/validation"
+	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/utils"
+	"github.com/spf13/pflag"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
 // SchedulerOptions has all the params needed to run a Scheduler
 type SchedulerOptions struct {
 	*utils.ControllerOptions
+	FrameworkOutOfTreeRegistry frameworkruntime.Registry
+	SchedulerConfiguration     *config.SchedulerConfiguration
+	ConfigFile                 string
 }
 
 // NewSchedulerOptions returns a new SchedulerOptions
@@ -50,6 +59,11 @@ func (o *SchedulerOptions) Validate() error {
 		errors = append(errors, err)
 	}
 
+	if o.SchedulerConfiguration != nil {
+		if err := validation.ValidateSchedulerConfiguration(o.SchedulerConfiguration); err != nil {
+			errors = append(errors, err)
+		}
+	}
 	return utilerrors.NewAggregate(errors)
 }
 
@@ -61,11 +75,45 @@ func (o *SchedulerOptions) Complete() error {
 	if err := o.ControllerOptions.Complete(); err != nil {
 		allErrs = append(allErrs, err)
 	}
-
+	if len(o.ConfigFile) > 0 {
+		schedulerConfiguration, err := loadConfigFromFile(o.ConfigFile)
+		if err != nil {
+			allErrs = append(allErrs, err)
+		} else {
+			o.SchedulerConfiguration = schedulerConfiguration
+		}
+	}
 	return utilerrors.NewAggregate(allErrs)
 }
 
 // AddFlags adds flags for SchedulerOptions.
 func (o *SchedulerOptions) AddFlags(fs *pflag.FlagSet) {
 	o.ControllerOptions.AddFlags(fs)
+	fs.StringVar(&o.ConfigFile, "config", o.ConfigFile, "The path to the configuration file.")
+}
+
+func loadConfigFromFile(file string) (*config.SchedulerConfiguration, error) {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return loadConfig(data)
+}
+
+func loadConfig(data []byte) (*config.SchedulerConfiguration, error) {
+	// The UniversalDecoder runs defaulting and returns the internal type by default.
+	obj, gvk, err := scheme.Codecs.UniversalDecoder().Decode(data, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if cfgObj, ok := obj.(*config.SchedulerConfiguration); ok {
+		// We don't set this field in pkg/scheduler/apis/config/{version}/conversion.go
+		// because the field will be cleared later by API machinery during
+		// conversion. See SchedulerConfiguration internal type definition for
+		// more details.
+		cfgObj.TypeMeta.APIVersion = gvk.GroupVersion().String()
+		return cfgObj, nil
+	}
+	return nil, fmt.Errorf("couldn't decode as SchedulerConfiguration, got %s: ", gvk)
 }
