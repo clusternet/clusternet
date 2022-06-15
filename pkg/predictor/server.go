@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/informers"
 	kubeinformers "k8s.io/client-go/informers"
 	informerv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -55,9 +54,10 @@ const (
 type GetPodsAssignedToNodeFunc func(string) ([]*corev1.Pod, error)
 
 type PredictorServer struct {
+	port       int
 	kubeClient kubernetes.Interface
 
-	informerFactory informers.SharedInformerFactory
+	informerFactory kubeinformers.SharedInformerFactory
 	nodeInformer    informerv1.NodeInformer
 	podInformer     informerv1.PodInformer
 	nodeLister      listerv1.NodeLister
@@ -71,6 +71,7 @@ type PredictorServer struct {
 }
 
 func NewPredictorServer(
+	port int,
 	clientConfig *restclient.Config,
 	kubeClient kubernetes.Interface,
 	informerFactory kubeinformers.SharedInformerFactory,
@@ -102,6 +103,7 @@ func NewPredictorServer(
 	}
 
 	ps := &PredictorServer{
+		port:            port,
 		kubeClient:      kubeClient,
 		informerFactory: informerFactory,
 		nodeInformer:    informerFactory.Core().V1().Nodes(),
@@ -127,7 +129,11 @@ func (ps *PredictorServer) Run(ctx context.Context) {
 		return
 	}
 
-	// TODO: add communication interface to scheduler
+	err := ps.HttpServer(ctx)
+	if err != nil {
+		klog.Errorf("failed to run predictor http server : ", err)
+		return
+	}
 	<-ctx.Done()
 }
 
