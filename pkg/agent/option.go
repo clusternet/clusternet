@@ -62,6 +62,8 @@ type ClusterRegistrationOptions struct {
 	// UseMetricsServer specifies whether to collect metrics from metrics server
 	UseMetricsServer bool
 
+	// PredictorListenPort
+	PredictorListenPort int
 	// TODO: check ca hash
 }
 
@@ -73,6 +75,8 @@ func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 		ClusterSyncMode:               string(clusterapi.Pull),
 		ClusterStatusReportFrequency:  metav1.Duration{Duration: DefaultClusterStatusReportFrequency},
 		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
+		PredictorAddress:              "http://localhost:8080",
+		PredictorListenPort:           8080,
 	}
 }
 
@@ -104,6 +108,8 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&opts.UseMetricsServer, "use-metrics-server", opts.UseMetricsServer, "Use metrics server")
 	fs.StringVar(&opts.PredictorAddress, "external-predictor-addr", opts.PredictorAddress,
 		"Set address of external predictor. If not set, built-in predictor will be used when feature gate 'Predictor' is enabled.")
+	fs.IntVar(&opts.PredictorListenPort, "predictor-listen-port", opts.PredictorListenPort,
+		"Set port of built-in predictor http server to listen")
 }
 
 // Complete completes all the required options.
@@ -113,6 +119,12 @@ func (opts *ClusterRegistrationOptions) Complete() []error {
 	opts.ClusterName = strings.TrimSpace(opts.ClusterName)
 	opts.ClusterNamePrefix = strings.TrimSpace(opts.ClusterNamePrefix)
 
+	if utilfeature.DefaultFeatureGate.Enabled(features.Predictor) && opts.PredictorAddress == "" {
+		opts.PredictorAddress = "http://localhost:8080"
+		if opts.PredictorListenPort != 0 {
+			opts.PredictorAddress = fmt.Sprintf("http://localhost:%d", opts.PredictorListenPort)
+		}
+	}
 	return allErrs
 }
 

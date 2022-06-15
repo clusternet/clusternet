@@ -113,7 +113,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	// creates the informer factory
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(childKubeClientSet, known.DefaultResync)
 
-	predictor, err := predictor.NewPredictorServer(childKubeConfig, childKubeClientSet, kubeInformerFactory)
+	predictor, err := predictor.NewPredictorServer(registrationOpts.PredictorListenPort, childKubeConfig, childKubeClientSet, kubeInformerFactory)
 	if err != nil {
 		return nil, err
 	}
@@ -218,10 +218,11 @@ func (agent *Agent) run(ctx context.Context) {
 		}
 	}, time.Duration(0))
 
-	go wait.UntilWithContext(ctx, func(ctx context.Context) {
-		agent.predictor.Run(ctx)
-	}, time.Duration(0))
-
+	if agent.registrationOptions.PredictorAddress == fmt.Sprintf("http://localhost:%d", agent.registrationOptions.PredictorListenPort) {
+		go wait.UntilWithContext(ctx, func(ctx context.Context) {
+			agent.predictor.Run(ctx)
+		}, time.Duration(0))
+	}
 	<-ctx.Done()
 }
 
