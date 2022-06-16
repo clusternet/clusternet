@@ -172,10 +172,16 @@ func (g *genericScheduler) selectClusters(ctx context.Context, state *framework.
 
 	selected.Replicas = make(map[string][]int32)
 	// transfer to available replicas
-	for _, clusterScore := range clusterScoreList {
-		for i := range finv.Spec.Feeds {
-			feed := &finv.Spec.Feeds[i].Feed
-			selected.Replicas[utils.GetFeedKey(*feed)] = append(selected.Replicas[utils.GetFeedKey(*feed)], clusterScore.MaxAvailableReplicas[i])
+	for index, feedOrder := range finv.Spec.Feeds {
+		if feedOrder.DesiredReplicas == nil {
+			continue
+		}
+		for _, clusterScore := range clusterScoreList {
+			feedKey := utils.GetFeedKey(feedOrder.Feed)
+			if clusterScore.MaxAvailableReplicas[index] == nil {
+				return framework.TargetClusters{}, fmt.Errorf("unable to get replicas for feed %q in cluster %q", feedKey, clusterScore.NamespacedName)
+			}
+			selected.Replicas[feedKey] = append(selected.Replicas[feedKey], *clusterScore.MaxAvailableReplicas[index])
 		}
 	}
 

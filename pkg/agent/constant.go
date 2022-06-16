@@ -52,6 +52,15 @@ const (
 
 	// UseMetricsServer flag specifies whether to collect metrics from metrics server running in the cluster
 	UseMetricsServer = "use-metrics-server"
+
+	// PredictorAddress flag specifies the address of external predictor
+	PredictorAddress = "predictor-addr"
+
+	// PredictorDirectAccess flag indicates whether the predictor can be accessed directly by clusternet-scheduler
+	PredictorDirectAccess = "predictor-direct-access"
+
+	// PredictorPort flag specifies the port on which to serve built-in predictor
+	PredictorPort = "predictor-port"
 )
 
 // default values

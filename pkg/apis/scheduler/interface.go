@@ -24,6 +24,24 @@ import (
 	"github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
+const (
+	DefaultAcceptableReplicasKey = "default"
+)
+
+// PredictorReplicas indicates a map of label to replicas with this constraint. Here the label constraint
+// could be topology constraints, such as
+// {
+//    "topology.kubernetes.io/zone=zone1,topology.kubernetes.io/region=region1": 3,
+//    "topology.kubernetes.io/zone=zone2,topology.kubernetes.io/region=region1": 5,
+// }.
+type PredictorReplicas map[string]int32
+
+// PredictorResults specify
+type PredictorResults struct {
+	// Replicas records the max acceptable replicas in this cluster
+	Replicas PredictorReplicas `json:"replicas,omitemtpy"`
+}
+
 // PredictorProvider is an interface that provides replicas predictions.
 type PredictorProvider interface {
 	// MaxAcceptableReplicas indicates the maximum acceptable replicas that the cluster could admit.
@@ -33,7 +51,7 @@ type PredictorProvider interface {
 	//    "topology.kubernetes.io/zone=zone1,topology.kubernetes.io/region=region1": 3,
 	//    "topology.kubernetes.io/zone=zone2,topology.kubernetes.io/region=region1": 5,
 	// }.
-	MaxAcceptableReplicas(ctx context.Context, requirements v1alpha1.ReplicaRequirements) (map[string]int32, error)
+	MaxAcceptableReplicas(ctx context.Context, requirements v1alpha1.ReplicaRequirements) (PredictorResults, error)
 
 	// UnschedulableReplicas returns current unschedulable replicas.
 	UnschedulableReplicas(ctx context.Context, gvk metav1.GroupVersionKind, namespacedName string,
@@ -41,3 +59,14 @@ type PredictorProvider interface {
 
 	// TODO: resource reservations
 }
+
+const (
+	// RootPathReplicas specifies the root path for predictor replica server
+	RootPathReplicas = "/replicas"
+
+	// SubPathPredict specifies the sub path for predicting replicas
+	SubPathPredict = "/predict"
+
+	// SubPathUnscheduled specifies the sub path for listing unscheduled replicas
+	SubPathUnscheduled = "/unscheduled"
+)

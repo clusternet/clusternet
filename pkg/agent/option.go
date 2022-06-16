@@ -58,12 +58,16 @@ type ClusterRegistrationOptions struct {
 
 	// PredictorAddress specifies the address of predictor
 	PredictorAddress string
+	// PredictorDirectAccess indicates whether the predictor can be accessed directly by clusternet-scheduler
+	PredictorDirectAccess bool
+	// PredictorPort specifies the port on which to serve built-in predictor
+	PredictorPort int
+	// serveInternalPredictor indicates whether to serve built-in predictor. It is not a flag.
+	serveInternalPredictor bool
 
 	// UseMetricsServer specifies whether to collect metrics from metrics server
 	UseMetricsServer bool
 
-	// PredictorListenPort
-	PredictorListenPort int
 	// TODO: check ca hash
 }
 
@@ -75,8 +79,8 @@ func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 		ClusterSyncMode:               string(clusterapi.Pull),
 		ClusterStatusReportFrequency:  metav1.Duration{Duration: DefaultClusterStatusReportFrequency},
 		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
-		PredictorAddress:              "http://localhost:8080",
-		PredictorListenPort:           8080,
+		PredictorPort:                 8080,
+		PredictorDirectAccess:         false,
 	}
 }
 
@@ -105,11 +109,13 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
 		"Specifies how often the agent collects current child cluster status")
 	fs.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
-	fs.BoolVar(&opts.UseMetricsServer, "use-metrics-server", opts.UseMetricsServer, "Use metrics server")
-	fs.StringVar(&opts.PredictorAddress, "external-predictor-addr", opts.PredictorAddress,
-		"Set address of external predictor. If not set, built-in predictor will be used when feature gate 'Predictor' is enabled.")
-	fs.IntVar(&opts.PredictorListenPort, "predictor-listen-port", opts.PredictorListenPort,
-		"Set port of built-in predictor http server to listen")
+	fs.BoolVar(&opts.UseMetricsServer, UseMetricsServer, opts.UseMetricsServer, "Use metrics server")
+	fs.StringVar(&opts.PredictorAddress, PredictorAddress, opts.PredictorAddress,
+		"Set address of external predictor, such as https://abc.com:8080. If not set, built-in predictor will be used when feature gate 'Predictor' is enabled.")
+	fs.BoolVar(&opts.PredictorDirectAccess, PredictorDirectAccess, opts.PredictorDirectAccess,
+		"Whether the predictor be accessed directly by clusternet-scheduler")
+	fs.IntVar(&opts.PredictorPort, PredictorPort, opts.PredictorPort,
+		"Set port on which to serve built-in predictor server. It is only used when feature gate 'Predictor' is enabled and '--predictor-addr' is not set.")
 }
 
 // Complete completes all the required options.
@@ -120,11 +126,10 @@ func (opts *ClusterRegistrationOptions) Complete() []error {
 	opts.ClusterNamePrefix = strings.TrimSpace(opts.ClusterNamePrefix)
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.Predictor) && opts.PredictorAddress == "" {
-		opts.PredictorAddress = "http://localhost:8080"
-		if opts.PredictorListenPort != 0 {
-			opts.PredictorAddress = fmt.Sprintf("http://localhost:%d", opts.PredictorListenPort)
-		}
+		opts.PredictorAddress = fmt.Sprintf("http://localhost:%d", opts.PredictorPort)
+		opts.serveInternalPredictor = true
 	}
+
 	return allErrs
 }
 

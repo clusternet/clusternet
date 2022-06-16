@@ -52,40 +52,44 @@ type Controller struct {
 	apiserverURL       string
 	appPusherEnabled   bool
 	useSocket          bool
-	predictorEnable    bool
 	useMetricsServer   bool
-	predictorAddress   string
 	nodeLister         corev1lister.NodeLister
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
+
+	predictorEnable       bool
+	predictorAddress      string
+	predictorDirectAccess bool
 }
 
 func NewController(
-	apiserverURL, predictorAddress string,
-	useMetricsServer bool,
+	apiserverURL string,
 	kubeClient kubernetes.Interface,
 	metricClient *metricsv.Clientset,
 	kubeInformerFactory informers.SharedInformerFactory,
+	predictorAddress string,
+	predictorDirectAccess, useMetricsServer bool,
 	collectingPeriod metav1.Duration,
 	heartbeatFrequency metav1.Duration,
 ) *Controller {
 	return &Controller{
-		kubeClient:         kubeClient,
-		metricClientset:    metricClient,
-		lock:               &sync.Mutex{},
-		collectingPeriod:   collectingPeriod,
-		heartbeatFrequency: heartbeatFrequency,
-		apiserverURL:       apiserverURL,
-		appPusherEnabled:   utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
-		useSocket:          utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
-		predictorEnable:    utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
-		useMetricsServer:   useMetricsServer,
-		predictorAddress:   predictorAddress,
-		nodeLister:         kubeInformerFactory.Core().V1().Nodes().Lister(),
-		nodeSynced:         kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
-		podLister:          kubeInformerFactory.Core().V1().Pods().Lister(),
-		podSynced:          kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
+		kubeClient:            kubeClient,
+		metricClientset:       metricClient,
+		lock:                  &sync.Mutex{},
+		collectingPeriod:      collectingPeriod,
+		heartbeatFrequency:    heartbeatFrequency,
+		apiserverURL:          apiserverURL,
+		appPusherEnabled:      utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
+		useSocket:             utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		predictorEnable:       utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
+		useMetricsServer:      useMetricsServer,
+		predictorAddress:      predictorAddress,
+		predictorDirectAccess: predictorDirectAccess,
+		nodeLister:            kubeInformerFactory.Core().V1().Nodes().Lister(),
+		nodeSynced:            kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
+		podLister:             kubeInformerFactory.Core().V1().Pods().Lister(),
+		podSynced:             kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
 	}
 }
 
@@ -153,6 +157,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.Conditions = []metav1.Condition{c.getCondition(status)}
 	status.PredictorEnabled = c.predictorEnable
 	status.PredictorAddress = c.predictorAddress
+	status.PredictorDirectAccess = c.predictorDirectAccess
 	c.setClusterStatus(status)
 }
 

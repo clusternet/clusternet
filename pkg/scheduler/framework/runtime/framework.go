@@ -29,6 +29,7 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -414,8 +415,8 @@ func (f *frameworkImpl) RunPredictPlugins(ctx context.Context, state *framework.
 	// Run Predict method for each cluster in parallel.
 	f.Parallelizer().Until(ctx, len(clusters), func(index int) {
 		for i, pl := range f.predictPlugins {
-			replicas, status := f.runPredictPlugin(ctx, pl, state, sub, finv, clusters[index])
-			if !status.IsSuccess() {
+			replicas, status2 := f.runPredictPlugin(ctx, pl, state, sub, finv, clusters[index])
+			if !status2.IsSuccess() {
 				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
 				return
@@ -921,7 +922,12 @@ func mergeFeedReplicas(a, b framework.FeedReplicas) framework.FeedReplicas {
 	}
 	res := make(framework.FeedReplicas, len(a))
 	for i := 0; i < len(b); i++ {
-		res[i] = utils.MinInt32(a[i], b[i])
+		if a[i] != nil && b[i] != nil {
+			res[i] = utilpointer.Int32(utils.MinInt32(*a[i], *b[i]))
+			continue
+		}
+
+		res[i] = nil
 	}
 	for i := len(b); i < len(a); i++ {
 		res[i] = a[i]

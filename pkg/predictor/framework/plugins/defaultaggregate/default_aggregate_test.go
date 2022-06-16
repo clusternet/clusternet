@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"testing"
 
+	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
 	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
 )
 
@@ -52,9 +53,9 @@ func TestDefaultAggregator(t *testing.T) {
 			if got := status.AsError(); got != nil {
 				t.Errorf("status does not match %q, want nil", got)
 			}
-			if maxAvailableReplicas[framework.DefaultAcceptableReplicasKey] != test.want {
+			if maxAvailableReplicas[schedulerapi.DefaultAcceptableReplicasKey] != test.want {
 				t.Errorf("got different maxAvailableReplicas got %q, want %q",
-					maxAvailableReplicas[framework.DefaultAcceptableReplicasKey], test.want)
+					maxAvailableReplicas[schedulerapi.DefaultAcceptableReplicasKey], test.want)
 			}
 		})
 	}

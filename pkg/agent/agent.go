@@ -86,7 +86,7 @@ type Agent struct {
 
 	deployer *deployer.Deployer
 
-	predictor *predictor.PredictorServer
+	predictor *predictor.Server
 }
 
 // NewAgent returns a new Agent.
@@ -113,9 +113,15 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	// creates the informer factory
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(childKubeClientSet, known.DefaultResync)
 
-	predictor, err := predictor.NewPredictorServer(registrationOpts.PredictorListenPort, childKubeConfig, childKubeClientSet, kubeInformerFactory)
-	if err != nil {
-		return nil, err
+	var p *predictor.Server
+	if registrationOpts.serveInternalPredictor {
+		// predictorAddr is in the form "host:port"
+		predictorAddr := strings.TrimLeft(registrationOpts.PredictorAddress, "http://")
+		predictorAddr = strings.TrimLeft(predictorAddr, "https://")
+		p, err = predictor.NewServer(childKubeConfig, childKubeClientSet, kubeInformerFactory, predictorAddr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	agent := &Agent{
@@ -135,7 +141,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 			registrationOpts.ClusterSyncMode,
 			childKubeConfig.Host,
 			controllerOpts.LeaderElection.ResourceNamespace),
-		predictor: predictor,
+		predictor: p,
 	}
 	return agent, nil
 }
@@ -218,7 +224,7 @@ func (agent *Agent) run(ctx context.Context) {
 		}
 	}, time.Duration(0))
 
-	if agent.registrationOptions.PredictorAddress == fmt.Sprintf("http://localhost:%d", agent.registrationOptions.PredictorListenPort) {
+	if agent.predictor != nil {
 		go wait.UntilWithContext(ctx, func(ctx context.Context) {
 			agent.predictor.Run(ctx)
 		}, time.Duration(0))
