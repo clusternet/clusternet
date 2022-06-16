@@ -43,7 +43,7 @@ func DynamicDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subs
 // dynamicDivideReplicas divides replicas by the MaxAvailableReplicas
 func dymamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) []int32 {
 	res := make([]int32, len(maxAvailableReplicas))
-	sumAvailableReplicas := sumArray(maxAvailableReplicas)
+	sumAvailableReplicas := utils.SumArrayInt32(maxAvailableReplicas)
 
 	if desiredReplicas > sumAvailableReplicas {
 		return maxAvailableReplicas
@@ -54,7 +54,7 @@ func dymamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) 
 	}
 
 	// Even out the rest replicas among all candidate clusters.
-	rest := desiredReplicas - sumArray(res)
+	rest := desiredReplicas - utils.SumArrayInt32(res)
 	if rest > 0 {
 		for i := 0; i < int(rest) && i < len(res); i++ {
 			res[i]++
@@ -62,13 +62,6 @@ func dymamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) 
 	}
 
 	return res
-}
-
-func sumArray(array []int32) (sum int32) {
-	for _, v := range array {
-		sum += v
-	}
-	return
 }
 
 // StaticDivideReplicas will fill the target replicas of all feeds based on a weight list and feed finv.
