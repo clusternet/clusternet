@@ -256,6 +256,10 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		}
 	}
 
+	if !admit(sub, finv) {
+		return
+	}
+
 	// Synchronously attempt to find a fit for the subscription.
 	start := time.Now()
 
@@ -519,4 +523,39 @@ func truncateMessage(message string) string {
 	}
 	suffix := " ..."
 	return message[:max-len(suffix)] + suffix
+}
+
+func admit(sub *appsapi.Subscription, finv *appsapi.FeedInventory) bool {
+	// always schedule replication subscription
+	if sub.Spec.SchedulingStrategy == appsapi.ReplicaSchedulingStrategyType {
+		return true
+	}
+	specHashChanged := utils.HashSubscriptionSpec(&sub.Spec) == sub.Status.SpecHash
+	feedChanged := isFeedChanged(sub, finv)
+	return specHashChanged || feedChanged
+}
+
+func isFeedChanged(sub *appsapi.Subscription, finv *appsapi.FeedInventory) bool {
+	feeds := sub.Spec.Feeds
+	replicas := sub.Status.Replicas
+	if len(feeds) != len(replicas) {
+		return true
+	}
+	for i := range feeds {
+		if _, exist := replicas[utils.GetFeedKey(feeds[i])]; !exist {
+			return true
+		}
+	}
+
+	feedOrders := finv.Spec.Feeds
+	for i := range feedOrders {
+		var desired int32
+		if feedOrders[i].DesiredReplicas != nil {
+			desired = *feedOrders[i].DesiredReplicas
+		}
+		if utils.SumArrayInt32(replicas[utils.GetFeedKey(feedOrders[i].Feed)]) != desired {
+			return true
+		}
+	}
+	return false
 }
