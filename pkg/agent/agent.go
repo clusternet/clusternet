@@ -393,7 +393,7 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetcli
 
 	// once the request gets approved
 	// store auto-populated credentials to Secret "parent-cluster" in "clusternet-system" namespace
-	go agent.storeParentClusterCredentials(ctx, crr)
+	agent.storeParentClusterCredentials(ctx, crr)
 
 	return nil
 }
