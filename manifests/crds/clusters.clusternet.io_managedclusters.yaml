@@ -282,6 +282,10 @@ spec:
               predictorAddress:
                 description: PredictorAddress shows the predictor address
                 type: string
+              predictorDirectAccess:
+                description: PredictorDirectAccess indicates whether the predictor
+                  can be accessed directly by clusternet-scheduler
+                type: boolean
               predictorEnabled:
                 description: PredictorEnabled indicates whether predictor is enabled.
                 type: boolean

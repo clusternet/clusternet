@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
 	predictorapis "github.com/clusternet/clusternet/pkg/predictor/apis"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 )
@@ -226,7 +227,7 @@ type AggregatePlugin interface {
 	// Aggregate is called on all selected nodes. It will calculate the sum of acceptable
 	// replicas for selected nodes. The return result is a map whose key indicates the
 	// specific calculation strategy and value is max acceptable replicas.
-	Aggregate(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores NodeScoreList) (AcceptableReplicas, *Status)
+	Aggregate(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores NodeScoreList) (schedulerapi.PredictorReplicas, *Status)
 }
 
 // Framework manages the set of plugins in use by the predictor framework.
@@ -267,7 +268,7 @@ type Framework interface {
 	// whose key indicates the specific calculation strategy and value is max acceptable replicas
 	// It also returns *Status, which is set to non-success if any of the plugins returns
 	// a non-success status.
-	RunAggregatePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores NodeScoreList) (AcceptableReplicas, *Status)
+	RunAggregatePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores NodeScoreList) (schedulerapi.PredictorReplicas, *Status)
 
 	// HasFilterPlugins returns true if at least one Filter plugin is defined.
 	HasFilterPlugins() bool

@@ -67,7 +67,7 @@ func (cs ClusterScoreList) ClusterNames() []string {
 	return clusters
 }
 
-type FeedReplicas []int32
+type FeedReplicas []*int32
 
 // PluginToClusterReplicas declares a map from plugin name to its ClusterScoreList.
 type PluginToClusterReplicas map[string]ClusterScoreList

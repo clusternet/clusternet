@@ -19,67 +19,33 @@ package predictor
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
+	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clsapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	"github.com/clusternet/clusternet/pkg/apis/scheduler"
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
+	"github.com/clusternet/clusternet/pkg/features"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
 )
 
+var _ framework.PredictPlugin = &Predictor{}
+
 // Predictor is a plugin than checks if a subscription need resources
 type Predictor struct {
 	handle framework.Handle
-
-	Address string
-}
-
-var _ framework.PredictPlugin = &Predictor{}
-
-// Name returns name of the plugin. It is used in logs, etc.
-func (pl *Predictor) Name() string {
-	return names.Predictor
-}
-
-// Predict invoked by scheduler predictor plugin
-func (pl *Predictor) Predict(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, cluster *clsapi.ManagedCluster) (feedReplicas framework.FeedReplicas, s *framework.Status) {
-	var pp scheduler.PredictorProvider
-
-	if cluster.Status.PredictorEnabled {
-		// TODO: if clusters.status.predictorAddress is http://localhost, use agent built-in predictor
-		if matched, _ := regexp.MatchString("http://localstatus:[0-9]+", cluster.Status.PredictorAddress); matched {
-			return nil, framework.NewStatus(framework.Skip, "use built-in predictor")
-		}
-	} else {
-		return nil, framework.NewStatus(framework.Skip, "predictor is disabled")
-	}
-
-	for _, feed := range finv.Spec.Feeds {
-		if feed.ReplicaRequirements.Resources.Size() == 0 {
-			feedReplicas = append(feedReplicas, 0)
-		} else {
-			pl.Address = cluster.Status.PredictorAddress
-			replica, err := pl.MaxAcceptableReplicas(ctx, feed.ReplicaRequirements)
-			if err != nil {
-				return nil, framework.AsStatus(err)
-			}
-			var keys string
-			for k, v := range feed.ReplicaRequirements.NodeSelector {
-				keys = strings.Join([]string{fmt.Sprintf("%s=%s", k, v)}, ",")
-			}
-			feedReplicas = append(feedReplicas, replica[keys])
-		}
-	}
-	return
 }
 
 // New initializes a new plugin and returns it.
@@ -87,32 +53,86 @@ func New(_ runtime.Object, h framework.Handle) (framework.Plugin, error) {
 	return &Predictor{handle: h}, nil
 }
 
-func (pl *Predictor) MaxAcceptableReplicas(ctx context.Context, require appsapi.ReplicaRequirements) (map[string]int32, error) {
-	replicas := make(map[string]int32)
-	url := pl.Address + "/accept"
-	jsonData, err := json.Marshal(require)
-	if err != nil {
-		return nil, err
-	}
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
+// Name returns name of the plugin. It is used in logs, etc.
+func (pl *Predictor) Name() string {
+	return names.Predictor
+}
 
-	data, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
+// Predict invoked by scheduler predictor plugin
+func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *appsapi.Subscription, finv *appsapi.FeedInventory,
+	mcls *clusterapi.ManagedCluster) (feedReplicas framework.FeedReplicas, s *framework.Status) {
+	if !mcls.Status.PredictorEnabled {
+		return nil, framework.NewStatus(framework.Skip, "predictor is disabled")
 	}
 
-	replica, err := strconv.Atoi(string(data))
+	predictorAddress := mcls.Status.PredictorAddress
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	var err error
+	if !mcls.Status.PredictorDirectAccess {
+		klog.V(5).Infof("the predictor of cluster %s can not be accessed directly", mcls.Spec.ClusterID)
+		if !mcls.Status.UseSocket {
+			return nil, framework.AsStatus(fmt.Errorf("cluster %s does not enable feature gate %s",
+				mcls.Spec.ClusterID, features.SocketConnection))
+		}
+
+		httpClient, err = restclient.HTTPClientFor(pl.handle.KubeConfig())
+		if err != nil {
+			return nil, framework.AsStatus(err)
+		}
+
+		predictorAddress = strings.Replace(predictorAddress, "http://", "http/", 1)
+		predictorAddress = strings.Replace(predictorAddress, "https://", "https/", 1)
+		predictorAddress = strings.Join([]string{
+			strings.TrimRight(pl.handle.KubeConfig().Host, "/"),
+			fmt.Sprintf("apis/%s/sockets/%s/proxy/%s", proxiesapi.SchemeGroupVersion.String(), mcls.Spec.ClusterID, predictorAddress),
+		}, "/")
+	}
+	httpClient.Timeout = time.Second * 32
+
+	for _, feedOrder := range finv.Spec.Feeds {
+		if feedOrder.DesiredReplicas == nil {
+			feedReplicas = append(feedReplicas, nil)
+			continue
+		}
+
+		replica, err2 := predictMaxAcceptableReplicas(httpClient, predictorAddress, feedOrder.ReplicaRequirements)
+		if err2 != nil {
+			return nil, framework.AsStatus(err2)
+		}
+		// Todo : support topology-aware replicas
+		feedReplicas = append(feedReplicas, utilpointer.Int32(replica[schedulerapi.DefaultAcceptableReplicasKey]))
+	}
+	return
+}
+
+func predictMaxAcceptableReplicas(httpClient *http.Client, address string, require appsapi.ReplicaRequirements) (map[string]int32, error) {
+	payload, err := json.Marshal(require)
 	if err != nil {
 		return nil, err
 	}
-	var keys string
-	for k, v := range require.NodeSelector {
-		keys = strings.Join([]string{fmt.Sprintf("%s=%s", k, v)}, ",")
+
+	resp, err := httpClient.Post(address, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
 	}
-	replicas[keys] = int32(replica)
-	return replicas, nil
+
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	predictorResults := &schedulerapi.PredictorResults{}
+	err = json.Unmarshal(data, predictorResults)
+	if err != nil {
+		return nil, err
+	}
+
+	return predictorResults.Replicas, nil
 }

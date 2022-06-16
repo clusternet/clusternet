@@ -26,6 +26,7 @@ import (
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
 	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/predictor/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/predictor/metrics"
@@ -223,7 +224,7 @@ func aggregateReplicas(
 	fwk framework.Framework,
 	requirements *appsapi.ReplicaRequirements,
 	result framework.NodeScoreList,
-) (framework.AcceptableReplicas, error) {
+) (schedulerapi.PredictorReplicas, error) {
 	if !fwk.HasAggregatePlugins() {
 		return nil, fmt.Errorf("no calculate plugin is registry")
 	}
