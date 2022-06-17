@@ -121,6 +121,11 @@ spec:
                 - Pending
                 - Success
                 - Failure
+                - Installing
+                - Upgrading
+                - Uninstalling
+                - Superseded
+                - Unknown
                 type: string
               reason:
                 description: Reason indicates the reason of DescriptionPhase

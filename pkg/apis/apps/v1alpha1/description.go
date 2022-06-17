@@ -65,7 +65,7 @@ type DescriptionSpec struct {
 type DescriptionStatus struct {
 	// Phase denotes the phase of Description
 	// +optional
-	// +kubebuilder:validation:Enum=Pending;Success;Failure
+	// +kubebuilder:validation:Enum=Pending;Success;Failure;Installing;Upgrading;Uninstalling;Superseded;Unknown
 	Phase DescriptionPhase `json:"phase,omitempty"`
 
 	// Reason indicates the reason of DescriptionPhase
@@ -102,6 +102,18 @@ type DescriptionPhase string
 const (
 	DescriptionPhaseSuccess DescriptionPhase = "Success"
 	DescriptionPhaseFailure DescriptionPhase = "Failure"
+
+	// The following is the helm-specific status
+	// DescriptionPhaseInstalling indicates that an install operation is underway.
+	DescriptionPhaseInstalling DescriptionPhase = "Installing"
+	// DescriptionPhaseUpgrading indicates that an upgrade operation is underway.
+	DescriptionPhaseUpgrading DescriptionPhase = "Upgrading"
+	// DescriptionPhaseUninstalling indicates that a uninstall operation is underway.
+	DescriptionPhaseUninstalling DescriptionPhase = "Uninstalling"
+	// DescriptionPhaseSuperseded indicates that this release object is outdated and a newer one exists.
+	DescriptionPhaseSuperseded DescriptionPhase = "Superseded"
+	// DescriptionPhaseUnknown indicates that a release is in an uncertain state.
+	DescriptionPhaseUnknown DescriptionPhase = "Unknown"
 )
 
 // +kubebuilder:object:root=true

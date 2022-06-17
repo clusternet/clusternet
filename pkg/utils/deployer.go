@@ -128,8 +128,13 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	cfg.Releases.MaxHistory = 5
 	cfg.RegistryClient = registryClient
 
+	hrStatus := &appsapi.HelmReleaseStatus{}
 	// delete helm release
 	if hr.DeletionTimestamp != nil {
+		hrStatus.Phase = release.StatusUninstalling
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
 		err2 := UninstallRelease(cfg, hr)
 		if err2 != nil {
 			return err2
@@ -172,19 +177,26 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	rel, err = cfg.Releases.Deployed(releaseName)
 	if err != nil {
 		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
+			hrStatus.Phase = release.StatusPendingInstall
+			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+				return err
+			}
 			rel, err = InstallRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		}
 	} else {
 		// verify the release is changed or not
 		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
 			klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
+			hrStatus.Phase = release.StatusPendingUpgrade
+			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+				return err
+			}
 			rel, err = UpgradeRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		} else {
 			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
 		}
 	}
 
-	var hrStatus *appsapi.HelmReleaseStatus
 	if err != nil {
 		// repo update
 		if strings.Contains(err.Error(), "helm repo update") {
@@ -263,11 +275,24 @@ func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetcl
 		if desc == nil {
 			return nil
 		}
-		if status.Phase == release.StatusDeployed {
+		switch status.Phase {
+		case release.StatusDeployed:
 			desc.Status.Phase = appsapi.DescriptionPhaseSuccess
 			desc.Status.Reason = ""
-		} else {
+		case release.StatusPendingInstall:
+			desc.Status.Phase = appsapi.DescriptionPhaseInstalling
+		case release.StatusPendingUpgrade:
+			desc.Status.Phase = appsapi.DescriptionPhaseUpgrading
+		case release.StatusUninstalling:
+			desc.Status.Phase = appsapi.DescriptionPhaseUninstalling
+		case release.StatusSuperseded:
+			desc.Status.Phase = appsapi.DescriptionPhaseSuperseded
+			desc.Status.Reason = status.Notes
+		case release.StatusFailed:
 			desc.Status.Phase = appsapi.DescriptionPhaseFailure
+			desc.Status.Reason = status.Notes
+		default:
+			desc.Status.Phase = appsapi.DescriptionPhaseUnknown
 			desc.Status.Reason = status.Notes
 		}
 		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
