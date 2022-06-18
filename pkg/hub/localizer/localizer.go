@@ -264,6 +264,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 	switch descCopy.Spec.Deployer {
 	case appsapi.DescriptionHelmDeployer:
 		desc.Spec.Raw = make([][]byte, len(descCopy.Spec.Charts))
+
 		for idx, chartRef := range descCopy.Spec.Charts {
 			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
 				Kind:       chartKind.Kind,
@@ -277,12 +278,13 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 			}
 
 			// use a whitespace explicitly
-			result, err := applyOverrides([]byte(" "), overrides)
+			genericResult, chartResult, err := applyOverrides([]byte(" "), desc.Spec.ChartRaw[idx], overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
-			desc.Spec.Raw[idx] = result
+			desc.Spec.Raw[idx] = genericResult
+			desc.Spec.ChartRaw[idx] = chartResult
 		}
 		return utilerrors.NewAggregate(allErrs)
 	case appsapi.DescriptionGenericDeployer:
@@ -304,7 +306,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 				continue
 			}
 
-			result, err := applyOverrides(rawObject, overrides)
+			result, _, err := applyOverrides(rawObject, nil, overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue

@@ -50,6 +50,13 @@ spec:
           spec:
             description: DescriptionSpec defines the spec of Description
             properties:
+              chartRaw:
+                description: ChartRaw is the underlying serialization of all helm
+                  chart objects.
+                items:
+                  format: byte
+                  type: string
+                type: array
               charts:
                 description: Charts describe all the helm charts to be installed
                 items:

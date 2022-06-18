@@ -15,7 +15,7 @@ spec:
     namespace: default
   overrides: # defines all the overrides to be processed with
     - name: override-commonLabels
-      type: Helm # This can only be "Helm" for HelmChart.
+      type: Helm # This can only be "Helm" for HelmRelease Values.
       # Value is a YAML/JSON format patch that overrides values to current Helm chart defined by feed.
       # And the value here is exactly the same as file "values.yaml".
       # This override patches parameter commonLabels on Mysql chart.
@@ -24,12 +24,32 @@ spec:
           clusternet.io/override-by: clusternet-hub
           some-label: some-value
     - name: disable-pvc-usage
-      type: Helm # This can only be "Helm" for HelmChart.
+      type: Helm # This can only be "Helm" for HelmRelease Values.
       # Value is a YAML/JSON format patch that overrides values to current Helm chart defined by feed.
       # And the value here is exactly the same as file "values.yaml".
       # This override disables using PersistentVolumeClaim on MySQL primary replicas.
       # The value here can also be in json format.
       value: '{"primary":{"persistence":{"enabled":false}}}'
+    - name: update-helm-chart-version
+      overrideChart: true # This is a flag to indicate that this override is for HelmChart CR.
+      type: Helm # This can only be "Helm" for HelmChart.
+      # Value is a YAML/JSON format patch that provides MergePatch to current resource defined by feed.
+      # And the value here will be synchronized to HelmRelease.
+      # This override update the version of Helm chart defined by feed.
+      value: |-
+        spec:
+          version: 1.8.0
+    - name: add-helm-chart-labels
+      type: Helm # This can only be "Helm" for HelmChart.
+      overrideChart: true # This is a flag to indicate that this override is for HelmChart CR.
+      # Value is a YAML/JSON format patch that provides MergePatch to current resource defined by feed.
+      # And the value here will be synchronized to HelmRelease.
+      # This override adds or updates some labels.
+      value: |-
+        metadata:
+          labels:
+            some-label: some-value
+            another-label: another-value
 ---
 
 apiVersion: apps.clusternet.io/v1alpha1

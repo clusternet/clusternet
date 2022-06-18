@@ -59,6 +59,11 @@ type DescriptionSpec struct {
 	//
 	// +optional
 	Raw [][]byte `json:"raw,omitempty"`
+
+	// ChartRaw is the underlying serialization of all helm chart objects.
+	//
+	// +optional
+	ChartRaw [][]byte `json:"chartRaw,omitempty"`
 }
 
 // DescriptionStatus defines the observed state of Description
