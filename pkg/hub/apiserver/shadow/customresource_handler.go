@@ -308,6 +308,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	restStorage.SetKind(crd.Spec.Names.Kind)
 	restStorage.SetGroup(crd.Spec.Group)
 	restStorage.SetVersion(storageVersion)
+	restStorage.SetCRD(crd)
 
 	groupVersionKind := restStorage.GroupVersionKind(schema.GroupVersion{})
 	groupVersionResource := groupVersionKind.GroupVersion().WithResource(resource)

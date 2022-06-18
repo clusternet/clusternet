@@ -25,6 +25,9 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
@@ -49,6 +52,10 @@ import (
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/registry/shadow/printers"
+	printersinternal "github.com/clusternet/clusternet/pkg/registry/shadow/printers/internalversion"
+	printerstorage "github.com/clusternet/clusternet/pkg/registry/shadow/printers/storage"
+	"github.com/clusternet/clusternet/pkg/registry/shadow/printers/util"
 )
 
 const (
@@ -87,6 +94,9 @@ type REST struct {
 
 	// namespace where Manifests are created
 	reservedNamespace string
+
+	// is this Rest for CRD resource.
+	CRD *apiextensionsv1.CustomResourceDefinition
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -412,8 +422,15 @@ func (r *REST) NewList() runtime.Object {
 }
 
 func (r *REST) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
-	tableConvertor := rest.NewDefaultTableConvertor(schema.GroupResource{Group: r.group, Resource: r.name})
-	return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	if r.CRD != nil {
+		storageVersion, _ := apiextensionshelpers.GetCRDStorageVersion(r.CRD)
+		columns, _ := util.GetColumnsForVersion(r.CRD, storageVersion)
+		tableConvertor, _ := tableconvertor.New(columns)
+		return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	} else {
+		tableConvertor := printerstorage.TableConvertor{TableGenerator: printers.NewTableGenerator().With(printersinternal.AddHandlers)}
+		return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	}
 }
 
 func (r *REST) ShortNames() []string {
@@ -450,6 +467,10 @@ func (r *REST) SetVersion(version string) {
 
 func (r *REST) SetKind(kind string) {
 	r.kind = kind
+}
+
+func (r *REST) SetCRD(crd *apiextensionsv1.CustomResourceDefinition) {
+	r.CRD = crd
 }
 
 func (r *REST) New() runtime.Object {
