@@ -46,7 +46,7 @@ func (pl *TaintToleration) Name() string {
 }
 
 // Filter invoked at the filter extension point.
-func (pl *TaintToleration) Filter(ctx context.Context, sub *appsapi.Subscription, cluster *clusterapi.ManagedCluster) *framework.Status {
+func (pl *TaintToleration) Filter(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, cluster *clusterapi.ManagedCluster) *framework.Status {
 	if cluster == nil {
 		return framework.AsStatus(fmt.Errorf("invalid cluster"))
 	}
@@ -95,7 +95,7 @@ func countIntolerableTaintsPreferNoSchedule(taints []v1.Taint, tolerations []v1.
 }
 
 // Score invoked at the Score extension point.
-func (pl *TaintToleration) Score(ctx context.Context, sub *appsapi.Subscription, namespacedCluster string) (int64, *framework.Status) {
+func (pl *TaintToleration) Score(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, namespacedCluster string) (int64, *framework.Status) {
 	// Convert the namespace/name string into a distinct namespace and name
 	ns, name, err := cache.SplitMetaNamespaceKey(namespacedCluster)
 	if err != nil {
@@ -113,7 +113,7 @@ func (pl *TaintToleration) Score(ctx context.Context, sub *appsapi.Subscription,
 }
 
 // NormalizeScore invoked after scoring all clusters.
-func (pl *TaintToleration) NormalizeScore(ctx context.Context, scores framework.ClusterScoreList) *framework.Status {
+func (pl *TaintToleration) NormalizeScore(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, scores framework.ClusterScoreList) *framework.Status {
 	return helper.DefaultNormalizeScore(framework.MaxClusterScore, true, scores)
 }
 

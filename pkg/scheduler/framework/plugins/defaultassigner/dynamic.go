@@ -35,7 +35,7 @@ type DynamicAssigner struct {
 
 var _ framework.AssignPlugin = &DynamicAssigner{}
 
-// New creates a DefaultAssigner.
+// NewDynamicAssigner creates a default dynamic assigner.
 func NewDynamicAssigner(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 	return &DynamicAssigner{handle: handle}, nil
 }
@@ -46,7 +46,7 @@ func (pl *DynamicAssigner) Name() string {
 }
 
 // Assign assigns subscriptions to clusters using the clusternet client.
-func (pl *DynamicAssigner) Assign(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (framework.TargetClusters, *framework.Status) {
+func (pl *DynamicAssigner) Assign(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (framework.TargetClusters, *framework.Status) {
 	klog.V(3).InfoS("Attempting to assign replicas to clusters",
 		"subscription", klog.KObj(sub), "clusters", availableReplicas.BindingClusters)
 	if sub.Spec.DividingScheduling == nil || sub.Spec.DividingScheduling.Type != appsapi.DynamicReplicaDividingType {

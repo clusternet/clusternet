@@ -398,7 +398,7 @@ func TestDivideReplicas(t *testing.T) {
 			clusterInformer := clusternetInformerFactory.Clusters().V1beta1().ManagedClusters()
 
 			fwk, _ := runtime.NewFramework(nil, nil, runtime.WithCache(schedulercache.New(clusterInformer.Lister())))
-			assigner, err := New(nil, fwk)
+			assigner, err := NewStaticAssigner(nil, fwk)
 			if err != nil {
 				t.Fatalf("Creating plugin error: %v", err)
 			}
@@ -408,7 +408,7 @@ func TestDivideReplicas(t *testing.T) {
 				t.Fatalf("Assign() error = %v, wantErr %v", fmt.Errorf("failed to wait for cache sync"), tt.wantErr)
 			}
 
-			result, status := assigner.(framework.AssignPlugin).Assign(ctx, tt.args.sub, tt.args.finv, *tt.args.selected)
+			result, status := assigner.(framework.AssignPlugin).Assign(ctx, nil, tt.args.sub, tt.args.finv, *tt.args.selected)
 			if (status != nil) != tt.wantErr {
 				t.Errorf("Assign() error = %v, wantErr %v", err, tt.wantErr)
 			}

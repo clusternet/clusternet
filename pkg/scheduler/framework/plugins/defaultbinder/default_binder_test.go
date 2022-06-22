@@ -82,7 +82,7 @@ func TestDefaultBinder(t *testing.T) {
 				t.Fatal(err)
 			}
 			binder := &DefaultBinder{handle: fh}
-			status := binder.Bind(context.Background(), testSubscription, testClusters)
+			status := binder.Bind(context.Background(), nil, testSubscription, testClusters)
 			if got := status.AsError(); (tt.injectErr != nil) != (got != nil) {
 				t.Errorf("got error %q, want %q", got, tt.injectErr)
 			}
