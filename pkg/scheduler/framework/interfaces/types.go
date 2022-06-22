@@ -65,6 +65,34 @@ func (t TargetClusters) Swap(i, j int) {
 	}
 }
 
+func (t *TargetClusters) DeepCopy() *TargetClusters {
+	if t == nil {
+		return nil
+	}
+	obj := new(TargetClusters)
+	if t.BindingClusters != nil {
+		in, out := &t.BindingClusters, &obj.BindingClusters
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if t.Replicas != nil {
+		in, out := &t.Replicas, &obj.Replicas
+		*out = make(map[string][]int32, len(*in))
+		for key, val := range *in {
+			var outVal []int32
+			if val == nil {
+				(*out)[key] = nil
+			} else {
+				in, out := &val, &outVal
+				*out = make([]int32, len(*in))
+				copy(*out, *in)
+			}
+			(*out)[key] = outVal
+		}
+	}
+	return obj
+}
+
 const (
 	// NoClusterAvailableMsg is used to format message when no clusters available.
 	NoClusterAvailableMsg = "0/%v clusters are available"

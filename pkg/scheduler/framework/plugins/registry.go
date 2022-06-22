@@ -30,7 +30,7 @@ func NewInTreeRegistry() runtime.Registry {
 	return runtime.Registry{
 		names.DefaultBinder:   defaultbinder.New,
 		names.TaintToleration: tainttoleration.New,
-		names.StaticAssigner:  defaultassigner.New,
+		names.StaticAssigner:  defaultassigner.NewStaticAssigner,
 		names.DynamicAssigner: defaultassigner.NewDynamicAssigner,
 		names.Predictor:       predictor.New,
 	}

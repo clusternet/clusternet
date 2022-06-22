@@ -262,11 +262,12 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 	// Synchronously attempt to find a fit for the subscription.
 	start := time.Now()
+	state := framework.NewCycleState()
 
 	schedulingCycleCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	scheduleResult, err := sched.scheduleAlgorithm.Schedule(schedulingCycleCtx, sched.framework, sub, finv)
+	scheduleResult, err := sched.scheduleAlgorithm.Schedule(schedulingCycleCtx, sched.framework, state, sub, finv)
 	if err != nil {
 		sched.recordSchedulingFailure(sub, err, ReasonUnschedulable)
 		if !strings.Contains(err.Error(), "clusters are available") {
@@ -277,16 +278,16 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 	// Run the Reserve method of reserve plugins.
 	targetClusters := scheduleResult.SuggestedClusters
-	if sts := sched.framework.RunReservePluginsReserve(schedulingCycleCtx, sub, targetClusters); !sts.IsSuccess() {
+	if sts := sched.framework.RunReservePluginsReserve(schedulingCycleCtx, state, sub, targetClusters); !sts.IsSuccess() {
 		metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 		// trigger un-reserve to clean up state associated with the reserved subscription
-		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, sub, targetClusters)
+		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, state, sub, targetClusters)
 		sched.recordSchedulingFailure(sub, sts.AsError(), SchedulerError)
 		return
 	}
 
 	// Run "permit" plugins.
-	runPermitStatus := sched.framework.RunPermitPlugins(schedulingCycleCtx, sub, targetClusters)
+	runPermitStatus := sched.framework.RunPermitPlugins(schedulingCycleCtx, state, sub, targetClusters)
 	if runPermitStatus.Code() != framework.Wait && !runPermitStatus.IsSuccess() {
 		var reason string
 		if runPermitStatus.IsUnschedulable() {
@@ -297,7 +298,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			reason = SchedulerError
 		}
 		// One of the plugins returned status different from success or wait.
-		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, sub, targetClusters)
+		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, state, sub, targetClusters)
 		sched.recordSchedulingFailure(sub, runPermitStatus.AsError(), reason)
 		return
 	}
@@ -320,39 +321,39 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 				reason = SchedulerError
 			}
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
-			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, targetClusters)
+			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
 			sched.recordSchedulingFailure(sub, waitOnPermitStatus.AsError(), reason)
 			return
 		}
 
 		// Run "prebind" plugins.
-		preBindStatus := sched.framework.RunPreBindPlugins(bindingCycleCtx, sub, targetClusters)
+		preBindStatus := sched.framework.RunPreBindPlugins(bindingCycleCtx, state, sub, targetClusters)
 		if !preBindStatus.IsSuccess() {
 			metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
-			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, targetClusters)
+			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
 			sched.recordSchedulingFailure(sub, preBindStatus.AsError(), SchedulerError)
 			return
 		}
 
-		err := sched.bind(bindingCycleCtx, sub, targetClusters)
+		err := sched.bind(bindingCycleCtx, state, sub, targetClusters)
 		if err != nil {
 			metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
-			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, sub, targetClusters)
+			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
 			sched.recordSchedulingFailure(sub, fmt.Errorf("binding rejected: %w", err), SchedulerError)
 		} else {
 			metrics.SubscriptionScheduled(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 
 			// Run "postbind" plugins.
-			sched.framework.RunPostBindPlugins(bindingCycleCtx, sub, targetClusters)
+			sched.framework.RunPostBindPlugins(bindingCycleCtx, state, sub, targetClusters)
 		}
 	}()
 }
 
 // bind a subscription to given clusters.
 // We expect this to run asynchronously, so we handle binding metrics internally.
-func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (err error) {
+func (sched *Scheduler) bind(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, targetClusters framework.TargetClusters) (err error) {
 	defer func() {
 		// finish binding
 		if err != nil {
@@ -368,7 +369,7 @@ func (sched *Scheduler) bind(ctx context.Context, sub *appsapi.Subscription, tar
 		)
 	}()
 
-	bindStatus := sched.framework.RunBindPlugins(ctx, sub, targetClusters)
+	bindStatus := sched.framework.RunBindPlugins(ctx, state, sub, targetClusters)
 	if bindStatus.IsSuccess() {
 		return nil
 	}

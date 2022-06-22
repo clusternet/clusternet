@@ -48,7 +48,7 @@ func (pl *DefaultBinder) Name() string {
 }
 
 // Bind binds subscriptions to clusters using the clusternet client.
-func (pl *DefaultBinder) Bind(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
+func (pl *DefaultBinder) Bind(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
 	klog.V(3).InfoS("Attempting to bind subscription to clusters",
 		"subscription", klog.KObj(sub), "clusters", targetClusters.BindingClusters)
 
