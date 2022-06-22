@@ -72,6 +72,18 @@ func TestAuthorizer(t *testing.T) {
 			clusterID: "9bb775e3-b177-4e77-8685-1aadcb03b0a8",
 			authed:    true,
 		},
+		{
+			name: "url does not contain proxy prefix",
+			req: &http.Request{
+				URL: &url.URL{
+					Path:     "/connect",
+					RawQuery: "abc=def",
+				},
+			},
+			clusterID: "",
+			authed:    false,
+			wantErr:   true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
