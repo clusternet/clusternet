@@ -66,8 +66,11 @@ const (
 )
 
 func authorizer(req *http.Request) (string, bool, error) {
-	clusterID := strings.TrimPrefix(strings.TrimRight(req.URL.Path, "/"), urlPrefix)
-	return clusterID, clusterID != "", nil
+	if strings.Contains(req.URL.Path, urlPrefix) {
+		clusterID := strings.TrimPrefix(strings.TrimRight(req.URL.Path, "/"), urlPrefix)
+		return clusterID, clusterID != "", nil
+	}
+	return "", false, fmt.Errorf("illegal request %s", req.URL.Path)
 }
 
 func NewExchanger(peerID, peerToken string, tunnelLogging bool, mcLister clusterlisters.ManagedClusterLister) *Exchanger {
