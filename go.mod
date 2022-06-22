@@ -7,6 +7,7 @@ require (
 	github.com/emicklei/go-restful v2.9.5+incompatible
 	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/google/go-cmp v0.5.6
+	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24
 	github.com/rancher/remotedialer v0.2.6-0.20210318171128-d1ebd5202be4
@@ -79,7 +80,6 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gosuri/uitable v0.0.4 // indirect
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect

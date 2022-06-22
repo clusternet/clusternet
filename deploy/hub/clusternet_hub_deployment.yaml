@@ -70,8 +70,17 @@ spec:
                   fieldPath: metadata.namespace
             - name: RESERVED_NAMESPACE
               value: clusternet-reserved
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - name: peer
+              containerPort: 8123
+              protocol: TCP
           command:
             - /usr/local/bin/clusternet-hub
+            - --bind-address=$(POD_IP)
             - --secure-port=443
             - --feature-gates=SocketConnection=true,Deployer=true,ShadowAPI=true,FeedInUseProtection=true,FeedInventory=true
             - --anonymous-auth-supported=true

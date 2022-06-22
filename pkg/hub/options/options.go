@@ -77,6 +77,12 @@ type HubServerOptions struct {
 	LoopbackSharedInformerFactory informers.SharedInformerFactory
 
 	*utils.ControllerOptions
+
+	// secure port used for communicating with peers
+	PeerPort int
+
+	// token used for authentication with peers
+	PeerToken string
 }
 
 // NewHubServerOptions returns a new HubServerOptions
@@ -94,6 +100,8 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 		ReservedNamespace:      known.ClusternetReservedNamespace,
 		Threadiness:            known.DefaultThreadiness,
 		ControllerOptions:      controllerOpts,
+		PeerPort:               8123,
+		PeerToken:              "Cheugy",
 	}, nil
 }
 
@@ -167,6 +175,8 @@ func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
 	fs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
 	fs.IntVar(&o.Threadiness, "threadiness", o.Threadiness, "The number of threads to use for controller workers")
+	fs.IntVar(&o.PeerPort, "peer-port", o.PeerPort, "The port on which to serve HTTPS for communicating with peers.")
+	fs.StringVar(&o.PeerToken, "peer-token", o.PeerToken, "The token for authentication with peers with peers.")
 }
 
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
