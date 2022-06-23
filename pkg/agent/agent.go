@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 
@@ -72,6 +73,9 @@ type Agent struct {
 	// clientset for child cluster
 	childKubeClientSet kubernetes.Interface
 
+	// clientset for child cluster election
+	childElectionClientSet kubernetes.Interface
+
 	// kube informer factory for child cluster
 	kubeInformerFactory kubeinformers.SharedInformerFactory
 
@@ -104,8 +108,16 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	if err != nil {
 		return nil, err
 	}
+
 	// create clientset for child cluster
-	childKubeClientSet := kubernetes.NewForConfigOrDie(childKubeConfig)
+	clientBuilder := clientbuilder.SimpleControllerClientBuilder{
+		ClientConfig: childKubeConfig,
+	}
+	childKubeClientSet := kubernetes.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-kube-client"))
+	var electionClientSet *kubernetes.Clientset
+	if controllerOpts.LeaderElection.LeaderElect {
+		electionClientSet = kubernetes.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-election-client"))
+	}
 
 	// create metrics client for child cluster
 	metricClient := metricsv.NewForConfigOrDie(childKubeConfig)
@@ -125,11 +137,12 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	}
 
 	agent := &Agent{
-		Identity:            identity,
-		childKubeClientSet:  childKubeClientSet,
-		kubeInformerFactory: kubeInformerFactory,
-		registrationOptions: registrationOpts,
-		controllerOptions:   controllerOpts,
+		Identity:               identity,
+		childKubeClientSet:     childKubeClientSet,
+		childElectionClientSet: electionClientSet,
+		kubeInformerFactory:    kubeInformerFactory,
+		registrationOptions:    registrationOpts,
+		controllerOptions:      controllerOpts,
 		statusManager: NewStatusManager(
 			childKubeConfig.Host,
 			registrationOpts,
@@ -170,7 +183,7 @@ func (agent *Agent) Run(ctx context.Context) error {
 		agent.controllerOptions.LeaderElection.LeaseDuration.Duration,
 		agent.controllerOptions.LeaderElection.RenewDeadline.Duration,
 		agent.controllerOptions.LeaderElection.RetryPeriod.Duration,
-		agent.childKubeClientSet,
+		agent.childElectionClientSet,
 		leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				agent.run(ctx)

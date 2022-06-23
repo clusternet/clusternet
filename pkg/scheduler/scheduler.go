@@ -72,6 +72,7 @@ type Scheduler struct {
 	schedulerOptions *options.SchedulerOptions
 
 	kubeClient                *kubernetes.Clientset
+	electionClient            *kubernetes.Clientset
 	clusternetClient          *clusternet.Clientset
 	ClusternetInformerFactory informers.SharedInformerFactory
 
@@ -112,6 +113,11 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-client-scheduler"))
 	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetClient, known.DefaultResync)
 
+	var electionClient *kubernetes.Clientset
+	if schedulerOptions.LeaderElection.LeaderElect {
+		electionClient = kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-scheduler-election-client"))
+	}
+
 	// create event recorder
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
@@ -126,6 +132,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 	sched := &Scheduler{
 		schedulerOptions:          schedulerOptions,
 		kubeClient:                kubeClient,
+		electionClient:            electionClient,
 		clusternetClient:          clusternetClient,
 		ClusternetInformerFactory: clusternetInformerFactory,
 		subsLister:                clusternetInformerFactory.Apps().V1alpha1().Subscriptions().Lister(),
@@ -188,7 +195,7 @@ func (sched *Scheduler) Run(ctx context.Context) error {
 		sched.schedulerOptions.LeaderElection.LeaseDuration.Duration,
 		sched.schedulerOptions.LeaderElection.RenewDeadline.Duration,
 		sched.schedulerOptions.LeaderElection.RetryPeriod.Duration,
-		sched.kubeClient,
+		sched.electionClient,
 		leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				wait.UntilWithContext(ctx, sched.scheduleOne, 0)

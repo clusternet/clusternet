@@ -83,6 +83,7 @@ type Hub struct {
 	aggregatorInformerFactory aggregatorinformers.SharedInformerFactory
 
 	kubeClient       *kubernetes.Clientset
+	electionClient   *kubernetes.Clientset
 	clusternetClient *clusternet.Clientset
 	clientBuilder    clientbuilder.ControllerClientBuilder
 
@@ -112,6 +113,11 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	}
 	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client"))
 	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-client"))
+
+	var electionClient *kubernetes.Clientset
+	if opts.LeaderElection.LeaderElect {
+		electionClient = kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-election-client"))
+	}
 
 	//deployer.broadcaster.StartStructuredLogging(5)
 	broadcaster := record.NewBroadcaster()
@@ -156,6 +162,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		crrApprover:               approver,
 		options:                   opts,
 		kubeClient:                kubeClient,
+		electionClient:            electionClient,
 		clusternetClient:          clusternetClient,
 		clientBuilder:             rootClientBuilder,
 		clusternetInformerFactory: clusternetInformerFactory,
@@ -204,7 +211,7 @@ func (hub *Hub) Run(ctx context.Context) error {
 		hub.options.LeaderElection.LeaseDuration.Duration,
 		hub.options.LeaderElection.RenewDeadline.Duration,
 		hub.options.LeaderElection.RetryPeriod.Duration,
-		hub.kubeClient,
+		hub.electionClient,
 		leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				hub.runControllers(ctx)
@@ -237,7 +244,7 @@ func (hub *Hub) Run(ctx context.Context) error {
 			Token:    hub.options.PeerToken,
 		},
 		hub.options.LeaderElection,
-		hub.kubeClient,
+		hub.electionClient,
 	)
 	if err != nil {
 		return err
@@ -340,7 +347,7 @@ func (hub *Hub) Run(ctx context.Context) error {
 			}()
 
 			go leasegc.NewLeaseGC(
-				hub.kubeClient,
+				hub.electionClient,
 				hub.options.LeaderElection.LeaseDuration.Duration,
 				hub.options.LeaderElection.ResourceNamespace,
 				func(lease *coordinationapi.Lease) bool {
@@ -360,7 +367,7 @@ func (hub *Hub) Run(ctx context.Context) error {
 				}
 			}()
 
-			go refreshingPeers(hub.kubeClient, hub.peerID, hub.options.LeaderElection.ResourceNamespace,
+			go refreshingPeers(hub.electionClient, hub.peerID, hub.options.LeaderElection.ResourceNamespace,
 				server.PeerDialer, postStartHookContext.StopCh)
 
 			select {
