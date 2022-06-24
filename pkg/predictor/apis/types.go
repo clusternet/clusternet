@@ -17,8 +17,6 @@ limitations under the License.
 package apis
 
 import (
-	"math"
-
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -74,25 +72,6 @@ type Plugin struct {
 	// Weight defines the weight of plugin, only used for Score plugins.
 	Weight int32
 }
-
-/*
- * NOTE: The following variables and methods are intentionally left out of the staging mirror.
- */
-const (
-	// DefaultPercentageOfNodesToScore defines the percentage of nodes of all nodes
-	// that once found feasible, the predictor stops looking for more nodes.
-	// A value of 0 means adaptive, meaning the predictor figures out a proper default.
-	DefaultPercentageOfNodesToScore = 0
-
-	// MaxCustomPriorityScore is the max score UtilizationShapePoint expects.
-	MaxCustomPriorityScore int64 = 10
-
-	// MaxTotalScore is the maximum total score.
-	MaxTotalScore int64 = math.MaxInt64
-
-	// MaxWeight defines the max weight value allowed for custom PriorityPolicy
-	MaxWeight = MaxTotalScore / MaxCustomPriorityScore
-)
 
 // Names returns the list of enabled plugin names.
 func (p *Plugins) Names() []string {
