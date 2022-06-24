@@ -46,7 +46,7 @@ metadata:
   labels:
     app: clusternet-hub
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: clusternet-hub
