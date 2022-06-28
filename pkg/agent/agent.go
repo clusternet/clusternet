@@ -37,6 +37,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	utilpointer "k8s.io/utils/pointer"
 
 	"github.com/clusternet/clusternet/pkg/agent/deployer"
@@ -47,7 +48,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/predictor"
 	"github.com/clusternet/clusternet/pkg/utils"
-	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 const (
