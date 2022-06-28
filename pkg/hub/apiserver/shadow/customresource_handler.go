@@ -41,7 +41,6 @@ import (
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/endpoints"
-	"k8s.io/apiserver/pkg/endpoints/discovery"
 	apiserverdiscovery "k8s.io/apiserver/pkg/endpoints/discovery"
 	"k8s.io/apiserver/pkg/endpoints/handlers"
 	"k8s.io/apiserver/pkg/endpoints/handlers/negotiation"
@@ -659,7 +658,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 type versionDiscoveryHandler struct {
 	lock sync.RWMutex
 
-	apiVersionHandler  *discovery.APIVersionHandler
+	apiVersionHandler  *apiserverdiscovery.APIVersionHandler
 	nonCRDAPIResources []metav1.APIResource
 
 	crdAPIResources []metav1.APIResource
@@ -670,7 +669,7 @@ func newVersionDiscoveryHandler(serializer runtime.NegotiatedSerializer, groupVe
 		nonCRDAPIResources: nonCRDAPIResources,
 		crdAPIResources:    []metav1.APIResource{},
 	}
-	s.apiVersionHandler = discovery.NewAPIVersionHandler(serializer, groupVersion, s)
+	s.apiVersionHandler = apiserverdiscovery.NewAPIVersionHandler(serializer, groupVersion, s)
 	return s
 }
 

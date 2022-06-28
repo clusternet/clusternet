@@ -20,8 +20,9 @@ import (
 	"reflect"
 	"testing"
 
-	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
 func TestFormatFeed(t *testing.T) {

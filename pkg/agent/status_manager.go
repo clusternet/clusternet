@@ -31,12 +31,12 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterstatus"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
-	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 type Manager struct {
