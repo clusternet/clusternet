@@ -17,47 +17,93 @@ type weightList struct {
 	weights   []int64
 }
 
-// DynamicDivideReplicas will fill the target replicas of all feeds based on predictor result and feed finv.
-func DynamicDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster, finv *appsapi.FeedInventory) error {
-	if selected.Replicas == nil {
-		selected.Replicas = make(map[string][]int32)
-	}
-	for _, feed := range sub.Spec.Feeds {
-		var order *appsapi.FeedOrder
-		for i := range finv.Spec.Feeds {
-			if feed == finv.Spec.Feeds[i].Feed {
-				order = &finv.Spec.Feeds[i]
-				break
+// DynamicDivideReplicas will fill the target replicas of all feeds based on predictor result and deviation.
+// First time scheduling is considered as a special kind of scaling. When the desired replicas in deviation
+// are negative, it means we should try to scale down, otherwise we try to scale up deviation replicas.
+func DynamicDivideReplicas(sub *appsapi.Subscription, deviations []appsapi.FeedOrder, availableReplicas framework.TargetClusters) (framework.TargetClusters, error) {
+	var err error
+
+	result := framework.NewTargetClusters(sub.Status.BindingClusters, sub.Status.Replicas).DeepCopy()
+	strategy := sub.Spec.DividingScheduling.DynamicDividing.Strategy
+
+	for i := range deviations {
+		d := deviations[i].DesiredReplicas
+		_, scheduled := sub.Status.Replicas[utils.GetFeedKey(deviations[i].Feed)]
+		var r framework.TargetClusters
+		switch {
+		// First scheduling is considered as a special kind of scaling up.
+		case !scheduled || (d != nil && *d > 0):
+			switch strategy {
+			case appsapi.SpreadDividingStrategy:
+				r = spreadScaleUp(&deviations[i], availableReplicas)
+			}
+		case d != nil && *d < 0:
+			switch strategy {
+			case appsapi.SpreadDividingStrategy:
+				r = spreadScaleDown(sub, deviations[i])
 			}
 		}
-		if order != nil && order.DesiredReplicas != nil {
-			replicas := dymamicDivideReplicas(*order.DesiredReplicas, selected.Replicas[order.Name])
-			selected.Replicas[utils.GetFeedKey(order.Feed)] = replicas
-		} else {
-			selected.Replicas[utils.GetFeedKey(order.Feed)] = []int32{}
+		if err != nil {
+			return *result, err
 		}
+		result.Merge(&r)
 	}
-	return nil
+	return *result, nil
+}
+
+func spreadScaleUp(d *appsapi.FeedOrder, availableReplicas framework.TargetClusters) framework.TargetClusters {
+	result := framework.TargetClusters{
+		BindingClusters: availableReplicas.BindingClusters,
+		Replicas:        make(map[string][]int32),
+	}
+	feedKey := utils.GetFeedKey(d.Feed)
+	if d.DesiredReplicas != nil {
+		replicas := dynamicDivideReplicas(*d.DesiredReplicas, availableReplicas.Replicas[feedKey])
+		result.Replicas[feedKey] = replicas
+	} else {
+		result.Replicas[feedKey] = []int32{}
+	}
+	return result
+}
+
+func spreadScaleDown(sub *appsapi.Subscription, d appsapi.FeedOrder) framework.TargetClusters {
+	result := framework.TargetClusters{
+		BindingClusters: sub.Status.BindingClusters,
+		Replicas:        make(map[string][]int32),
+	}
+	feedKey := utils.GetFeedKey(d.Feed)
+	if d.DesiredReplicas != nil {
+		replicas := dynamicDivideReplicas(*d.DesiredReplicas, sub.Status.Replicas[feedKey])
+		result.Replicas[feedKey] = replicas
+	} else {
+		result.Replicas[feedKey] = []int32{}
+	}
+	return result
 }
 
 // dynamicDivideReplicas divides replicas by the MaxAvailableReplicas
-func dymamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) []int32 {
+func dynamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) []int32 {
 	res := make([]int32, len(maxAvailableReplicas))
-	sumAvailableReplicas := utils.SumArrayInt32(maxAvailableReplicas)
+	weightSum := utils.SumArrayInt32(maxAvailableReplicas)
 
-	if desiredReplicas > sumAvailableReplicas {
+	if weightSum == 0 || desiredReplicas > weightSum {
 		return maxAvailableReplicas
 	}
 
-	for k := range res {
-		res[k] = (maxAvailableReplicas[k] / sumAvailableReplicas) * desiredReplicas
+	remain := desiredReplicas
+	for i, weight := range maxAvailableReplicas {
+		replica := weight * desiredReplicas / weightSum
+		res[i] = replica
+		remain -= replica
 	}
 
-	// Even out the rest replicas among all candidate clusters.
-	rest := desiredReplicas - utils.SumArrayInt32(res)
-	if rest > 0 {
-		for i := 0; i < int(rest) && i < len(res); i++ {
+	if remain > 0 {
+		for i := 0; i < int(remain) && i < len(res); i++ {
 			res[i]++
+		}
+	} else if remain < 0 {
+		for i := 0; i < int(-remain) && i < len(res); i++ {
+			res[i]--
 		}
 	}
 

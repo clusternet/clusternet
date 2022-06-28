@@ -48,6 +48,10 @@ type TargetClusters struct {
 	Replicas map[string][]int32
 }
 
+func NewTargetClusters(bindingClusters []string, replicas map[string][]int32) *TargetClusters {
+	return &TargetClusters{BindingClusters: bindingClusters, Replicas: replicas}
+}
+
 func (t TargetClusters) Len() int {
 	return len(t.BindingClusters)
 }
@@ -91,6 +95,52 @@ func (t *TargetClusters) DeepCopy() *TargetClusters {
 		}
 	}
 	return obj
+}
+
+func (t *TargetClusters) Merge(b *TargetClusters) {
+	if b == nil || len(b.BindingClusters) == 0 {
+		return
+	}
+	if t.Replicas == nil {
+		t.Replicas = make(map[string][]int32)
+	}
+	// If the feed replicas does not exist in the former target clusters, we initialize them as an empty one.
+	for feed, replicas := range b.Replicas {
+		if _, exist := t.Replicas[feed]; exist {
+			continue
+		}
+		if len(replicas) == 0 {
+			t.Replicas[feed] = make([]int32, 0)
+		} else {
+			t.Replicas[feed] = make([]int32, len(t.BindingClusters))
+		}
+	}
+
+	// transfer from cluster to index
+	m := make(map[string]int)
+	for i, cluster := range t.BindingClusters {
+		m[cluster] = i
+	}
+
+	for bi, bCluster := range b.BindingClusters {
+		ti, exist := m[bCluster]
+		if !exist {
+			// this cluster is a new one, we should append
+			t.BindingClusters = append(t.BindingClusters, bCluster)
+			for feed, tReplicas := range t.Replicas {
+				if len(tReplicas) != 0 {
+					t.Replicas[feed] = append(t.Replicas[feed], 0)
+				}
+			}
+			ti = len(t.BindingClusters) - 1
+			m[bCluster] = ti
+		}
+		for feed, bReplicas := range b.Replicas {
+			if len(bReplicas) != 0 {
+				t.Replicas[feed][ti] += bReplicas[bi]
+			}
+		}
+	}
 }
 
 const (

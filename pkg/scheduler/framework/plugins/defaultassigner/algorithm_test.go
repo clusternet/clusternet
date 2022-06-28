@@ -132,6 +132,15 @@ func newDeploymentFeed(name string) appsapi.Feed {
 	}
 }
 
+func newServiceFeed(name string) appsapi.Feed {
+	return appsapi.Feed{
+		Kind:       "Service",
+		APIVersion: "v1",
+		Namespace:  "default",
+		Name:       name,
+	}
+}
+
 func TestDivideReplicas(t *testing.T) {
 	desiredReplicas := int32(12)
 	type args struct {
