@@ -19,6 +19,7 @@ package clusterstatus
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -185,6 +186,15 @@ func (c *Controller) GetClusterStatus() *clusterapi.ManagedClusterStatus {
 	return c.clusterStatus.DeepCopy()
 }
 
+func (c *Controller) GetManagedClusterLabels() labels.Set {
+	nodes, err := c.nodeLister.List(labels.Everything())
+	if err != nil {
+		klog.Warningf("failed to list nodes: %v", err)
+		return nil
+	}
+	return getCommonNodeLabels(nodes)
+}
+
 func (c *Controller) getKubernetesVersion(_ context.Context) (*version.Info, error) {
 	return c.kubeClient.Discovery().ServerVersion()
 }
@@ -331,4 +341,31 @@ func getNodeCondition(status *corev1.NodeStatus, conditionType corev1.NodeCondit
 		}
 	}
 	return -1, nil
+}
+
+// getCommonNodeLabels return the common labels from nodes meta.label
+func getCommonNodeLabels(nodes []*corev1.Node) map[string]string {
+	if len(nodes) == 0 {
+		return nil
+	}
+	if len(nodes) == 1 {
+		return nodes[0].Labels
+	}
+	initLabels := nodes[0].Labels
+	for _, node := range nodes[1:] {
+		currentLabels := map[string]string{}
+		for k, v := range node.Labels {
+			c, ok := initLabels[k]
+			if ok && c == v {
+				if strings.HasPrefix(k, known.NodeLabelsKeyPrefix) {
+					currentLabels[k] = v
+				}
+			}
+		}
+		if len(currentLabels) == 0 {
+			return nil
+		}
+		initLabels = currentLabels
+	}
+	return initLabels
 }

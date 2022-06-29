@@ -18,6 +18,7 @@ package known
 
 // label key
 const (
+	NodeLabelsKeyPrefix       = "node.clusternet.io/"
 	ClusterRegisteredByLabel  = "clusters.clusternet.io/registered-by"
 	ClusterIDLabel            = "clusters.clusternet.io/cluster-id"
 	ClusterNameLabel          = "clusters.clusternet.io/cluster-name"
