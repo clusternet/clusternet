@@ -240,7 +240,10 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 	sub, err := sched.subsLister.Subscriptions(ns).Get(name)
 	if err != nil {
-		utilruntime.HandleError(err)
+		if !errors.IsNotFound(err) {
+			utilruntime.HandleError(err)
+			sched.SchedulingQueue.AddRateLimited(key)
+		}
 		return
 	}
 	klog.V(3).InfoS("Attempting to schedule subscription", "subscription", klog.KObj(sub))
@@ -251,6 +254,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				utilruntime.HandleError(err)
+				sched.SchedulingQueue.AddRateLimited(key)
 			}
 			return
 		}
@@ -276,7 +280,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 	scheduleResult, err := sched.scheduleAlgorithm.Schedule(schedulingCycleCtx, sched.framework, state, sub, finv)
 	if err != nil {
-		sched.recordSchedulingFailure(sub, err, ReasonUnschedulable)
+		sched.handleSchedulingFailure(sub, err, ReasonUnschedulable)
 		if !strings.Contains(err.Error(), "clusters are available") {
 			return
 		}
@@ -289,7 +293,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 		// trigger un-reserve to clean up state associated with the reserved subscription
 		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, state, sub, targetClusters)
-		sched.recordSchedulingFailure(sub, sts.AsError(), SchedulerError)
+		sched.handleSchedulingFailure(sub, sts.AsError(), SchedulerError)
 		return
 	}
 
@@ -306,7 +310,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		}
 		// One of the plugins returned status different from success or wait.
 		sched.framework.RunReservePluginsUnreserve(schedulingCycleCtx, state, sub, targetClusters)
-		sched.recordSchedulingFailure(sub, runPermitStatus.AsError(), reason)
+		sched.handleSchedulingFailure(sub, runPermitStatus.AsError(), reason)
 		return
 	}
 
@@ -329,7 +333,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			}
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
 			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
-			sched.recordSchedulingFailure(sub, waitOnPermitStatus.AsError(), reason)
+			sched.handleSchedulingFailure(sub, waitOnPermitStatus.AsError(), reason)
 			return
 		}
 
@@ -339,7 +343,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
 			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
-			sched.recordSchedulingFailure(sub, preBindStatus.AsError(), SchedulerError)
+			sched.handleSchedulingFailure(sub, preBindStatus.AsError(), SchedulerError)
 			return
 		}
 
@@ -348,7 +352,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			metrics.SubscriptionScheduleError(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
 			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
-			sched.recordSchedulingFailure(sub, fmt.Errorf("binding rejected: %w", err), SchedulerError)
+			sched.handleSchedulingFailure(sub, fmt.Errorf("binding rejected: %w", err), SchedulerError)
 		} else {
 			metrics.SubscriptionScheduled(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 
@@ -386,9 +390,9 @@ func (sched *Scheduler) bind(ctx context.Context, state *framework.CycleState, s
 	return fmt.Errorf("bind status: %s, %v", bindStatus.Code().String(), bindStatus.Message())
 }
 
-// recordSchedulingFailure records an event for the subscription that indicates the
+// handleSchedulingFailure records an event for the subscription that indicates the
 // subscription has failed to schedule. Also, update the subscription condition.
-func (sched *Scheduler) recordSchedulingFailure(sub *appsapi.Subscription, err error, _ string) {
+func (sched *Scheduler) handleSchedulingFailure(sub *appsapi.Subscription, err error, _ string) {
 	klog.V(2).InfoS("Unable to schedule subscription; waiting", "subscription", klog.KObj(sub), "err", err)
 
 	msg := truncateMessage(err.Error())
@@ -434,7 +438,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 				sched.lock.Lock()
 				defer sched.lock.Unlock()
 				sched.subscribersMap[klog.KObj(sub).String()] = sub.Spec.Subscribers
-				sched.SchedulingQueue.AddRateLimited(klog.KObj(sub).String())
+				sched.SchedulingQueue.Add(klog.KObj(sub).String())
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				oldSub := oldObj.(*appsapi.Subscription)
@@ -449,7 +453,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 				sched.lock.Lock()
 				defer sched.lock.Unlock()
 				sched.subscribersMap[klog.KObj(newSub).String()] = newSub.Spec.Subscribers
-				sched.SchedulingQueue.AddRateLimited(klog.KObj(newSub).String())
+				sched.SchedulingQueue.Add(klog.KObj(newSub).String())
 			},
 		},
 	})
@@ -457,7 +461,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 	sched.ClusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			finv := obj.(*appsapi.FeedInventory)
-			sched.SchedulingQueue.AddRateLimited(klog.KObj(finv).String())
+			sched.SchedulingQueue.Add(klog.KObj(finv).String())
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			oldInventory := oldObj.(*appsapi.FeedInventory)
@@ -466,7 +470,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 				// Periodic resync will send update events for all known Inventory.
 				return
 			}
-			sched.SchedulingQueue.AddRateLimited(klog.KObj(newInventory).String())
+			sched.SchedulingQueue.Add(klog.KObj(newInventory).String())
 		},
 	})
 
@@ -484,7 +488,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 				if !selector.Matches(labels.Set(newMcls.Labels)) && oldMcls != nil && !selector.Matches(labels.Set(oldMcls.Labels)) {
 					continue
 				}
-				sched.SchedulingQueue.AddRateLimited(key)
+				sched.SchedulingQueue.Add(key)
 				break
 			}
 		}
