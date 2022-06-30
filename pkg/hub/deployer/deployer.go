@@ -785,14 +785,14 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		desc.Spec.Deployer = appsapi.DescriptionHelmDeployer
 		desc.Spec.Charts = allChartRefs
 		for _, chart := range allCharts {
-			chartByte, err := json.Marshal(chart)
-			if err != nil {
-				allErrs = append(allErrs, err)
+			chartByte, err2 := json.Marshal(chart)
+			if err2 != nil {
+				allErrs = append(allErrs, err2)
 				continue
 			}
 			desc.Spec.ChartRaw = append(desc.Spec.ChartRaw, chartByte)
 		}
-		err := deployer.syncDescriptions(base, desc)
+		err = deployer.syncDescriptions(base, desc)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(desc), err)

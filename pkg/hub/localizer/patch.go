@@ -63,16 +63,17 @@ func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []ap
 
 		switch overrideConfig.Type {
 		case appsapi.HelmType:
-			if overrideConfig.OverrideChart {
-				chartResult, err = applyHelmChartOverride(chartResult, overrideBytes)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
-				}
-			} else {
+			if !overrideConfig.OverrideChart {
 				genericResult, err = applyHelmValuesOverride(genericResult, overrideBytes)
 				if err != nil {
 					return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 				}
+				break
+			}
+
+			chartResult, err = jsonpatch.MergePatch(chartResult, overrideBytes)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}
 		case appsapi.JSONPatchType:
 			genericResult, err = applyJSONPatch(genericResult, overrideBytes)
@@ -102,7 +103,7 @@ func applyJSONPatch(cur, overrideBytes []byte) ([]byte, error) {
 			maxJSONPatchOperations, len(patchObj))
 	}
 	patchedJS, err := patchObj.Apply(cur)
-	if err != nil {
+	if err != nil && !errors.Is(err, jsonpatch.ErrMissing) {
 		return nil, err
 	}
 	return patchedJS, nil
@@ -119,25 +120,4 @@ func applyHelmValuesOverride(currentByte, overrideByte []byte) ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(chartutil.CoalesceTables(overrideValues, currentObj))
-}
-
-func applyHelmChartOverride(currentByte, overrideByte []byte) ([]byte, error) {
-	// cannot override chart name and targetNamespace, remove them from the override
-	removeChartName := []byte(`[{"op": "remove", "path": "/spec/chart"}]`)
-	removeTargetNamespace := []byte(`[{"op": "remove", "path": "/spec/targetNamespace"}]`)
-	if modifiedByte, err := applyJSONPatch(overrideByte, removeChartName); err != nil {
-		if !errors.Is(err, jsonpatch.ErrMissing) {
-			return nil, err
-		}
-	} else {
-		overrideByte = modifiedByte
-	}
-	if modifiedByte, err := applyJSONPatch(overrideByte, removeTargetNamespace); err != nil {
-		if !errors.Is(err, jsonpatch.ErrMissing) {
-			return nil, err
-		}
-	} else {
-		overrideByte = modifiedByte
-	}
-	return jsonpatch.MergePatch(currentByte, overrideByte)
 }

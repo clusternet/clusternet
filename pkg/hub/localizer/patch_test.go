@@ -67,7 +67,6 @@ hole: black
 				},
 				"spec": {
 					"chart": "cert-manager",
-					"chartPullSecret": {},
 					"repo": "https://charts.bitnami.com/bitnami",
 					"targetNamespace": "kube-system",
 					"version": "0.5.8"
@@ -140,10 +139,9 @@ hole: black
 					"namespace": "clusternet-system"
 				},
 				"spec": {
-					"chart": "cert-manager",
-					"chartPullSecret": {},
+					"chart": "my-cert-manager",
 					"repo": "https://clusternet.github.io/charts",
-					"targetNamespace": "kube-system",
+					"targetNamespace": "kube-public",
 					"version": "0.6.1"
 				}
 			}`),
@@ -195,6 +193,12 @@ hole: black
 					Value: helmDataYaml,
 				},
 				{
+					Name:          "empty override with whitespaces for chart spec",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `  `,
+				},
+				{
 					Name:          "add label and annotation",
 					Type:          appsapi.HelmType,
 					OverrideChart: true,
@@ -224,8 +228,10 @@ hole: black
 					}
 				},
 				"spec": {
-					"version": "0.6.1",
+					"chart": "my-cert-manager",
 					"repo": "https://clusternet.github.io/charts",
+					"targetNamespace": "kube-public",
+					"version": "0.6.1",
 				}
 			}`),
 			want: []byte(`{
@@ -244,6 +250,44 @@ hole: black
 				"hole": "black",
 				"name": "Ishmael"
 			}`),
+		},
+		{
+			name: "HelmChart default overrideConfig",
+			original: []byte(`{
+				"apiVersion": "apps.clusternet.io/v1alpha1",
+				"kind": "HelmChart",
+				"metadata": {
+					"labels": {
+						"apps.clusternet.io/config.group": "apps.clusternet.io"
+					},
+					"name": "cert-manager",
+					"namespace": "clusternet-system"
+				},
+				"spec": {
+					"chart": "cert-manager",
+					"repo": "https://charts.bitnami.com/bitnami",
+					"targetNamespace": "kube-system",
+					"version": "0.5.8"
+				}
+			}`),
+			originalChart: []byte(``),
+			overrides:     defaultChartOverrideConfig,
+			want: []byte(`{
+				"apiVersion": "apps.clusternet.io/v1alpha1",
+				"kind": "HelmChart",
+				"metadata": {
+					"labels": {
+						"apps.clusternet.io/config.group": "apps.clusternet.io",
+					},
+					"name": "cert-manager",
+					"namespace": "clusternet-system"
+				},
+				"spec": {
+					"repo": "https://charts.bitnami.com/bitnami",
+					"version": "0.5.8"
+				}
+			}`),
+			wantChart: []byte(``),
 		},
 		{
 			name: "JSONPatch and MergePatch",

@@ -47,6 +47,20 @@ import (
 
 var (
 	chartKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
+
+	// cannot override chart name and targetNamespace, remove them from the override
+	defaultChartOverrideConfig = []appsapi.OverrideConfig{
+		{
+			Name:  "skip-overriding-chart-name",
+			Value: `[{"path":"/spec/chart","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "skip-overriding-targetNamespace",
+			Value: `[{"path":"/spec/targetNamespace","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+	}
 )
 
 // Localizer defines configuration for the application localization
@@ -278,12 +292,31 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 			}
 
 			// use a whitespace explicitly
-			genericResult, chartResult, err := applyOverrides([]byte(" "), desc.Spec.ChartRaw[idx], overrides)
+			genericResult, chartOverrideResult, err := applyOverrides([]byte(" "), []byte(" "), overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
 			desc.Spec.Raw[idx] = genericResult
+
+			// apply default overrides for helm charts
+			chartOverrideResult, _, err = applyOverrides(chartOverrideResult, []byte(" "), defaultChartOverrideConfig)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+
+			chartResult, _, err := applyOverrides(desc.Spec.ChartRaw[idx], []byte(" "), []appsapi.OverrideConfig{
+				{
+					Name:  "merge-chartRaw-with-overrides",
+					Value: string(chartOverrideResult),
+					Type:  appsapi.MergePatchType,
+				},
+			})
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
 			desc.Spec.ChartRaw[idx] = chartResult
 		}
 		return utilerrors.NewAggregate(allErrs)
