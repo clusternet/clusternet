@@ -14,7 +14,7 @@ spec:
           clusters.clusternet.io/cluster-id: 5f9da921-0437-4fea-a89d-42aa1ede9b25 # PLEASE UPDATE THIS CLUSTER-ID TO YOURS!!!
       weight: 2 # Deployment bar/my-nginx will have 4 replicas running in this cluster
   schedulingStrategy: Dividing
-  dividingSchedulingStrategy:
+  dividingScheduling:
     type: Static
   feeds: # defines all the resources to be deployed with
     - apiVersion: v1
