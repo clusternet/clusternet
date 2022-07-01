@@ -477,16 +477,6 @@ func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base 
 		return fmt.Errorf("waiting for UID set for Base %s", klog.KObj(base))
 	}
 
-	if sub.Spec.SchedulingStrategy != appsapi.DividingSchedulingStrategyType {
-		return nil
-	}
-
-	finv, err := deployer.finvLister.FeedInventories(sub.Namespace).Get(sub.Name)
-	if err != nil {
-		klog.WarningDepth(5, fmt.Sprintf("failed to get FeedInventory %s: %v", klog.KObj(sub), err))
-		return err
-	}
-
 	allExistingLocalizations, err := deployer.locLister.Localizations(base.Namespace).List(labels.SelectorFromSet(labels.Set{
 		string(sub.UID): subscriptionKind.Kind,
 	}))
@@ -500,62 +490,74 @@ func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base 
 	}
 
 	var allErrs []error
-	for _, feedOrder := range finv.Spec.Feeds {
-		replicas, ok := sub.Status.Replicas[utils.GetFeedKey(feedOrder.Feed)]
-		if !ok {
-			continue
+	if sub.Spec.SchedulingStrategy == appsapi.DividingSchedulingStrategyType {
+		finv, err2 := deployer.finvLister.FeedInventories(sub.Namespace).Get(sub.Name)
+		if err2 != nil {
+			klog.WarningDepth(5, fmt.Sprintf("failed to get FeedInventory %s: %v", klog.KObj(sub), err2))
+			return err2
 		}
 
-		if len(replicas) == 0 {
-			continue
-		}
+		for _, feedOrder := range finv.Spec.Feeds {
+			if feedOrder.DesiredReplicas == nil {
+				continue
+			}
 
-		if len(feedOrder.ReplicaJsonPath) == 0 {
-			msg := fmt.Sprintf("no valid JSONPath is set for %s in FeedInventory %s",
-				utils.FormatFeed(feedOrder.Feed), klog.KObj(finv))
-			klog.ErrorDepth(5, msg)
-			allErrs = append(allErrs, errors.New(msg))
-			deployer.recorder.Event(finv, corev1.EventTypeWarning, "ReplicaJsonPathUnset", msg)
-			continue
-		}
+			replicas, ok := sub.Status.Replicas[utils.GetFeedKey(feedOrder.Feed)]
+			if !ok {
+				continue
+			}
 
-		if len(replicas) < clusterIndex {
-			msg := fmt.Sprintf("the length of status.Replicas for %s in Subscription %s is not matched with status.BindingClusters",
-				utils.FormatFeed(feedOrder.Feed), klog.KObj(sub))
-			klog.ErrorDepth(5, msg)
-			allErrs = append(allErrs, errors.New(msg))
-			deployer.recorder.Event(sub, corev1.EventTypeWarning, "BadSchedulingResult", msg)
-			continue
-		}
+			if len(replicas) == 0 {
+				continue
+			}
 
-		suffixName := feedOrder.Feed.Name
-		if len(feedOrder.Feed.Namespace) > 0 {
-			suffixName = fmt.Sprintf("%s.%s", feedOrder.Feed.Namespace, feedOrder.Feed.Name)
-		}
-		loc := GenerateLocalizationTemplate(base, appsapi.ApplyNow)
-		loc.Name = fmt.Sprintf("%s-%s-%s", base.Name, strings.ToLower(feedOrder.Feed.Kind), suffixName)
-		loc.Labels[string(sub.UID)] = subscriptionKind.Kind
-		loc.Spec.Feed = feedOrder.Feed
-		loc.Spec.Overrides = []appsapi.OverrideConfig{
-			{
-				Name:  "dividing scheduling replicas",
-				Value: fmt.Sprintf(`[{"path":%q,"value":%d,"op":"replace"}]`, feedOrder.ReplicaJsonPath, replicas[clusterIndex]),
-				Type:  appsapi.JSONPatchType,
-			},
-		}
+			if len(feedOrder.ReplicaJsonPath) == 0 {
+				msg := fmt.Sprintf("no valid JSONPath is set for %s in FeedInventory %s",
+					utils.FormatFeed(feedOrder.Feed), klog.KObj(finv))
+				klog.ErrorDepth(5, msg)
+				allErrs = append(allErrs, errors.New(msg))
+				deployer.recorder.Event(finv, corev1.EventTypeWarning, "ReplicaJsonPathUnset", msg)
+				continue
+			}
 
-		err = deployer.syncLocalization(loc)
-		if err != nil {
-			allErrs = append(allErrs, err)
-			msg := fmt.Sprintf("Failed to sync Localization %s: %v", klog.KObj(loc), err)
-			klog.ErrorDepth(5, msg)
-			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingLocalization", msg)
+			if len(replicas) < clusterIndex {
+				msg := fmt.Sprintf("the length of status.Replicas for %s in Subscription %s is not matched with status.BindingClusters",
+					utils.FormatFeed(feedOrder.Feed), klog.KObj(sub))
+				klog.ErrorDepth(5, msg)
+				allErrs = append(allErrs, errors.New(msg))
+				deployer.recorder.Event(sub, corev1.EventTypeWarning, "BadSchedulingResult", msg)
+				continue
+			}
+
+			suffixName := feedOrder.Feed.Name
+			if len(feedOrder.Feed.Namespace) > 0 {
+				suffixName = fmt.Sprintf("%s.%s", feedOrder.Feed.Namespace, feedOrder.Feed.Name)
+			}
+			loc := GenerateLocalizationTemplate(base, appsapi.ApplyNow)
+			loc.Name = fmt.Sprintf("%s-%s-%s", base.Name, strings.ToLower(feedOrder.Feed.Kind), suffixName)
+			loc.Labels[string(sub.UID)] = subscriptionKind.Kind
+			loc.Spec.Feed = feedOrder.Feed
+			loc.Spec.Overrides = []appsapi.OverrideConfig{
+				{
+					Name:  "dividing scheduling replicas",
+					Value: fmt.Sprintf(`[{"path":%q,"value":%d,"op":"replace"}]`, feedOrder.ReplicaJsonPath, replicas[clusterIndex]),
+					Type:  appsapi.JSONPatchType,
+				},
+			}
+
+			err = deployer.syncLocalization(loc)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				msg := fmt.Sprintf("Failed to sync Localization %s: %v", klog.KObj(loc), err)
+				klog.ErrorDepth(5, msg)
+				deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingLocalization", msg)
+			}
+			locsToBeDeleted.Delete(klog.KObj(loc).String())
 		}
-		locsToBeDeleted.Delete(klog.KObj(loc).String())
 	}
 
 	for key := range locsToBeDeleted {
-		err := deployer.deleteLocalization(context.TODO(), key)
+		err = deployer.deleteLocalization(context.TODO(), key)
 		if err != nil {
 			allErrs = append(allErrs, err)
 		}
