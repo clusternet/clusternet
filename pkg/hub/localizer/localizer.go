@@ -47,6 +47,20 @@ import (
 
 var (
 	chartKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
+
+	// cannot override chart name and targetNamespace, remove them from the override
+	defaultChartOverrideConfig = []appsapi.OverrideConfig{
+		{
+			Name:  "skip-overriding-chart-name",
+			Value: `[{"path":"/spec/chart","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "skip-overriding-targetNamespace",
+			Value: `[{"path":"/spec/targetNamespace","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+	}
 )
 
 // Localizer defines configuration for the application localization
@@ -264,6 +278,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 	switch descCopy.Spec.Deployer {
 	case appsapi.DescriptionHelmDeployer:
 		desc.Spec.Raw = make([][]byte, len(descCopy.Spec.Charts))
+
 		for idx, chartRef := range descCopy.Spec.Charts {
 			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
 				Kind:       chartKind.Kind,
@@ -277,12 +292,32 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 			}
 
 			// use a whitespace explicitly
-			result, err := applyOverrides([]byte(" "), overrides)
+			genericResult, chartOverrideResult, err := applyOverrides([]byte(" "), []byte(" "), overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
-			desc.Spec.Raw[idx] = result
+			desc.Spec.Raw[idx] = genericResult
+
+			// apply default overrides for helm charts
+			chartOverrideResult, _, err = applyOverrides(chartOverrideResult, []byte(" "), defaultChartOverrideConfig)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+
+			chartResult, _, err := applyOverrides(desc.Spec.ChartRaw[idx], []byte(" "), []appsapi.OverrideConfig{
+				{
+					Name:  "merge-chartRaw-with-overrides",
+					Value: string(chartOverrideResult),
+					Type:  appsapi.MergePatchType,
+				},
+			})
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+			desc.Spec.ChartRaw[idx] = chartResult
 		}
 		return utilerrors.NewAggregate(allErrs)
 	case appsapi.DescriptionGenericDeployer:
@@ -304,7 +339,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 				continue
 			}
 
-			result, err := applyOverrides(rawObject, overrides)
+			result, _, err := applyOverrides(rawObject, nil, overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue

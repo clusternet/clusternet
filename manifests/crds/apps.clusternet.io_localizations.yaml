@@ -85,6 +85,10 @@ spec:
                     name:
                       description: Name indicate the OverrideConfig name.
                       type: string
+                    overrideChart:
+                      description: OverrideChart indicates whether the override value
+                        for the HelmChart CR.
+                      type: boolean
                     type:
                       description: Type specifies the override type for override value.
                       enum:

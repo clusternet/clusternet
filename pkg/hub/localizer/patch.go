@@ -18,6 +18,7 @@ package localizer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -33,8 +34,11 @@ const (
 	maxJSONPatchOperations = 10000
 )
 
-func applyOverrides(original []byte, overrides []appsapi.OverrideConfig) ([]byte, error) {
-	result := original
+// applyOverrides applies the overrides to the current resource.
+// `genericResult` the generic result of the overrides.
+// `chartResult` the helmchart result after applying the overrides.
+func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []appsapi.OverrideConfig) ([]byte, []byte, error) {
+	genericResult, chartResult := genericOriginal, chartOriginal
 	for _, overrideConfig := range overrides {
 		// validates override value first
 		if len(strings.TrimSpace(overrideConfig.Value)) == 0 {
@@ -42,36 +46,51 @@ func applyOverrides(original []byte, overrides []appsapi.OverrideConfig) ([]byte
 		}
 		overrideBytes, err := yaml.YAMLToJSON([]byte(overrideConfig.Value))
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert patch %s to JSON: %v", overrideConfig.Value, err)
+			return nil, nil, fmt.Errorf("failed to convert patch %s to JSON: %v", overrideConfig.Value, err)
 		}
 
-		if len(strings.TrimSpace(string(result))) == 0 {
-			result = overrideBytes
-			continue
+		if overrideConfig.OverrideChart {
+			if len(strings.TrimSpace(string(chartResult))) == 0 {
+				chartResult = overrideBytes
+				continue
+			}
+		} else {
+			if len(strings.TrimSpace(string(genericResult))) == 0 {
+				genericResult = overrideBytes
+				continue
+			}
 		}
 
 		switch overrideConfig.Type {
 		case appsapi.HelmType:
-			result, err = applyHelmOverride(result, overrideBytes)
+			if !overrideConfig.OverrideChart {
+				genericResult, err = applyHelmValuesOverride(genericResult, overrideBytes)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
+				}
+				break
+			}
+
+			chartResult, err = jsonpatch.MergePatch(chartResult, overrideBytes)
 			if err != nil {
-				return nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
+				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}
 		case appsapi.JSONPatchType:
-			result, err = applyJSONPatch(result, overrideBytes)
+			genericResult, err = applyJSONPatch(genericResult, overrideBytes)
 			if err != nil {
-				return nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
+				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}
 		case appsapi.MergePatchType:
-			result, err = jsonpatch.MergePatch(result, overrideBytes)
+			genericResult, err = jsonpatch.MergePatch(genericResult, overrideBytes)
 			if err != nil {
-				return nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
+				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}
 		default:
-			return nil, fmt.Errorf("unsupported OverrideType %s", overrideConfig.Type)
+			return nil, nil, fmt.Errorf("unsupported OverrideType %s", overrideConfig.Type)
 		}
 	}
 
-	return result, nil
+	return genericResult, chartResult, nil
 }
 
 func applyJSONPatch(cur, overrideBytes []byte) ([]byte, error) {
@@ -84,13 +103,13 @@ func applyJSONPatch(cur, overrideBytes []byte) ([]byte, error) {
 			maxJSONPatchOperations, len(patchObj))
 	}
 	patchedJS, err := patchObj.Apply(cur)
-	if err != nil {
+	if err != nil && !errors.Is(err, jsonpatch.ErrMissing) {
 		return nil, err
 	}
 	return patchedJS, nil
 }
 
-func applyHelmOverride(currentByte, overrideByte []byte) ([]byte, error) {
+func applyHelmValuesOverride(currentByte, overrideByte []byte) ([]byte, error) {
 	currentObj := map[string]interface{}{}
 	if err := json.Unmarshal(currentByte, &currentObj); err != nil {
 		return nil, err

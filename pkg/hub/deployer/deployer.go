@@ -18,6 +18,7 @@ package deployer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -679,16 +680,16 @@ func (deployer *Deployer) handleBase(base *appsapi.Base) error {
 
 func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	var allChartRefs []appsapi.ChartReference
+	var allCharts []*appsapi.HelmChart
 	var allManifests []*appsapi.Manifest
 
 	var err error
 	var index int
-	var chart *appsapi.HelmChart
 	var manifests []*appsapi.Manifest
 	for idx, feed := range base.Spec.Feeds {
 		switch feed.Kind {
 		case helmChartKind.Kind:
-			chart, err = deployer.chartLister.HelmCharts(feed.Namespace).Get(feed.Name)
+			chart, err := deployer.chartLister.HelmCharts(feed.Namespace).Get(feed.Name)
 			if err != nil {
 				break
 			}
@@ -707,7 +708,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 				Namespace: chart.Namespace,
 				Name:      chart.Name,
 			})
-
+			allCharts = append(allCharts, chart)
 		default:
 			manifests, err = utils.ListManifestsBySelector(deployer.reservedNamespace, deployer.mfstLister, feed)
 			if err != nil {
@@ -785,7 +786,15 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		desc.Name = fmt.Sprintf("%s-helm", base.Name)
 		desc.Spec.Deployer = appsapi.DescriptionHelmDeployer
 		desc.Spec.Charts = allChartRefs
-		err := deployer.syncDescriptions(base, desc)
+		for _, chart := range allCharts {
+			chartByte, err2 := json.Marshal(chart)
+			if err2 != nil {
+				allErrs = append(allErrs, err2)
+				continue
+			}
+			desc.Spec.ChartRaw = append(desc.Spec.ChartRaw, chartByte)
+		}
+		err = deployer.syncDescriptions(base, desc)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(desc), err)

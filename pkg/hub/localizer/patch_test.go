@@ -46,13 +46,32 @@ hole: black
 `
 
 	tests := []struct {
-		name      string
-		original  []byte
-		overrides []appsapi.OverrideConfig
-		want      []byte
+		name          string
+		original      []byte
+		originalChart []byte
+		overrides     []appsapi.OverrideConfig
+		want          []byte
+		wantChart     []byte
 	}{
 		{
 			name: "Helm",
+			originalChart: []byte(`{
+				"apiVersion": "apps.clusternet.io/v1alpha1",
+				"kind": "HelmChart",
+				"metadata": {
+					"labels": {
+						"apps.clusternet.io/config.group": "apps.clusternet.io"
+					},
+					"name": "cert-manager",
+					"namespace": "clusternet-system"
+				},
+				"spec": {
+					"chart": "cert-manager",
+					"repo": "https://charts.bitnami.com/bitnami",
+					"targetNamespace": "kube-system",
+					"version": "0.5.8"
+				}
+			}`),
 			original: []byte(`{
 				"kind": "Guess",
 				"address": {
@@ -86,7 +105,46 @@ hole: black
 					Type:  appsapi.HelmType,
 					Value: helmDataYaml,
 				},
+				{
+					Name:          "add label and annotation",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `{"metadata":{"labels":{"foo":"bar"},"annotations":{"foo":"bar"}}}`,
+				},
+				{
+					Name:          "update chart repo and target namespace",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `{"spec":{"repo":"https://clusternet.github.io/charts","targetNamespace":"kube-public"}}`,
+				},
+				{
+					Name:          "update chart name and version",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `{"spec":{"version":"0.6.1","chart":"my-cert-manager"}}`,
+				},
 			},
+			wantChart: []byte(`{
+				"apiVersion": "apps.clusternet.io/v1alpha1",
+				"kind": "HelmChart",
+				"metadata": {
+					"annotations": {
+						"foo": "bar"
+					},
+					"labels": {
+						"apps.clusternet.io/config.group": "apps.clusternet.io",
+						"foo": "bar"
+					},
+					"name": "cert-manager",
+					"namespace": "clusternet-system"
+				},
+				"spec": {
+					"chart": "my-cert-manager",
+					"repo": "https://clusternet.github.io/charts",
+					"targetNamespace": "kube-public",
+					"version": "0.6.1"
+				}
+			}`),
 			want: []byte(`{
 				"kind": "Guess",
 				"address": {
@@ -102,11 +160,12 @@ hole: black
 				},
 				"hole": "black",
 				"name": "Ishmael"
-				}`),
+			}`),
 		},
 		{
-			name:     "Helm with Empty Original",
-			original: []byte(``),
+			name:          "Helm with Empty Original",
+			originalChart: []byte(``),
+			original:      []byte(``),
 			overrides: []appsapi.OverrideConfig{
 				{
 					Name:  "empty override",
@@ -133,7 +192,48 @@ hole: black
 					Type:  appsapi.HelmType,
 					Value: helmDataYaml,
 				},
+				{
+					Name:          "empty override with whitespaces for chart spec",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `  `,
+				},
+				{
+					Name:          "add label and annotation",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `{"kind": "HelmChart","metadata":{"labels":{"foo":"bar"},"annotations":{"foo":"bar"}}}`,
+				},
+				{
+					Name:          "update chart repo and target namespace",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `{"spec":{"repo":"https://clusternet.github.io/charts", "targetNamespace":"kube-public"}}`,
+				},
+				{
+					Name:          "update chart name and version",
+					Type:          appsapi.HelmType,
+					OverrideChart: true,
+					Value:         `{"spec":{"version":"0.6.1","chart":"my-cert-manager"}}`,
+				},
 			},
+			wantChart: []byte(`{
+				"kind": "HelmChart",
+				"metadata": {
+					"annotations": {
+						"foo": "bar"
+					},
+					"labels": {
+						"foo": "bar"
+					}
+				},
+				"spec": {
+					"chart": "my-cert-manager",
+					"repo": "https://clusternet.github.io/charts",
+					"targetNamespace": "kube-public",
+					"version": "0.6.1",
+				}
+			}`),
 			want: []byte(`{
 				"kind": "Guess",
 				"address": {
@@ -142,14 +242,52 @@ hole: black
 					"planet": "Earth",
 					"state": "MA",
 					"street": "234 Spouter Inn Ct."
-                },
+				},
 				"boat": "fighter",
 				"details": {
 					"friends": ["Tashtego"]
 				},
 				"hole": "black",
 				"name": "Ishmael"
-				}`),
+			}`),
+		},
+		{
+			name: "HelmChart default overrideConfig",
+			original: []byte(`{
+				"apiVersion": "apps.clusternet.io/v1alpha1",
+				"kind": "HelmChart",
+				"metadata": {
+					"labels": {
+						"apps.clusternet.io/config.group": "apps.clusternet.io"
+					},
+					"name": "cert-manager",
+					"namespace": "clusternet-system"
+				},
+				"spec": {
+					"chart": "cert-manager",
+					"repo": "https://charts.bitnami.com/bitnami",
+					"targetNamespace": "kube-system",
+					"version": "0.5.8"
+				}
+			}`),
+			originalChart: []byte(``),
+			overrides:     defaultChartOverrideConfig,
+			want: []byte(`{
+				"apiVersion": "apps.clusternet.io/v1alpha1",
+				"kind": "HelmChart",
+				"metadata": {
+					"labels": {
+						"apps.clusternet.io/config.group": "apps.clusternet.io",
+					},
+					"name": "cert-manager",
+					"namespace": "clusternet-system"
+				},
+				"spec": {
+					"repo": "https://charts.bitnami.com/bitnami",
+					"version": "0.5.8"
+				}
+			}`),
+			wantChart: []byte(``),
 		},
 		{
 			name: "JSONPatch and MergePatch",
@@ -247,7 +385,7 @@ hole: black
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := applyOverrides(tt.original, tt.overrides)
+			got, gotChart, err := applyOverrides(tt.original, tt.originalChart, tt.overrides)
 			if err != nil {
 				t.Errorf("applyOverrides() error = %v", err)
 				return
@@ -255,6 +393,15 @@ hole: black
 
 			gotObj := &unstructured.Unstructured{Object: map[string]interface{}{}}
 			wantObj := &unstructured.Unstructured{Object: map[string]interface{}{}}
+			gotChartObj := &unstructured.Unstructured{Object: map[string]interface{}{}}
+			wantChartObj := &unstructured.Unstructured{Object: map[string]interface{}{}}
+
+			if err := yaml.Unmarshal(gotChart, &gotChartObj); err != nil {
+				t.Fatalf("error decoding: %v", err)
+			}
+			if err := yaml.Unmarshal(tt.wantChart, &wantChartObj); err != nil {
+				t.Fatalf("error decoding: %v", err)
+			}
 			if err := yaml.Unmarshal(got, &gotObj); err != nil {
 				t.Fatalf("error decoding: %v", err)
 			}
@@ -262,6 +409,9 @@ hole: black
 				t.Fatalf("error decoding: %v", err)
 			}
 
+			if !reflect.DeepEqual(gotChartObj, wantChartObj) {
+				t.Errorf("applyOverrides() gotChart %s, wantChart %s", gotChartObj, wantChartObj)
+			}
 			if !reflect.DeepEqual(gotObj, wantObj) {
 				t.Errorf("applyOverrides() got %s, want %s", gotObj, wantObj)
 			}
