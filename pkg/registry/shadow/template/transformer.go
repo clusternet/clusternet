@@ -37,7 +37,6 @@ func transformManifest(manifest *appsapi.Manifest) (*unstructured.Unstructured, 
 	result.SetUID(manifest.UID)
 	result.SetDeletionGracePeriodSeconds(manifest.DeletionGracePeriodSeconds)
 	result.SetDeletionTimestamp(manifest.DeletionTimestamp)
-	result.SetFinalizers(manifest.Finalizers)
 
 	annotations := result.GetAnnotations()
 	if val, ok := manifest.Annotations[known.FeedProtectionAnnotation]; ok {
