@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -417,9 +418,15 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 	}
 
 	// update status
-	desc.Status.Phase = statusPhase
-	desc.Status.Reason = reason
-	_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+	descStatus := desc.Status.DeepCopy()
+	descStatus.Phase = statusPhase
+	descStatus.Reason = reason
+
+	var err error
+	if !reflect.DeepEqual(desc.Status.Phase, descStatus.Phase) || !reflect.DeepEqual(desc.Status.Reason, descStatus.Reason) {
+		err = UpdateDescriptionStatus(desc, descStatus, clusternetClient)
+		klog.V(5).Infof("ApplyDescription phaseStatus has changed, UpdateStatus. err: %s", err)
+	}
 
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
@@ -735,4 +742,29 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, i
 	}
 
 	return false
+}
+
+func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus, clusternetClient *clusternetclientset.Clientset) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+
+	klog.V(5).Infof("try to update Description %q status", desc.Name)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		desc.Status = *status
+		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+		if err == nil {
+			//TODO
+			return nil
+		}
+
+		if updated, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(context.TODO(), desc.Name, metav1.GetOptions{}); err == nil {
+			// make a copy so we don't mutate the shared cache
+			desc = updated.DeepCopy()
+		} else {
+			utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err))
+		}
+		return err
+	})
 }
