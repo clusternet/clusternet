@@ -113,11 +113,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	}
 	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client"))
 	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-client"))
-
-	var electionClient *kubernetes.Clientset
-	if opts.LeaderElection.LeaderElect {
-		electionClient = kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-election-client"))
-	}
+	electionClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-election-client"))
 
 	//deployer.broadcaster.StartStructuredLogging(5)
 	broadcaster := record.NewBroadcaster()
@@ -234,7 +230,6 @@ func (hub *Hub) Run(ctx context.Context) error {
 	}
 
 	// create lease for peer
-
 	peerLease, err := createPeerLease(
 		peerInfo{
 			ID:       hub.peerID,
@@ -272,7 +267,8 @@ func (hub *Hub) Run(ctx context.Context) error {
 			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
 
 			if !hub.options.LeaderElection.LeaderElect {
-				hub.runControllers(ctx)
+				wait.UntilWithContext(ctx, hub.runControllers, 0)
+				klog.Warning("finished without leader elect")
 				return nil
 			}
 
