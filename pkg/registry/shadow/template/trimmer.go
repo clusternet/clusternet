@@ -39,11 +39,18 @@ func trimCoreService(result *unstructured.Unstructured) {
 		return
 	}
 
+	clusterIP, found, _ := unstructured.NestedString(result.Object, "spec", "clusterIP")
+	if found && clusterIP != corev1.ClusterIPNone {
+		// not a headless service
+		unstructured.RemoveNestedField(result.Object, "spec", "clusterIP")
+		unstructured.RemoveNestedField(result.Object, "spec", "clusterIPs")
+	}
+
 	switch corev1.ServiceType(serviceType) {
 	case corev1.ServiceTypeNodePort, corev1.ServiceTypeLoadBalancer:
 		// corev1.Service will init node ports when creating NodePort or LoadBalancer
-		items, found, err := unstructured.NestedSlice(result.Object, "spec", "ports")
-		if !found || err != nil {
+		items, found2, err2 := unstructured.NestedSlice(result.Object, "spec", "ports")
+		if !found2 || err2 != nil {
 			return
 		}
 		for _, item := range items {
@@ -54,9 +61,9 @@ func trimCoreService(result *unstructured.Unstructured) {
 			unstructured.RemoveNestedField(servicePort, "nodePort")
 		}
 
-		err = unstructured.SetNestedSlice(result.Object, items, "spec", "ports")
-		if err != nil {
-			klog.ErrorDepth(2, fmt.Sprintf("failed to trim Service %s/%s: %v", result.GetNamespace(), result.GetName(), err))
+		err2 = unstructured.SetNestedSlice(result.Object, items, "spec", "ports")
+		if err2 != nil {
+			klog.ErrorDepth(2, fmt.Sprintf("failed to trim Service %s/%s: %v", result.GetNamespace(), result.GetName(), err2))
 		}
 	}
 }
