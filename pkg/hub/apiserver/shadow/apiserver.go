@@ -62,8 +62,6 @@ var (
 	// Codecs provides methods for retrieving codecs and serializers for specific
 	// versions and content types.
 	Codecs = serializer.NewCodecFactory(Scheme)
-	// ParameterCodec handles versioning of objects that are converted to query parameters.
-	ParameterCodec = runtime.NewParameterCodec(Scheme)
 )
 
 const (
@@ -199,11 +197,13 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 
 			ss.crdHandler.AddNonCRDAPIResource(apiresource)
 			// register scheme for original GVK
-			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}.WithKind(apiresource.Kind),
+			groupVersion := schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}
+			Scheme.AddKnownTypeWithName(groupVersion.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
+			metav1.AddToGroupVersion(Scheme, groupVersion)
 
-			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister, ss.reservedNamespace)
+			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, runtime.NewParameterCodec(Scheme), ss.manifestLister, ss.reservedNamespace)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)
@@ -219,7 +219,7 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 		}
 	}
 
-	shadowAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, ParameterCodec, Codecs)
+	shadowAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, runtime.NewParameterCodec(Scheme), Codecs)
 	shadowAPIGroupInfo.PrioritizedVersions = []schema.GroupVersion{
 		{
 			Group:   shadowapi.GroupName,

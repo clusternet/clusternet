@@ -334,7 +334,6 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		return nil, err
 	}
 
-	klog.V(5).Infof("%v", label)
 	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).Watch(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
@@ -353,9 +352,9 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		}
 
 		if manifest, ok := object.(*appsapi.Manifest); ok {
-			obj, err := transformManifest(manifest)
-			if err != nil {
-				klog.ErrorDepth(3, fmt.Sprintf("failed to transform Manifest %s: %v", klog.KObj(manifest), err))
+			obj, err2 := transformManifest(manifest)
+			if err2 != nil {
+				klog.ErrorDepth(3, fmt.Sprintf("failed to transform Manifest %s: %v", klog.KObj(manifest), err2))
 				return manifest
 			}
 			return obj

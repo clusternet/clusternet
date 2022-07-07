@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -72,12 +73,21 @@ func (w *WatchWrapper) Run() {
 
 			if w.fixup == nil {
 				w.result <- event
-			} else {
-				obj := w.fixup(event.Object)
-				w.result <- watch.Event{
-					Type:   event.Type,
-					Object: obj,
-				}
+				continue
+			}
+
+			obj := event.Object
+			switch event.Type {
+			case watch.Bookmark:
+			case watch.Error:
+				klog.Warningf("got a watch error: %v", event)
+			default:
+				obj = w.fixup(event.Object)
+
+			}
+			w.result <- watch.Event{
+				Type:   event.Type,
+				Object: obj,
 			}
 		}
 	}
