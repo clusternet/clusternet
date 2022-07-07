@@ -49,6 +49,7 @@ func TestTransformManifest(t *testing.T) {
 						known.ConfigNameLabel:      "boo",
 						known.ConfigNamespaceLabel: "ns1",
 					},
+					Finalizers:      []string{"apps.clusternet.io/finalizer"},
 					Namespace:       known.ClusternetReservedNamespace,
 					Name:            "bars-boo",
 					ResourceVersion: "1860247",
