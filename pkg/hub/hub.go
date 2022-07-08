@@ -245,23 +245,21 @@ func (hub *Hub) Run(ctx context.Context) error {
 		return err
 	}
 
+	klog.Infof("starting Clusternet informers ...")
+	// Start the informer factories to begin populating the informer caches
+	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
+	hub.kubeInformerFactory.Start(ctx.Done())
+	hub.clusternetInformerFactory.Start(ctx.Done())
+	config.GenericConfig.SharedInformerFactory.Start(ctx.Done())
+	// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
+	// hub.options.LoopbackSharedInformerFactory.Start(ctx.Done())
+
 	server.GenericAPIServer.AddPostStartHookOrDie("starting-shared-informers-controllers",
 		func(postStartHookContext genericapiserver.PostStartHookContext) error {
-			klog.Infof("starting Clusternet informers ...")
-			// Start the informer factories to begin populating the informer caches
-			// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-			hub.kubeInformerFactory.Start(postStartHookContext.StopCh)
-			hub.clusternetInformerFactory.Start(postStartHookContext.StopCh)
-			hub.aggregatorInformerFactory.Start(postStartHookContext.StopCh)
-			config.GenericConfig.SharedInformerFactory.Start(postStartHookContext.StopCh)
-			// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
-			// hub.options.LoopbackSharedInformerFactory.Start(postStartHookContext.StopCh)
-
 			klog.Infof("starting Clusternet controllers ...")
 			// waits for all started informers' cache got synced
 			hub.kubeInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
 			hub.clusternetInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
-			hub.aggregatorInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
 			// TODO: uncomment this when module "k8s.io/apiserver" gets bumped to a higher version.
 			// 		supports k8s.io/apiserver version skew (clusternet/clusternet#137)
 			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
@@ -288,10 +286,12 @@ func (hub *Hub) Run(ctx context.Context) error {
 		func(postStartHookContext genericapiserver.PostStartHookContext) error {
 			if server.GenericAPIServer != nil && utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
 				klog.Infof("install shadow apis...")
+
 				crdInformerFactory := crdinformers.NewSharedInformerFactory(
 					crdclientset.NewForConfigOrDie(hub.clientBuilder.ConfigOrDie("crd-shared-informers")),
 					5*time.Minute,
 				)
+
 				ss := shadowapiserver.NewShadowAPIServer(server.GenericAPIServer,
 					completeConfig.GenericConfig.MaxRequestBodyBytes,
 					completeConfig.GenericConfig.MinRequestTimeout,
@@ -302,7 +302,11 @@ func (hub *Hub) Run(ctx context.Context) error {
 					hub.aggregatorInformerFactory.Apiregistration().V1().APIServices().Lister(),
 					crdInformerFactory,
 					hub.options.ReservedNamespace)
+
 				crdInformerFactory.Start(postStartHookContext.StopCh)
+				hub.aggregatorInformerFactory.Start(postStartHookContext.StopCh)
+				// waits for all started informers' cache got synced
+				hub.aggregatorInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
 				return ss.InstallShadowAPIGroups(postStartHookContext.StopCh, hub.kubeClient.DiscoveryClient)
 			}
 
