@@ -77,10 +77,10 @@ $(CMD_TARGET): generated
 
 # Build Images
 # Example:
-#   make images
+#   make images clusternet-agent
 .PHONY: images
 images:
-	hack/make-rules/images.sh
+   hack/make-rules/images.sh $(MODULE_NAME)
 
 # find or download controller-gen
 # download controller-gen if necessary
