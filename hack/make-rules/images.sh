@@ -21,9 +21,16 @@ set -o pipefail
 CLUSTERNET_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
 source "${CLUSTERNET_ROOT}/hack/lib/build.sh"
 
-IFS="," read -ra platforms <<<"${PLATFORMS}"
-for img in $(ls -l "${CLUSTERNET_ROOT}/cmd" | grep ^d | awk '{print $9}'); do
-  for platform in "${platforms[@]}"; do
-    clusternet::docker::image "${platform}" "${img}"
+if [ -n "$0" ]; then
+    for platform in "${platforms[@]}"; do
+    clusternet::docker::image "${platform}" "$0"
   done
-done
+fi
+if [ -z "$MODEULE_NAM" ]; then
+  IFS="," read -ra platforms <<<"${PLATFORMS}"
+  for img in $(ls -l "${CLUSTERNET_ROOT}/cmd" | grep ^d | awk '{print $9}'); do
+    for platform in "${platforms[@]}"; do
+      clusternet::docker::image "${platform}" "${img}"
+    done
+  done
+fi
