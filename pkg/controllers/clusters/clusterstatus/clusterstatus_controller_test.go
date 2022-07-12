@@ -33,11 +33,13 @@ func (suite *StatusSuite) SetupTest() {
 		0: BuildNode("node0", map[string]string{
 			"node.clusternet.io/k1": "v1",
 			"node.clusternet.io/k2": "v2",
+			"others.keys.io/k2":     "a1",
 		}),
 		1: BuildNode("node1", map[string]string{
 			"node.clusternet.io/k1": "v1",
 			"node.clusternet.io/k2": "v2",
 			"node.clusternet.io/k3": "v3",
+			"others.keys.io/k2":     "a1",
 		}),
 		2: BuildNode("node2", map[string]string{
 			"node.clusternet.io/k1": "v1",
@@ -56,6 +58,19 @@ func (suite *StatusSuite) SetupTest() {
 func (suite *StatusSuite) TestGetCommonNodeLabels() {
 	commonLabels := getCommonNodeLabels(suite.nodes)
 	suite.Equal(
-		map[string]string{"node.clusternet.io/k1": "v1", "node.clusternet.io/k2": "v2"},
+		map[string]string{
+			"node.clusternet.io/k1": "v1",
+			"node.clusternet.io/k2": "v2",
+		},
+		commonLabels, "failed get common labels from nodes")
+}
+
+func (suite *StatusSuite) TestGetSingleNodeCommonNodeLabels() {
+	commonLabels := getCommonNodeLabels(suite.nodes[0:1])
+	suite.Equal(
+		map[string]string{
+			"node.clusternet.io/k1": "v1",
+			"node.clusternet.io/k2": "v2",
+		},
 		commonLabels, "failed get common labels from nodes")
 }

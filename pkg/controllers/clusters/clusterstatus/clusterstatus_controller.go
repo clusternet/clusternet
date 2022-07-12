@@ -348,11 +348,8 @@ func getCommonNodeLabels(nodes []*corev1.Node) map[string]string {
 	if len(nodes) == 0 {
 		return nil
 	}
-	if len(nodes) == 1 {
-		return nodes[0].Labels
-	}
 	initLabels := nodes[0].Labels
-	for _, node := range nodes[1:] {
+	for _, node := range nodes {
 		currentLabels := map[string]string{}
 		for k, v := range node.Labels {
 			c, ok := initLabels[k]
