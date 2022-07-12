@@ -418,3 +418,47 @@ hole: black
 		})
 	}
 }
+
+func TestApplyJSONPatch(t *testing.T) {
+	tests := []struct {
+		name          string
+		cur           []byte
+		overrideBytes []byte
+		want          []byte
+		wantErr       bool
+	}{
+		{
+			name:          "remove nonexistent key (/spec/chart)",
+			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			overrideBytes: []byte(defaultChartOverrideConfig[0].Value),
+			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			wantErr:       false,
+		},
+		{
+			name:          "remove nonexistent key (/spec/targetNamespace)",
+			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			overrideBytes: []byte(defaultChartOverrideConfig[1].Value),
+			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			wantErr:       false,
+		},
+		{
+			name:          "remove key (/spec/version)",
+			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			overrideBytes: []byte(`[{"path":"/spec/version","op":"remove"}]`),
+			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{}}`),
+			wantErr:       false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := applyJSONPatch(tt.cur, tt.overrideBytes)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("applyJSONPatch() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("applyJSONPatch() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -274,13 +274,12 @@ func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 
 func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error {
 	var allErrs []error
-	descCopy := desc.DeepCopy()
-	switch descCopy.Spec.Deployer {
+	switch desc.Spec.Deployer {
 	case appsapi.DescriptionHelmDeployer:
-		desc.Spec.Raw = make([][]byte, len(descCopy.Spec.Charts))
+		desc.Spec.Raw = make([][]byte, len(desc.Spec.Charts))
 
-		for idx, chartRef := range descCopy.Spec.Charts {
-			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+		for idx, chartRef := range desc.Spec.Charts {
+			overrides, err := l.getOverrides(desc.Namespace, appsapi.Feed{
 				Kind:       chartKind.Kind,
 				APIVersion: chartKind.Version,
 				Namespace:  chartRef.Namespace,
@@ -321,14 +320,14 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 		}
 		return utilerrors.NewAggregate(allErrs)
 	case appsapi.DescriptionGenericDeployer:
-		for idx, rawObject := range descCopy.Spec.Raw {
+		for idx, rawObject := range desc.Spec.Raw {
 			obj := &unstructured.Unstructured{}
 			if err := json.Unmarshal(rawObject, obj); err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
 
-			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+			overrides, err := l.getOverrides(desc.Namespace, appsapi.Feed{
 				Kind:       obj.GetKind(),
 				APIVersion: obj.GetAPIVersion(),
 				Namespace:  obj.GetNamespace(),
@@ -348,7 +347,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 		}
 		return utilerrors.NewAggregate(allErrs)
 	default:
-		return fmt.Errorf("unsupported deployer %s", descCopy.Spec.Deployer)
+		return fmt.Errorf("unsupported deployer %s", desc.Spec.Deployer)
 	}
 }
 
