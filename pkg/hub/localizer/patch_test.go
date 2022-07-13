@@ -271,7 +271,7 @@ hole: black
 				}
 			}`),
 			originalChart: []byte(``),
-			overrides:     defaultChartOverrideConfig,
+			overrides:     defaultChartOverrideConfigs,
 			want: []byte(`{
 				"apiVersion": "apps.clusternet.io/v1alpha1",
 				"kind": "HelmChart",
@@ -296,12 +296,55 @@ hole: black
 				"kind": "Pod",
 				"metadata": {
 					"name": "pod",
-					"labels": {"app": "nginx"}
+					"labels": {"app": "nginx"},
+					"uid": "1234-678",
+					"managedFields": [{
+					  "manager": "kubectl-client-side-apply",
+					  "operation": "Update",
+					  "apiVersion": "apps.clusternet.io/v1alpha1",
+					  "time": "2022-07-12T09:18:34Z",
+					  "fieldsType": "FieldsV1",
+					  "fieldsV1": {
+						"f:metadata": {
+						  "f:annotations": {
+							".": {},
+							"f:kubectl.kubernetes.io/last-applied-configuration": {}
+						  }
+						},
+						"f:spec": {
+						  ".": {},
+						  "f:chart": {},
+						  "f:repo": {},
+						  "f:targetNamespace": {},
+						  "f:version": {}
+						}
+					  }
+					}, {
+					  "manager": "clusternet-hub",
+					  "operation": "Update",
+					  "apiVersion": "apps.clusternet.io/v1alpha1",
+					  "time": "2022-07-12T09:24:39Z",
+					  "fieldsType": "FieldsV1",
+					  "fieldsV1": {
+						"f:status": {
+						  ".": {},
+						  "f:phase": {}
+						}
+					  },
+					  "subresource": "status"
+					}]
 				},
 				"spec": {
 					"containers": [{
 						"name":  "nginx",
 						"image": "nginx:latest"
+					}]
+				},
+				"status": {
+					"a": "b",
+					"some-value": [{
+						"key1":  "value1",
+						"key2": "value2"
 					}]
 				}
 			}`),
@@ -430,14 +473,14 @@ func TestApplyJSONPatch(t *testing.T) {
 		{
 			name:          "remove nonexistent key (/spec/chart)",
 			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
-			overrideBytes: []byte(defaultChartOverrideConfig[0].Value),
+			overrideBytes: []byte(defaultChartOverrideConfigs[0].Value),
 			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
 			wantErr:       false,
 		},
 		{
 			name:          "remove nonexistent key (/spec/targetNamespace)",
 			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
-			overrideBytes: []byte(defaultChartOverrideConfig[1].Value),
+			overrideBytes: []byte(defaultChartOverrideConfigs[1].Value),
 			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
 			wantErr:       false,
 		},

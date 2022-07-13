@@ -49,7 +49,7 @@ var (
 	chartKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
 
 	// cannot override chart name and targetNamespace, remove them from the override
-	defaultChartOverrideConfig = []appsapi.OverrideConfig{
+	defaultChartOverrideConfigs = []appsapi.OverrideConfig{
 		{
 			Name:  "skip-overriding-chart-name",
 			Value: `[{"path":"/spec/chart","op":"remove"}]`,
@@ -58,6 +58,26 @@ var (
 		{
 			Name:  "skip-overriding-targetNamespace",
 			Value: `[{"path":"/spec/targetNamespace","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+	}
+
+	// removing ignored fields from serialized bytes, which can help reduce the size of Description objects and improve
+	// decoding performance
+	defaultOverrideConfigs = []appsapi.OverrideConfig{
+		{
+			Name:  "ignore-metadata-managedFields",
+			Value: `[{"path":"/metadata/managedFields","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "ignore-metadata-uid",
+			Value: `[{"path":"/metadata/uid","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "ignore-status",
+			Value: `[{"path":"/status","op":"remove"}]`,
 			Type:  appsapi.JSONPatchType,
 		},
 	}
@@ -299,7 +319,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 			desc.Spec.Raw[idx] = genericResult
 
 			// apply default overrides for helm charts
-			chartOverrideResult, _, err = applyOverrides(chartOverrideResult, []byte(" "), defaultChartOverrideConfig)
+			chartOverrideResult, _, err = applyOverrides(chartOverrideResult, []byte(" "), defaultChartOverrideConfigs)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
