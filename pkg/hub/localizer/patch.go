@@ -103,10 +103,13 @@ func applyJSONPatch(cur, overrideBytes []byte) ([]byte, error) {
 			maxJSONPatchOperations, len(patchObj))
 	}
 	patchedJS, err := patchObj.Apply(cur)
-	if err != nil && !errors.Is(err, jsonpatch.ErrMissing) {
-		return nil, err
+	if err == nil {
+		return patchedJS, nil
 	}
-	return patchedJS, nil
+	if errors.Is(err, jsonpatch.ErrMissing) {
+		return cur, nil
+	}
+	return nil, err
 }
 
 func applyHelmValuesOverride(currentByte, overrideByte []byte) ([]byte, error) {
