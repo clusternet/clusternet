@@ -38,6 +38,7 @@ const (
 // `genericResult` the generic result of the overrides.
 // `chartResult` the helmchart result after applying the overrides.
 func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []appsapi.OverrideConfig) ([]byte, []byte, error) {
+	overrides = append(overrides, defaultOverrideConfigs...)
 	genericResult, chartResult := genericOriginal, chartOriginal
 	for _, overrideConfig := range overrides {
 		// validates override value first
