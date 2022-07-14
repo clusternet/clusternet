@@ -38,7 +38,7 @@ spec:
       # This override update the version of Helm chart defined by feed.
       value: |-
         spec:
-          version: 1.8.0
+          version: 9.1.8
     - name: add-helm-chart-labels
       type: Helm # This can only be "Helm" for HelmChart.
       overrideChart: true # This is a flag to indicate that this override is for HelmChart CR.
@@ -48,8 +48,8 @@ spec:
       value: |-
         metadata:
           labels:
-            some-label: some-value
-            another-label: another-value
+            some-label: some-value-2
+            another-label: another-value-2
 ---
 
 apiVersion: apps.clusternet.io/v1alpha1

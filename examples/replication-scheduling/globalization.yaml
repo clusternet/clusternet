@@ -38,7 +38,7 @@ spec:
       # This override update the version of Helm chart defined by feed.
       value: |-
         spec:
-          version: 1.8.0
+          version: 9.1.0
     - name: add-helm-chart-labels
       type: Helm # This can only be "Helm" for HelmChart.
       overrideChart: true # This is a flag to indicate that this override is for HelmChart CR.
