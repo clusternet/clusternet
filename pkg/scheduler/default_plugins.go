@@ -43,7 +43,11 @@ func getDefaultPlugins() *schedulerapis.Plugins {
 				{Name: names.TaintToleration, Weight: 3},
 			},
 		},
-		PreAssign: schedulerapis.PluginSet{},
+		PreAssign: schedulerapis.PluginSet{
+			Enabled: []schedulerapis.Plugin{
+				{Name: names.DynamicAssigner},
+			},
+		},
 		Assign: schedulerapis.PluginSet{
 			Enabled: []schedulerapis.Plugin{
 				{Name: names.StaticAssigner},

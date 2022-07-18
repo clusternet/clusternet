@@ -41,7 +41,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-agent
-          image: ghcr.io/clusternet/clusternet-agent:v0.10.0
+          image: ghcr.io/clusternet/clusternet-agent:v0.11.0
           imagePullPolicy: IfNotPresent
           env:
             - name: PARENT_URL
@@ -69,5 +69,8 @@ spec:
             - --cluster-reg-token=$(REG_TOKEN)
             - --cluster-reg-parent-url=$(PARENT_URL)
             - --cluster-sync-mode=Dual
-            - --feature-gates=SocketConnection=true,AppPusher=true,Recovery=true
+            - --use-metrics-server=false
+            - --feature-gates=SocketConnection=true,AppPusher=true,Recovery=true,Predictor=true
             - --leader-elect-resource-namespace=$(AGENT_NAMESPACE)
+            - --predictor-direct-access=false
+            - --predictor-port=8080

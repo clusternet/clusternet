@@ -38,6 +38,7 @@ const (
 // `genericResult` the generic result of the overrides.
 // `chartResult` the helmchart result after applying the overrides.
 func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []appsapi.OverrideConfig) ([]byte, []byte, error) {
+	overrides = append(overrides, defaultOverrideConfigs...)
 	genericResult, chartResult := genericOriginal, chartOriginal
 	for _, overrideConfig := range overrides {
 		// validates override value first
@@ -103,10 +104,13 @@ func applyJSONPatch(cur, overrideBytes []byte) ([]byte, error) {
 			maxJSONPatchOperations, len(patchObj))
 	}
 	patchedJS, err := patchObj.Apply(cur)
-	if err != nil && !errors.Is(err, jsonpatch.ErrMissing) {
-		return nil, err
+	if err == nil {
+		return patchedJS, nil
 	}
-	return patchedJS, nil
+	if errors.Is(err, jsonpatch.ErrMissing) {
+		return cur, nil
+	}
+	return nil, err
 }
 
 func applyHelmValuesOverride(currentByte, overrideByte []byte) ([]byte, error) {

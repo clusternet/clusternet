@@ -491,9 +491,6 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 
 func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
 	resource *unstructured.Unstructured, ignoreAdd bool) error {
-	// set UID as empty
-	resource.SetUID("")
-
 	var lastError error
 	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)

@@ -271,7 +271,7 @@ hole: black
 				}
 			}`),
 			originalChart: []byte(``),
-			overrides:     defaultChartOverrideConfig,
+			overrides:     defaultChartOverrideConfigs,
 			want: []byte(`{
 				"apiVersion": "apps.clusternet.io/v1alpha1",
 				"kind": "HelmChart",
@@ -296,12 +296,55 @@ hole: black
 				"kind": "Pod",
 				"metadata": {
 					"name": "pod",
-					"labels": {"app": "nginx"}
+					"labels": {"app": "nginx"},
+					"uid": "1234-678",
+					"managedFields": [{
+					  "manager": "kubectl-client-side-apply",
+					  "operation": "Update",
+					  "apiVersion": "apps.clusternet.io/v1alpha1",
+					  "time": "2022-07-12T09:18:34Z",
+					  "fieldsType": "FieldsV1",
+					  "fieldsV1": {
+						"f:metadata": {
+						  "f:annotations": {
+							".": {},
+							"f:kubectl.kubernetes.io/last-applied-configuration": {}
+						  }
+						},
+						"f:spec": {
+						  ".": {},
+						  "f:chart": {},
+						  "f:repo": {},
+						  "f:targetNamespace": {},
+						  "f:version": {}
+						}
+					  }
+					}, {
+					  "manager": "clusternet-hub",
+					  "operation": "Update",
+					  "apiVersion": "apps.clusternet.io/v1alpha1",
+					  "time": "2022-07-12T09:24:39Z",
+					  "fieldsType": "FieldsV1",
+					  "fieldsV1": {
+						"f:status": {
+						  ".": {},
+						  "f:phase": {}
+						}
+					  },
+					  "subresource": "status"
+					}]
 				},
 				"spec": {
 					"containers": [{
 						"name":  "nginx",
 						"image": "nginx:latest"
+					}]
+				},
+				"status": {
+					"a": "b",
+					"some-value": [{
+						"key1":  "value1",
+						"key2": "value2"
 					}]
 				}
 			}`),
@@ -414,6 +457,50 @@ hole: black
 			}
 			if !reflect.DeepEqual(gotObj, wantObj) {
 				t.Errorf("applyOverrides() got %s, want %s", gotObj, wantObj)
+			}
+		})
+	}
+}
+
+func TestApplyJSONPatch(t *testing.T) {
+	tests := []struct {
+		name          string
+		cur           []byte
+		overrideBytes []byte
+		want          []byte
+		wantErr       bool
+	}{
+		{
+			name:          "remove nonexistent key (/spec/chart)",
+			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			overrideBytes: []byte(defaultChartOverrideConfigs[0].Value),
+			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			wantErr:       false,
+		},
+		{
+			name:          "remove nonexistent key (/spec/targetNamespace)",
+			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			overrideBytes: []byte(defaultChartOverrideConfigs[1].Value),
+			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			wantErr:       false,
+		},
+		{
+			name:          "remove key (/spec/version)",
+			cur:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			overrideBytes: []byte(`[{"path":"/spec/version","op":"remove"}]`),
+			want:          []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{}}`),
+			wantErr:       false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := applyJSONPatch(tt.cur, tt.overrideBytes)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("applyJSONPatch() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("applyJSONPatch() got = %v, want %v", got, tt.want)
 			}
 		})
 	}

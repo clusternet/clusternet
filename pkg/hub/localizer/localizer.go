@@ -49,7 +49,7 @@ var (
 	chartKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
 
 	// cannot override chart name and targetNamespace, remove them from the override
-	defaultChartOverrideConfig = []appsapi.OverrideConfig{
+	defaultChartOverrideConfigs = []appsapi.OverrideConfig{
 		{
 			Name:  "skip-overriding-chart-name",
 			Value: `[{"path":"/spec/chart","op":"remove"}]`,
@@ -58,6 +58,26 @@ var (
 		{
 			Name:  "skip-overriding-targetNamespace",
 			Value: `[{"path":"/spec/targetNamespace","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+	}
+
+	// removing ignored fields from serialized bytes, which can help reduce the size of Description objects and improve
+	// decoding performance
+	defaultOverrideConfigs = []appsapi.OverrideConfig{
+		{
+			Name:  "ignore-metadata-managedFields",
+			Value: `[{"path":"/metadata/managedFields","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "ignore-metadata-uid",
+			Value: `[{"path":"/metadata/uid","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "ignore-status",
+			Value: `[{"path":"/status","op":"remove"}]`,
 			Type:  appsapi.JSONPatchType,
 		},
 	}
@@ -274,13 +294,12 @@ func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 
 func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error {
 	var allErrs []error
-	descCopy := desc.DeepCopy()
-	switch descCopy.Spec.Deployer {
+	switch desc.Spec.Deployer {
 	case appsapi.DescriptionHelmDeployer:
-		desc.Spec.Raw = make([][]byte, len(descCopy.Spec.Charts))
+		desc.Spec.Raw = make([][]byte, len(desc.Spec.Charts))
 
-		for idx, chartRef := range descCopy.Spec.Charts {
-			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+		for idx, chartRef := range desc.Spec.Charts {
+			overrides, err := l.getOverrides(desc.Namespace, appsapi.Feed{
 				Kind:       chartKind.Kind,
 				APIVersion: chartKind.Version,
 				Namespace:  chartRef.Namespace,
@@ -300,7 +319,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 			desc.Spec.Raw[idx] = genericResult
 
 			// apply default overrides for helm charts
-			chartOverrideResult, _, err = applyOverrides(chartOverrideResult, []byte(" "), defaultChartOverrideConfig)
+			chartOverrideResult, _, err = applyOverrides(chartOverrideResult, []byte(" "), defaultChartOverrideConfigs)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
@@ -321,14 +340,14 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 		}
 		return utilerrors.NewAggregate(allErrs)
 	case appsapi.DescriptionGenericDeployer:
-		for idx, rawObject := range descCopy.Spec.Raw {
+		for idx, rawObject := range desc.Spec.Raw {
 			obj := &unstructured.Unstructured{}
 			if err := json.Unmarshal(rawObject, obj); err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
 
-			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+			overrides, err := l.getOverrides(desc.Namespace, appsapi.Feed{
 				Kind:       obj.GetKind(),
 				APIVersion: obj.GetAPIVersion(),
 				Namespace:  obj.GetNamespace(),
@@ -348,7 +367,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 		}
 		return utilerrors.NewAggregate(allErrs)
 	default:
-		return fmt.Errorf("unsupported deployer %s", descCopy.Spec.Deployer)
+		return fmt.Errorf("unsupported deployer %s", desc.Spec.Deployer)
 	}
 }
 

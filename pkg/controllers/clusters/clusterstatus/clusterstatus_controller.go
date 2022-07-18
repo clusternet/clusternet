@@ -119,13 +119,6 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 
 	nodeStatistics := getNodeStatistics(nodes)
 
-	var podStatistics clusterapi.PodStatistics
-	var resourceUsage clusterapi.ResourceUsage
-	if c.useMetricsServer {
-		podStatistics = getPodStatistics(c.metricClientset)
-		resourceUsage = getResourceUsage(c.metricClientset)
-	}
-
 	capacity, allocatable := getNodeResource(nodes)
 
 	clusterCIDR, err := c.discoverClusterCIDR()
@@ -150,8 +143,10 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.ClusterCIDR = clusterCIDR
 	status.ServiceCIDR = serviceCIDR
 	status.NodeStatistics = nodeStatistics
-	status.PodStatistics = podStatistics
-	status.ResourceUsage = resourceUsage
+	if c.useMetricsServer {
+		status.PodStatistics = getPodStatistics(c.metricClientset)
+		status.ResourceUsage = getResourceUsage(c.metricClientset)
+	}
 	status.Allocatable = allocatable
 	status.Capacity = capacity
 	status.HeartbeatFrequencySeconds = utilpointer.Int64Ptr(int64(c.heartbeatFrequency.Seconds()))
@@ -249,17 +244,18 @@ func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStat
 
 // getPodStatistics returns the PodStatistics in the cluster
 // get pods num in running conditions and the total pods num in the cluster
-func getPodStatistics(clientset *metricsv.Clientset) (podStatistics clusterapi.PodStatistics) {
+func getPodStatistics(clientset *metricsv.Clientset) *clusterapi.PodStatistics {
 	if clientset == nil {
 		klog.Warningf("empty metris client, will return directly ")
-		return
+		return nil
 	}
-	podStatistics = clusterapi.PodStatistics{}
+
 	podMetricsList, err := clientset.MetricsV1beta1().PodMetricses(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		klog.Warningf("failed to list podMetris with err: %v", err.Error)
-		return
+		return nil
 	}
+	podStatistics := &clusterapi.PodStatistics{}
 	for _, item := range podMetricsList.Items {
 		if len(item.Containers) != 0 {
 			podStatistics.RunningPods += 1
@@ -267,28 +263,29 @@ func getPodStatistics(clientset *metricsv.Clientset) (podStatistics clusterapi.P
 	}
 	podStatistics.TotalPods = int32(len(podMetricsList.Items))
 
-	return
+	return podStatistics
 }
 
 // getResourceUsage returns the ResourceUsage in the cluster
 // get cpu(m) and memory(Mi) used
-func getResourceUsage(clientset *metricsv.Clientset) (resourceUsage clusterapi.ResourceUsage) {
+func getResourceUsage(clientset *metricsv.Clientset) *clusterapi.ResourceUsage {
 	if clientset == nil {
 		klog.Warningf("empty metris client, will return directly ")
-		return
+		return nil
 	}
-	resourceUsage = clusterapi.ResourceUsage{}
+
 	nodeMetricsList, err := clientset.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		klog.Warningf("failed to list nodeMetris with err: %v", err.Error)
-		return
+		return nil
 	}
+	resourceUsage := &clusterapi.ResourceUsage{}
 	for _, item := range nodeMetricsList.Items {
 		resourceUsage.CpuUsage.Add(*(item.Usage.Cpu()))
 		resourceUsage.MemoryUsage.Add(*(item.Usage.Memory()))
 	}
 
-	return
+	return resourceUsage
 }
 
 // discoverServiceCIDR returns the service CIDR for the cluster.
@@ -348,11 +345,8 @@ func getCommonNodeLabels(nodes []*corev1.Node) map[string]string {
 	if len(nodes) == 0 {
 		return nil
 	}
-	if len(nodes) == 1 {
-		return nodes[0].Labels
-	}
 	initLabels := nodes[0].Labels
-	for _, node := range nodes[1:] {
+	for _, node := range nodes {
 		currentLabels := map[string]string{}
 		for k, v := range node.Labels {
 			c, ok := initLabels[k]

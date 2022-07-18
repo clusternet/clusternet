@@ -268,11 +268,11 @@ type ManagedClusterStatus struct {
 
 	// PodStatistics is the info summary of pods in the cluster
 	// +optional
-	PodStatistics PodStatistics `json:"podStatistics,omitempty"`
+	PodStatistics *PodStatistics `json:"podStatistics,omitempty"`
 
 	// ResourceUsage is the cpu(m) and memory(Mi) already used in the cluster
 	// +optional
-	ResourceUsage ResourceUsage `json:"resourceUsage,omitempty"`
+	ResourceUsage *ResourceUsage `json:"resourceUsage,omitempty"`
 
 	// Conditions is an array of current cluster conditions.
 	// +optional
