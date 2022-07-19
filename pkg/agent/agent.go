@@ -255,7 +255,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 	registerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	wait.JitterUntilWithContext(registerCtx, func(ctx context.Context) {
+	wait.UntilWithContext(registerCtx, func(ctx context.Context) {
 		// get cluster unique id
 		if agent.ClusterID == nil {
 			klog.Infof("retrieving cluster id")
@@ -304,7 +304,7 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 
 		// Cancel the context on success
 		cancel()
-	}, known.DefaultRetryPeriod, 0.3, true)
+	}, known.DefaultRetryPeriod)
 }
 
 func (agent *Agent) getClusterID(ctx context.Context, childClientSet kubernetes.Interface) (types.UID, error) {
