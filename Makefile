@@ -66,21 +66,33 @@ generated: controller-gen
 	@make crds
 	@./hack/update-codegen.sh
 
-# Build Binary
+# Build Binaries
+#
+# use WHAT to specify desired targets
+# use PLATFORMS to specify desired platforms
 # Example:
-#   make clusternet-agent clusternet-hub
-EXCLUDE_TARGET=BUILD OWNERS
-CMD_TARGET = $(filter-out %$(EXCLUDE_TARGET),$(notdir $(abspath $(wildcard cmd/*/))))
-.PHONY: $(CMD_TARGET)
-$(CMD_TARGET): generated
-	@hack/make-rules/build.sh $@
+#   make binaries
+#   WHAT=clusternet-agent make binaries
+#   WHAT=clusternet-hub,clusternet-agent PLATFORMS=linux/amd64,linux/arm64 make binaries
+#   WHAT=clusternet-hub,clusternet-agent,clusternet-scheduler PLATFORMS=linux/amd64,linux/arm64 make binaries
+#   PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm make binaries
+.PHONY: binaries
+binaries:
+	@hack/make-rules/build.sh
 
 # Build Images
+#
+# use WHAT to specify desired targets
+# use PLATFORMS to specify desired platforms
 # Example:
-#   make images clusternet-agent
+#   make images
+#   WHAT=clusternet-agent make images
+#   WHAT=clusternet-hub,clusternet-agent PLATFORMS=linux/amd64,linux/arm64 make images
+#   WHAT=clusternet-hub,clusternet-agent,clusternet-scheduler PLATFORMS=linux/amd64,linux/arm64 make images
+#   PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm make images
 .PHONY: images
 images:
-   hack/make-rules/images.sh $(MODULE_NAME)
+	@hack/make-rules/images.sh
 
 # find or download controller-gen
 # download controller-gen if necessary
