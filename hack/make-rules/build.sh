@@ -22,6 +22,9 @@ CLUSTERNET_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
 source "${CLUSTERNET_ROOT}/hack/lib/build.sh"
 
 IFS="," read -ra platforms <<<"${PLATFORMS}"
+IFS="," read -ra targets <<<"${WHAT}"
 for platform in "${platforms[@]}"; do
-  clusternet::golang::build_binary "${platform}" "$@"
+  for target in "${targets[@]}"; do
+    clusternet::golang::build_binary "${platform}" "${target}"
+  done
 done
