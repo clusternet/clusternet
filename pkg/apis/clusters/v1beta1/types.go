@@ -29,8 +29,9 @@ type ClusterType string
 
 // These are the valid values for ClusterType
 const (
-	// edge cluster
 	EdgeCluster ClusterType = "EdgeCluster"
+
+	StandardCluster ClusterType = "StandardCluster"
 
 	// todo: add more types
 )
