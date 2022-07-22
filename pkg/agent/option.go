@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -75,7 +76,7 @@ type ClusterRegistrationOptions struct {
 func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	return &ClusterRegistrationOptions{
 		ClusterNamePrefix:             RegistrationNamePrefix,
-		ClusterType:                   string(clusterapi.EdgeCluster),
+		ClusterType:                   string(clusterapi.StandardCluster),
 		ClusterSyncMode:               string(clusterapi.Pull),
 		ClusterStatusReportFrequency:  metav1.Duration{Duration: DefaultClusterStatusReportFrequency},
 		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
@@ -155,11 +156,10 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 		}
 	}
 
-	// TODO (dixudx): uncomment to enable checking ClusterType
-	//if len(opts.ClusterType) > 0 && !supportedClusterTypes.Has(opts.ClusterType) {
-	//	allErrs = append(allErrs, fmt.Errorf("invalid cluster type %q, please specify one from %s",
-	//		opts.ClusterType, supportedClusterTypes.List()))
-	//}
+	if len(opts.ClusterType) > 0 && !supportedClusterTypes.Has(opts.ClusterType) {
+		allErrs = append(allErrs, fmt.Errorf("invalid cluster type %q, please specify one from %s",
+			opts.ClusterType, supportedClusterTypes.List()))
+	}
 
 	if len(opts.ClusterNamePrefix) > ClusterNameMaxLength-DefaultRandomUIDLength-1 {
 		allErrs = append(allErrs, fmt.Errorf("cluster name prefix %s is longer than %d",
@@ -183,7 +183,7 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 	return allErrs
 }
 
-//var supportedClusterTypes = sets.NewString(
-//	string(clusterapi.EdgeCluster),
-//	// todo: add more types
-//)
+var supportedClusterTypes = sets.NewString(
+	string(clusterapi.StandardCluster),
+	string(clusterapi.EdgeCluster),
+)
