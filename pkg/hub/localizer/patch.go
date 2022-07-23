@@ -56,7 +56,7 @@ func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []ap
 				continue
 			}
 		} else {
-			if len(strings.TrimSpace(string(genericResult))) == 0 {
+			if len(strings.TrimSpace(string(genericResult))) == 0 && overrideConfig.Type != appsapi.JSONPatchType {
 				genericResult = overrideBytes
 				continue
 			}
@@ -95,6 +95,9 @@ func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []ap
 }
 
 func applyJSONPatch(cur, overrideBytes []byte) ([]byte, error) {
+	if strings.TrimSpace(string(cur)) == "" {
+		return cur, nil
+	}
 	patchObj, err := jsonpatch.DecodePatch(overrideBytes)
 	if err != nil {
 		return nil, err
