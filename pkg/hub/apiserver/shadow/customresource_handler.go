@@ -278,6 +278,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	if !canBeAddedToStorage(crd.Spec.Group, storageVersion, crd.Spec.Names.Plural, r.apiserviceLister) {
 		return nil
 	}
+	metav1.AddToGroupVersion(Scheme, schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion})
 
 	r.versionDiscoveryHandler.updateCRD(crd)
 
