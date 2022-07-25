@@ -37,6 +37,8 @@ const (
 	ConfigSubscriptionUIDLabel       = "apps.clusternet.io/subs.uid"
 	ConfigSubscriptionNameLabel      = "apps.clusternet.io/subs.name"
 	ConfigSubscriptionNamespaceLabel = "apps.clusternet.io/subs.namespace"
+
+	LabelServiceName = "msc.clusternet.io/service-name"
 )
 
 // label value

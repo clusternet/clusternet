@@ -39,9 +39,12 @@ import (
 	"k8s.io/klog/v2"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	utilpointer "k8s.io/utils/pointer"
+	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
+	mcsInformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
 
 	"github.com/clusternet/clusternet/pkg/agent/deployer"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/controllers/mcs"
 	"github.com/clusternet/clusternet/pkg/controllers/proxies/sockets"
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
@@ -79,6 +82,8 @@ type Agent struct {
 	// kube informer factory for child cluster
 	kubeInformerFactory kubeinformers.SharedInformerFactory
 
+	// mcs related informer factory for child cluster
+	mcsInformerFactory mcsInformers.SharedInformerFactory
 	// dedicated kubeconfig for accessing parent cluster, which is auto populated by the parent cluster
 	// when cluster registration request gets approved
 	parentDedicatedKubeConfig *rest.Config
@@ -90,7 +95,8 @@ type Agent struct {
 
 	deployer *deployer.Deployer
 
-	predictor *predictor.Server
+	predictor    *predictor.Server
+	mcsClientSet *mcsclientset.Clientset
 }
 
 // NewAgent returns a new Agent.
@@ -114,6 +120,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 		ClientConfig: childKubeConfig,
 	}
 	childKubeClientSet := kubernetes.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-kube-client"))
+	mcsClientSet := mcsclientset.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-mcs-client"))
 	var electionClientSet *kubernetes.Clientset
 	if controllerOpts.LeaderElection.LeaderElect {
 		electionClientSet = kubernetes.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-election-client"))
@@ -124,6 +131,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 
 	// creates the informer factory
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(childKubeClientSet, known.DefaultResync)
+	mcsInformerFactory := mcsInformers.NewSharedInformerFactory(mcsClientSet, known.DefaultResync)
 
 	var p *predictor.Server
 	if registrationOpts.serveInternalPredictor {
@@ -141,6 +149,8 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 		childKubeClientSet:     childKubeClientSet,
 		childElectionClientSet: electionClientSet,
 		kubeInformerFactory:    kubeInformerFactory,
+		mcsInformerFactory:     mcsInformerFactory,
+		mcsClientSet:           mcsClientSet,
 		registrationOptions:    registrationOpts,
 		controllerOptions:      controllerOpts,
 		statusManager: NewStatusManager(
@@ -163,6 +173,9 @@ func (agent *Agent) Run(ctx context.Context) error {
 	klog.Info("starting agent controller ...")
 
 	agent.kubeInformerFactory.Start(ctx.Done())
+
+	agent.mcsInformerFactory.Multicluster().V1alpha1().ServiceExports().Informer()
+	agent.mcsInformerFactory.Start(ctx.Done())
 
 	// if leader election is disabled, so runCommand inline until done.
 	if !agent.controllerOptions.LeaderElection.LeaderElect {
@@ -235,6 +248,15 @@ func (agent *Agent) run(ctx context.Context) {
 			defaultThreadiness); err != nil {
 			klog.Error(err)
 		}
+	}, time.Duration(0))
+
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		mcs.NewController(
+			agent.parentDedicatedKubeConfig,
+			agent.childKubeClientSet,
+			agent.mcsClientSet,
+			agent.mcsInformerFactory.Multicluster().V1alpha1().ServiceExports(),
+			*agent.DedicatedNamespace, defaultThreadiness).Run(ctx)
 	}, time.Duration(0))
 
 	if agent.predictor != nil {
