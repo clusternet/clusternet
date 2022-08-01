@@ -208,7 +208,12 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	if err != nil {
 		// repo update
 		if strings.Contains(err.Error(), "helm repo update") {
-			return UpdateRepo(hr.Spec.Repository)
+			err2 := UpdateRepo(hr.Spec.Repository)
+			if err2 == nil {
+				// return an error to let it reconcile
+				err2 = fmt.Errorf("[Helm Repo Update] requeue HelmRelease %s", klog.KObj(hr))
+			}
+			return err2
 		}
 		hrStatus = &appsapi.HelmReleaseStatus{
 			Phase: release.StatusFailed,
