@@ -71,7 +71,7 @@ const (
 	RegistrationNamePrefix = "clusternet-cluster"
 
 	// ClusterNameMaxLength is the max length for clustername
-	ClusterNameMaxLength = 30
+	ClusterNameMaxLength = 60
 	// DefaultRandomUIDLength is the default length for random uid
 	DefaultRandomUIDLength = 5
 
