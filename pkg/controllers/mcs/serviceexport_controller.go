@@ -138,6 +138,24 @@ func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err
 		return nil, err
 	}
 
+	// remove endpoint slices exist in parent but not in child cluster
+	localEndpointSliceMap := make(map[string]bool, 0)
+	for _, item := range endpointSliceList {
+		localEndpointSliceMap[fmt.Sprintf("%s-%s", se.Namespace, item.Name)] = true
+	}
+	if parentEndpointSliceList, err := c.parentk8sClient.DiscoveryV1().EndpointSlices(c.dedicatedNamespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{discoveryv1.LabelServiceName: utils.DerivedName(namespace, seName)}).String()}); err == nil {
+		for _, item := range parentEndpointSliceList.Items {
+			if !localEndpointSliceMap[item.Name] {
+				if err = c.parentk8sClient.DiscoveryV1().EndpointSlices(c.dedicatedNamespace).Delete(ctx, item.Name, metav1.DeleteOptions{}); err != nil {
+					utilruntime.HandleError(fmt.Errorf("the endpointclise '%s/%s' in parent cluster deleted failed", item.Namespace, item.Name))
+					d := time.Second
+					return &d, err
+				}
+			}
+		}
+	}
+
 	wg := sync.WaitGroup{}
 	var allErrs []error
 	errCh := make(chan error, len(endpointSliceList))
@@ -183,9 +201,48 @@ func (c *SeController) Run(ctx context.Context, parentDedicatedKubeConfig *rest.
 		WithHandlerFunc(c.Handle)
 	c.serviceExportInformer.Informer().AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
 
+	c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			endpointSlice := obj.(*discoveryv1.EndpointSlice)
+			if serviceName, ok := endpointSlice.Labels[discoveryv1.LabelServiceName]; ok {
+				if _, err := c.serviceExportLister.ServiceExports(endpointSlice.Namespace).Get(serviceName); err == nil {
+					return true
+				}
+			}
+			return false
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				if se, err := c.getServiceExportFromEndpointSlice(obj); err == nil {
+					controller.Enqueue(se)
+				}
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				if se, err := c.getServiceExportFromEndpointSlice(newObj); err == nil {
+					controller.Enqueue(se)
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				if se, err := c.getServiceExportFromEndpointSlice(obj); err == nil {
+					controller.Enqueue(se)
+				}
+			},
+		},
+	})
+
 	controller.Run(ctx)
 	<-ctx.Done()
 	return nil
+}
+
+func (c *SeController) getServiceExportFromEndpointSlice(obj interface{}) (*v1alpha1.ServiceExport, error) {
+	slice := obj.(*discoveryv1.EndpointSlice)
+	if serviceName, ok := slice.Labels[discoveryv1.LabelServiceName]; ok {
+		if se, err := c.serviceExportLister.ServiceExports(slice.Namespace).Get(serviceName); err == nil {
+			return se, nil
+		}
+	}
+	return nil, fmt.Errorf("can't get service export from this slice %s/%s", slice.Namespace, slice.Name)
 }
 
 // constructEndpointSlice construct a new endpoint slice from local slice.
