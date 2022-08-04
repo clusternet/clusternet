@@ -204,7 +204,7 @@ func UpdateRepo(repoURL string) error {
 		return err
 	}
 
-	if _, err := cr.DownloadIndexFile(); err != nil {
+	if _, err = cr.DownloadIndexFile(); err != nil {
 		return err
 	}
 
