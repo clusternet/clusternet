@@ -9,7 +9,7 @@ rules:
     verbs: [ "get", "list", "watch" ]
   - apiGroups: [ "apps.clusternet.io" ]
     resources: [ "subscriptions/status" ]
-    verbs: [ "update" ]
+    verbs: [ "update", "patch" ]
   - apiGroups: [ "clusters.clusternet.io" ]
     resources: [ "managedclusters" ]
     verbs: [ "get", "list", "watch" ]
