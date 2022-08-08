@@ -231,6 +231,10 @@ type ManagedClusterStatus struct {
 	// +optional
 	APIServerURL string `json:"apiserverURL,omitempty"`
 
+	// APIServerConfig indicates the advertising config of managed Kubernetes cluster
+	// +optional
+	APIServerConfig string `json:"apiserverConfig,omitempty"`
+
 	// Healthz indicates the healthz status of the cluster
 	// which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead.
 	// Leave it here only for compatibility.

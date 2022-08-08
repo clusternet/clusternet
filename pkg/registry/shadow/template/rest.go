@@ -18,10 +18,19 @@ package template
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
+
+	"k8s.io/client-go/util/flowcontrol"
+
+	"k8s.io/client-go/kubernetes"
+
+	"k8s.io/client-go/tools/clientcmd"
+
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -57,11 +66,13 @@ import (
 	printersinternal "github.com/clusternet/clusternet/pkg/registry/shadow/printers/internalversion"
 	printerstorage "github.com/clusternet/clusternet/pkg/registry/shadow/printers/storage"
 	"github.com/clusternet/clusternet/pkg/registry/shadow/printers/util"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
 	CoreGroupPrefix  = "api"
 	NamedGroupPrefix = "apis"
+	ChildClusterID   = "child-cluster-id"
 
 	// DefaultDeleteCollectionWorkers defines the default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
@@ -100,6 +111,22 @@ type REST struct {
 
 	// is this Rest for CRD resource.
 	CRD *apiextensionsv1.CustomResourceDefinition
+
+	mcLister clusterlisters.ManagedClusterLister
+}
+
+// TODO: events
+var resourceInCCls = []string{"pod"}
+
+// ResourceInCCls need get resource from child cls
+func (r *REST) ResourceInCCls() bool {
+	resource, _ := r.getResourceName()
+	for _, rk := range resourceInCCls {
+		if rk == strings.ToLower(resource) {
+			return true
+		}
+	}
+	return false
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -142,6 +169,9 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 
 // Get retrieves the item from Manifest.
 func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
+	if r.ResourceInCCls() {
+		return r.GetFromCCls(ctx, name, options)
+	}
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
@@ -158,6 +188,42 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	}
 
 	return transformManifest(manifest)
+}
+
+// GetFromCCls retrieves the item from child cls.
+func (r *REST) GetFromCCls(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
+	mcls, err := r.mcLister.List(labels.SelectorFromSet(labels.Set{}))
+	if err != nil {
+		return nil, apierrors.NewServiceUnavailable(err.Error())
+	}
+	if mcls == nil {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("no child cluster"))
+	}
+	var pod *corev1.Pod
+	// TODO: cache clientset
+	for _, cls := range mcls {
+		kubeConfig := cls.Status.APIServerURL
+		kubeConfigBytes, err := base64.RawURLEncoding.DecodeString(kubeConfig)
+		if err != nil {
+			return nil, apierrors.NewServiceUnavailable(err.Error())
+		}
+		config, err := clientcmd.RESTConfigFromKubeConfig(kubeConfigBytes)
+		config.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(1000, 1500)
+		clientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			return nil, apierrors.NewServiceUnavailable(err.Error())
+		}
+		namespace := request.NamespaceValue(ctx)
+		pod, err = clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("get pod %s failed from %s: %v", name, cls.Spec.ClusterID, err)
+			continue
+		} else {
+			pod.Annotations[ChildClusterID] = string(cls.Spec.ClusterID)
+			break
+		}
+	}
+	return pod, nil
 }
 
 // Update performs an atomic update and set of the object. Returns the result of the update
@@ -722,7 +788,8 @@ func (r *REST) getListKind() string {
 
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
-	manifestLister applisters.ManifestLister, reservedNamespace string) *REST {
+	manifestLister applisters.ManifestLister, reservedNamespace string,
+	mcLister clusterlisters.ManagedClusterLister) *REST {
 	return &REST{
 		dryRunClient:            dryRunClient,
 		clusternetClient:        clusternetclient,
@@ -730,6 +797,7 @@ func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.C
 		parameterCodec:          parameterCodec,
 		deleteCollectionWorkers: DefaultDeleteCollectionWorkers, // currently we only set a default value for deleteCollectionWorkers
 		reservedNamespace:       reservedNamespace,
+		mcLister:                mcLister,
 	}
 }
 

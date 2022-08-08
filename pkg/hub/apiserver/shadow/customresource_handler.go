@@ -26,6 +26,10 @@ import (
 	"sync"
 	"time"
 
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+
 	"github.com/emicklei/go-restful"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
@@ -87,6 +91,8 @@ type crdHandler struct {
 
 	// namespace where Manifests are created
 	reservedNamespace string
+
+	mcLister clusterlisters.ManagedClusterLister
 }
 
 func NewCRDHandler(kubeRESTClient restclient.Interface, clusternetClient *clusternet.Clientset,
@@ -94,7 +100,8 @@ func NewCRDHandler(kubeRESTClient restclient.Interface, clusternetClient *cluste
 	crdInformer apiextensionsinformers.CustomResourceDefinitionInformer,
 	minRequestTimeout int, maxRequestBodyBytes int64,
 	admissionControl admission.Interface, authorizer authorizer.Authorizer, serializer runtime.NegotiatedSerializer,
-	reservedNamespace string) *crdHandler {
+	reservedNamespace string,
+	clusternetInformerFactory informers.SharedInformerFactory) *crdHandler {
 	r := &crdHandler{
 		rootPrefix:          path.Join(genericapiserver.APIGroupPrefix, shadowapi.SchemeGroupVersion.String()),
 		kubeRESTClient:      kubeRESTClient,
@@ -110,6 +117,7 @@ func NewCRDHandler(kubeRESTClient restclient.Interface, clusternetClient *cluste
 		storages:            map[string]*template.REST{},
 		requestScopes:       map[string]*handlers.RequestScope{},
 		reservedNamespace:   reservedNamespace,
+		mcLister:            clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
 	}
 	return r
 }
@@ -301,7 +309,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		selfLinkPrefix = "/" + path.Join("apis", shadowapi.GroupName, shadowapi.SchemeGroupVersion.Version, "namespaces") + "/"
 	}
 
-	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, runtime.NewParameterCodec(Scheme), r.manifestLister, r.reservedNamespace)
+	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, runtime.NewParameterCodec(Scheme), r.manifestLister, r.reservedNamespace, r.mcLister)
 	restStorage.SetNamespaceScoped(crd.Spec.Scope == apiextensionsv1.NamespaceScoped)
 	restStorage.SetName(resource)
 	restStorage.SetShortNames(crd.Spec.Names.ShortNames)
