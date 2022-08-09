@@ -234,7 +234,7 @@ func (hub *Hub) Run(ctx context.Context) error {
 		peerInfo{
 			ID:       hub.peerID,
 			Identity: curIdentity,
-			Host:     hub.options.RecommendedOptions.SecureServing.BindAddress.String(),
+			Host:     hub.options.PeerAdvertiseAddress.String(),
 			Port:     hub.options.PeerPort,
 			Token:    hub.options.PeerToken,
 		},
