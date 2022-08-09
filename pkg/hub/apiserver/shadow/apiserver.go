@@ -47,6 +47,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	apiservicelisters "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
+	custommetricsapi "k8s.io/metrics/pkg/apis/custom_metrics"
 	metricsapi "k8s.io/metrics/pkg/apis/metrics"
 
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
@@ -164,7 +165,6 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 	if err != nil {
 		return err
 	}
-
 	shadowv1alpha1storage := map[string]rest.Storage{}
 	for _, apiGroupResource := range apiGroupResources {
 		// no need to duplicate xxx.clusternet.io
@@ -181,6 +181,11 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 		// where PodMetrics uses pods as resource name, NodeMetrics uses nodes as resource name
 		// which conflicts with corev1.Pod and corev1.Node
 		if apiGroupResource.Group.Name == metricsapi.GroupName {
+			continue
+		}
+
+		// ignore "custom.metrics.k8s.io" group
+		if apiGroupResource.Group.Name == custommetricsapi.GroupName {
 			continue
 		}
 
