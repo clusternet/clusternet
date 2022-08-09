@@ -78,6 +78,8 @@ type HubServerOptions struct {
 
 	*utils.ControllerOptions
 
+	// advertise address to other peers
+	PeerAdvertiseAddress net.IP
 	// secure port used for communicating with peers
 	PeerPort int
 
@@ -115,6 +117,16 @@ func (o *HubServerOptions) Validate() error {
 // Complete fills in fields required to have valid data
 func (o *HubServerOptions) Complete() error {
 	o.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath = o.ClientConnection.Kubeconfig
+
+	if o.PeerAdvertiseAddress == nil || o.PeerAdvertiseAddress.IsUnspecified() {
+		hostIP, err := o.RecommendedOptions.SecureServing.DefaultExternalAddress()
+		if err != nil {
+			return fmt.Errorf("unable to find suitable network address: '%v'. "+
+				"Try to set the PeerAdvertiseAddress directly or provide a valid BindAddress to fix this", err)
+		}
+		o.PeerAdvertiseAddress = hostIP
+	}
+
 	return nil
 }
 
@@ -171,6 +183,11 @@ func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 	o.addRecommendedOptionsFlags(fs)
 	o.ControllerOptions.AddFlags(fs)
 
+	fs.IPVar(&o.PeerAdvertiseAddress, "peer-advertise-address", o.PeerAdvertiseAddress, ""+
+		"The IP address on which to advertise the clusternet-hub to other peers in the cluster. This "+
+		"address must be reachable by the rest of the peers. If blank, the --bind-address "+
+		"will be used. If --bind-address is unspecified, the host's default interface will "+
+		"be used.")
 	fs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
 	fs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
 	fs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
