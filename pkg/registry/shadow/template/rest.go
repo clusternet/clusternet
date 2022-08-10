@@ -76,12 +76,16 @@ const (
 	NamedGroupPrefix = "apis"
 	ChildClusterID   = "child-cluster-id"
 
+	Pods   = "pods"
+	events = "events"
+
 	// DefaultDeleteCollectionWorkers defines the default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
 
 	crdKind = "CustomResourceDefinition"
 )
 
+// ChildClsClient for cls cache
 type ChildClsClient struct {
 	lock           *sync.RWMutex
 	childClsClient map[string]kubernetes.Interface
@@ -123,11 +127,11 @@ type REST struct {
 	childClsClientCache ChildClsClient
 }
 
-// TODO: events
-var resourceInCCls = []string{"pod"}
+// resourceInCCls the resource need get from child cluster
+var resourceInCCls = []string{Pods, events}
 
-// ResourceInCCls need get resource from child cls
-func (r *REST) ResourceInCCls() bool {
+// resourceInCCls need to get resource from child cls
+func (r *REST) resourceInCCls() bool {
 	resource, _ := r.getResourceName()
 	for _, rk := range resourceInCCls {
 		if rk == strings.ToLower(resource) {
@@ -137,6 +141,7 @@ func (r *REST) ResourceInCCls() bool {
 	return false
 }
 
+// getCClsCliFromCache get child cluster client from cache
 func (r *REST) getCClsCliFromCache(clusterID string) (kubernetes.Interface, bool) {
 	r.childClsClientCache.lock.RLock()
 	defer r.childClsClientCache.lock.RUnlock()
@@ -144,6 +149,7 @@ func (r *REST) getCClsCliFromCache(clusterID string) (kubernetes.Interface, bool
 	return client, ok
 }
 
+// setCClsCliToCache set child cluster client to cache
 func (r *REST) setCClsCliToCache(clusterID string, client kubernetes.Interface) {
 	r.childClsClientCache.lock.Lock()
 	defer r.childClsClientCache.lock.Unlock()
@@ -151,6 +157,7 @@ func (r *REST) setCClsCliToCache(clusterID string, client kubernetes.Interface) 
 	return
 }
 
+// newCClsCLi create a new child cluster client
 func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (kubernetes.Interface, error) {
 	kubeConfig := cls.Status.APIServerConfig
 	kubeConfigBytes, err := base64.RawURLEncoding.DecodeString(kubeConfig)
@@ -207,7 +214,7 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 
 // Get retrieves the item from Manifest.
 func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
-	if r.ResourceInCCls() {
+	if r.resourceInCCls() {
 		return r.GetFromCCls(ctx, name, options)
 	}
 	var manifest *appsapi.Manifest
@@ -228,17 +235,38 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	return transformManifest(manifest)
 }
 
+// getMCLs get all managed cluster
+func (r *REST) getMCLs() ([]*v1beta1.ManagedCluster, error) {
+	// TODO: use watch instead of list
+	mcls, err := r.mcLister.List(labels.SelectorFromSet(labels.Set{}))
+	if err != nil || mcls == nil {
+		return nil, err
+	}
+	return mcls, nil
+}
+
 // GetFromCCls retrieves the item from child cls.
 func (r *REST) GetFromCCls(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
-	mcls, err := r.mcLister.List(labels.SelectorFromSet(labels.Set{}))
+	mcls, err := r.getMCLs()
 	if err != nil {
 		return nil, apierrors.NewServiceUnavailable(err.Error())
 	}
-	if mcls == nil {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("no child cluster"))
+	resource, _ := r.getResourceName()
+	switch resource {
+	case Pods:
+		return r.getPodsFromCCls(ctx, name, options, mcls)
+	case events:
+		return r.getEventsFromCCls(ctx, name, options, mcls)
+	default:
+		return nil, apierrors.NewServiceUnavailable("not allowed")
 	}
+}
+
+// getPodsFromCCls get Pods From child cluster
+func (r *REST) getPodsFromCCls(ctx context.Context, name string, options *metav1.GetOptions,
+	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
 	var pod *corev1.Pod
-	// TODO: cache clientset
+	var err error
 	for _, cls := range mcls {
 		clusterID := string(cls.Spec.ClusterID)
 		clientset, ok := r.getCClsCliFromCache(clusterID)
@@ -259,6 +287,33 @@ func (r *REST) GetFromCCls(ctx context.Context, name string, options *metav1.Get
 		}
 	}
 	return pod, nil
+}
+
+// getEventsFromCCls get Events From child cluster
+func (r *REST) getEventsFromCCls(ctx context.Context, name string, options *metav1.GetOptions,
+	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
+	var event *corev1.Event
+	var err error
+	for _, cls := range mcls {
+		clusterID := string(cls.Spec.ClusterID)
+		clientset, ok := r.getCClsCliFromCache(clusterID)
+		if !ok {
+			clientset, err = r.newCClsCLi(clusterID, cls)
+			if err != nil {
+				return nil, apierrors.NewServiceUnavailable(err.Error())
+			}
+		}
+		namespace := request.NamespaceValue(ctx)
+		event, err = clientset.CoreV1().Events(namespace).Get(ctx, name, *options)
+		if err != nil {
+			klog.Errorf("get event %s failed from %s: %v", name, cls.Spec.ClusterID, err)
+			continue
+		} else {
+			event.Annotations[ChildClusterID] = clusterID
+			break
+		}
+	}
+	return event, nil
 }
 
 // Update performs an atomic update and set of the object. Returns the result of the update
