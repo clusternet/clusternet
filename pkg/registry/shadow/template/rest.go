@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+
 	"k8s.io/client-go/util/flowcontrol"
 
 	"k8s.io/client-go/kubernetes"
@@ -80,6 +82,11 @@ const (
 	crdKind = "CustomResourceDefinition"
 )
 
+type ChildClsClient struct {
+	lock           *sync.RWMutex
+	childClsClient map[string]kubernetes.Interface
+}
+
 // REST implements a RESTStorage for Shadow API
 type REST struct {
 	// name is the plural name of the resource.
@@ -112,7 +119,8 @@ type REST struct {
 	// is this Rest for CRD resource.
 	CRD *apiextensionsv1.CustomResourceDefinition
 
-	mcLister clusterlisters.ManagedClusterLister
+	mcLister            clusterlisters.ManagedClusterLister
+	childClsClientCache ChildClsClient
 }
 
 // TODO: events
@@ -127,6 +135,36 @@ func (r *REST) ResourceInCCls() bool {
 		}
 	}
 	return false
+}
+
+func (r *REST) getCClsCliFromCache(clusterID string) (kubernetes.Interface, bool) {
+	r.childClsClientCache.lock.RLock()
+	defer r.childClsClientCache.lock.RUnlock()
+	client, ok := r.childClsClientCache.childClsClient[clusterID]
+	return client, ok
+}
+
+func (r *REST) setCClsCliToCache(clusterID string, client kubernetes.Interface) {
+	r.childClsClientCache.lock.Lock()
+	defer r.childClsClientCache.lock.Unlock()
+	r.childClsClientCache.childClsClient[clusterID] = client
+	return
+}
+
+func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (kubernetes.Interface, error) {
+	kubeConfig := cls.Status.APIServerConfig
+	kubeConfigBytes, err := base64.RawURLEncoding.DecodeString(kubeConfig)
+	if err != nil {
+		return nil, err
+	}
+	config, err := clientcmd.RESTConfigFromKubeConfig(kubeConfigBytes)
+	config.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(1000, 1500)
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	r.setCClsCliToCache(clusterID, clientSet)
+	return clientSet, nil
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -202,24 +240,21 @@ func (r *REST) GetFromCCls(ctx context.Context, name string, options *metav1.Get
 	var pod *corev1.Pod
 	// TODO: cache clientset
 	for _, cls := range mcls {
-		kubeConfig := cls.Status.APIServerURL
-		kubeConfigBytes, err := base64.RawURLEncoding.DecodeString(kubeConfig)
-		if err != nil {
-			return nil, apierrors.NewServiceUnavailable(err.Error())
-		}
-		config, err := clientcmd.RESTConfigFromKubeConfig(kubeConfigBytes)
-		config.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(1000, 1500)
-		clientset, err := kubernetes.NewForConfig(config)
-		if err != nil {
-			return nil, apierrors.NewServiceUnavailable(err.Error())
+		clusterID := string(cls.Spec.ClusterID)
+		clientset, ok := r.getCClsCliFromCache(clusterID)
+		if !ok {
+			clientset, err = r.newCClsCLi(clusterID, cls)
+			if err != nil {
+				return nil, apierrors.NewServiceUnavailable(err.Error())
+			}
 		}
 		namespace := request.NamespaceValue(ctx)
-		pod, err = clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+		pod, err = clientset.CoreV1().Pods(namespace).Get(ctx, name, *options)
 		if err != nil {
 			klog.Errorf("get pod %s failed from %s: %v", name, cls.Spec.ClusterID, err)
 			continue
 		} else {
-			pod.Annotations[ChildClusterID] = string(cls.Spec.ClusterID)
+			pod.Annotations[ChildClusterID] = clusterID
 			break
 		}
 	}
@@ -798,6 +833,10 @@ func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.C
 		deleteCollectionWorkers: DefaultDeleteCollectionWorkers, // currently we only set a default value for deleteCollectionWorkers
 		reservedNamespace:       reservedNamespace,
 		mcLister:                mcLister,
+		childClsClientCache: ChildClsClient{
+			lock:           new(sync.RWMutex),
+			childClsClient: map[string]kubernetes.Interface{},
+		},
 	}
 }
 
