@@ -141,7 +141,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		inventorySynced:           clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().HasSynced,
 		registry:                  plugins.NewInTreeRegistry(),
 		scheduleAlgorithm:         algorithm.NewGenericScheduler(schedulerCache),
-		SchedulingQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter()),
+		SchedulingQueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter(), "clusternet-scheduler"),
 		subscribersMap:            make(map[string][]appsapi.Subscriber),
 	}
 
