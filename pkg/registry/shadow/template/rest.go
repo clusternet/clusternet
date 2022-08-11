@@ -174,6 +174,32 @@ func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (kubern
 	return clientSet, nil
 }
 
+// getMCLs get all managed cluster
+func (r *REST) getMCLs() ([]*v1beta1.ManagedCluster, error) {
+	// TODO: use watch instead of list
+	mcls, err := r.mcLister.List(labels.SelectorFromSet(labels.Set{}))
+	if err != nil || mcls == nil {
+		return nil, err
+	}
+	return mcls, nil
+}
+
+// convertToListOptions convert internalversion ListOptions to metav1 ListOptions
+func (r *REST) convertToListOptions(options *internalversion.ListOptions) metav1.ListOptions {
+	listOptions := metav1.ListOptions{
+		LabelSelector:        options.LabelSelector.String(),
+		FieldSelector:        options.FieldSelector.String(),
+		Watch:                options.Watch,
+		AllowWatchBookmarks:  options.AllowWatchBookmarks,
+		ResourceVersion:      options.ResourceVersion,
+		ResourceVersionMatch: options.ResourceVersionMatch,
+		TimeoutSeconds:       options.TimeoutSeconds,
+		Limit:                0, // disable APIListChunking
+		Continue:             options.Continue,
+	}
+	return listOptions
+}
+
 // Create inserts a new item into Manifest according to the unique key from the object.
 func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation rest.ValidateObjectFunc, options *metav1.CreateOptions) (runtime.Object, error) {
 	// dry-run
@@ -233,16 +259,6 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	}
 
 	return transformManifest(manifest)
-}
-
-// getMCLs get all managed cluster
-func (r *REST) getMCLs() ([]*v1beta1.ManagedCluster, error) {
-	// TODO: use watch instead of list
-	mcls, err := r.mcLister.List(labels.SelectorFromSet(labels.Set{}))
-	if err != nil || mcls == nil {
-		return nil, err
-	}
-	return mcls, nil
 }
 
 // GetFromCCls retrieves the item from child cls.
@@ -529,6 +545,9 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 
 // List returns a list of items matching labels.
 func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
+	if r.resourceInCCls() {
+		return r.ListFromCCls(ctx, options)
+	}
 	label, err := r.convertListOptionsToLabels(ctx, options)
 	if err != nil {
 		return nil, err
@@ -568,6 +587,95 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		result.Items = append(result.Items, *obj)
 	}
 	return result, nil
+}
+
+// ListFromCCls retrieves the item from child cls.
+func (r *REST) ListFromCCls(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
+	mcls, err := r.getMCLs()
+	if err != nil {
+		return nil, apierrors.NewServiceUnavailable(err.Error())
+	}
+	resource, _ := r.getResourceName()
+	switch resource {
+	case Pods:
+		return r.listPodsFromCCls(ctx, options, mcls)
+	case events:
+		return r.listEventsFromCCls(ctx, options, mcls)
+	default:
+		return nil, apierrors.NewServiceUnavailable("not allowed")
+	}
+}
+
+// listPodsFromCCls list Pods From child cluster
+func (r *REST) listPodsFromCCls(ctx context.Context, options *internalversion.ListOptions,
+	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
+	var podL *corev1.PodList
+	var err error
+	isSuc := false
+	listOptions := r.convertToListOptions(options)
+	for _, cls := range mcls {
+		clusterID := string(cls.Spec.ClusterID)
+		clientset, ok := r.getCClsCliFromCache(clusterID)
+		if !ok {
+			clientset, err = r.newCClsCLi(clusterID, cls)
+			if err != nil {
+				return nil, apierrors.NewServiceUnavailable(err.Error())
+			}
+		}
+		namespace := request.NamespaceValue(ctx)
+		podLTmp, err := clientset.CoreV1().Pods(namespace).List(ctx, listOptions)
+		if err != nil {
+			klog.Errorf("list pod %s failed from %s: %v", cls.Spec.ClusterID, err)
+			continue
+		}
+		for _, pod := range podLTmp.Items {
+			pod.Annotations[ChildClusterID] = clusterID
+		}
+		if !isSuc {
+			podL = podLTmp
+			isSuc = true
+		} else {
+			// merge pod list
+			podL.Items = append(podL.Items, podLTmp.Items...)
+		}
+	}
+	return podL, nil
+}
+
+// listEventsFromCCls list Events From child cluster
+func (r *REST) listEventsFromCCls(ctx context.Context, options *internalversion.ListOptions,
+	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
+	var eventL *corev1.EventList
+	var err error
+	isSuc := false
+	listOptions := r.convertToListOptions(options)
+	for _, cls := range mcls {
+		clusterID := string(cls.Spec.ClusterID)
+		clientset, ok := r.getCClsCliFromCache(clusterID)
+		if !ok {
+			clientset, err = r.newCClsCLi(clusterID, cls)
+			if err != nil {
+				return nil, apierrors.NewServiceUnavailable(err.Error())
+			}
+		}
+		namespace := request.NamespaceValue(ctx)
+		eventLTmp, err := clientset.CoreV1().Events(namespace).List(ctx, listOptions)
+		if err != nil {
+			klog.Errorf("list pod %s failed from %s: %v", cls.Spec.ClusterID, err)
+			continue
+		}
+		for _, event := range eventLTmp.Items {
+			event.Annotations[ChildClusterID] = clusterID
+		}
+		if !isSuc {
+			eventL = eventLTmp
+			isSuc = true
+		} else {
+			// merge events list
+			eventL.Items = append(eventL.Items, eventLTmp.Items...)
+		}
+	}
+	return eventL, nil
 }
 
 func (r *REST) NewList() runtime.Object {
