@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sync/atomic"
 
@@ -208,7 +208,7 @@ func (s *Server) installDefaultHandlers(ctx context.Context) {
 
 	ws.Route(ws.POST(schedulerapi.SubPathPredict).To(func(request *restful.Request, response *restful.Response) {
 		defer request.Request.Body.Close()
-		data, err := ioutil.ReadAll(request.Request.Body)
+		data, err := io.ReadAll(request.Request.Body)
 		if err != nil {
 			http.Error(response, err.Error(), http.StatusInternalServerError)
 			return
