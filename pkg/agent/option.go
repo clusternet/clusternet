@@ -32,6 +32,7 @@ import (
 )
 
 var validateClusterNameRegex = regexp.MustCompile(nameFmt)
+var validateClusterNamespaceRegex = regexp.MustCompile(namespaceFmt)
 
 // ClusterRegistrationOptions holds the command-line options about cluster registration
 type ClusterRegistrationOptions struct {
@@ -39,6 +40,8 @@ type ClusterRegistrationOptions struct {
 	ClusterName string
 	// ClusterNamePrefix specifies the cluster name prefix for registration
 	ClusterNamePrefix string
+	// ClusterNamespace denotes the cluster namespace you want to register/display in parent cluster
+	ClusterNamespace string
 	// ClusterType denotes the cluster type
 	ClusterType string
 	// ClusterSyncMode specifies the sync mode between parent cluster and child cluster
@@ -99,6 +102,8 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&opts.ClusterNamePrefix, ClusterRegistrationNamePrefix, opts.ClusterNamePrefix,
 		fmt.Sprintf("Specify a random cluster name with this prefix for registration if --%s is not specified",
 			ClusterRegistrationName))
+	fs.StringVar(&opts.ClusterNamespace, ClusterRegistrationNamespace, opts.ClusterNamespace,
+		"Specify the cluster registration namespace")
 	fs.StringVar(&opts.ClusterType, ClusterRegistrationType, opts.ClusterType,
 		"Specify the cluster type")
 	fs.StringVar(&opts.ClusterSyncMode, ClusterSyncMode, opts.ClusterSyncMode,
@@ -153,6 +158,17 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 		if !validateClusterNameRegex.MatchString(opts.ClusterName) {
 			allErrs = append(allErrs,
 				fmt.Errorf("invalid name for --%s, regex used for validation is %q", ClusterRegistrationName, nameFmt))
+		}
+	}
+
+	if len(opts.ClusterNamespace) > 0 {
+		if len(opts.ClusterNamespace) > ClusterNamespaceMaxLength {
+			allErrs = append(allErrs, fmt.Errorf("cluster namespace %s is longer than %d", opts.ClusterNamespace, ClusterNamespaceMaxLength))
+		}
+
+		if !validateClusterNamespaceRegex.MatchString(opts.ClusterNamespace) {
+			allErrs = append(allErrs,
+				fmt.Errorf("invalid namespace for --%s, regex used for validation is %q", ClusterRegistrationNamespace, namespaceFmt))
 		}
 	}
 

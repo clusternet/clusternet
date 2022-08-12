@@ -35,6 +35,9 @@ const (
 	// ClusterRegistrationNamePrefix is a prefix for cluster registration name
 	ClusterRegistrationNamePrefix = "cluster-reg-name-prefix"
 
+	// ClusterRegistrationNamespace flag specifies the cluster registration namespace
+	ClusterRegistrationNamespace = "cluster-reg-namespace"
+
 	// ClusterRegistrationType flag specifies the cluster type
 	ClusterRegistrationType = "cluster-reg-type"
 
@@ -72,10 +75,15 @@ const (
 
 	// ClusterNameMaxLength is the max length for clustername
 	ClusterNameMaxLength = 60
+
+	// ClusterNamespaceMaxLength is the max length for clusternamespace
+	ClusterNamespaceMaxLength = 63
+
 	// DefaultRandomUIDLength is the default length for random uid
 	DefaultRandomUIDLength = 5
 
-	nameFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
+	nameFmt      = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
+	namespaceFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
 
 	DefaultClusterStatusCollectFrequency = 20 * time.Second
 	DefaultClusterStatusReportFrequency  = 3 * time.Minute
