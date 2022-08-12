@@ -256,6 +256,7 @@ func constructEndpointSlice(slice *discoveryv1.EndpointSlice, se *v1alpha1.Servi
 
 	newSlice.Labels[known.LabelServiceName] = se.Name
 	newSlice.Labels[known.LabelServiceNameSpace] = se.Namespace
+	newSlice.Labels[known.ObjectCreatedByLabel] = known.ClusternetAgentName
 	newSlice.Labels[discoveryv1.LabelServiceName] = utils.DerivedName(se.Namespace, se.Name)
 
 	if subNamespace, exist := se.GetLabels()[known.ConfigSubscriptionNamespaceLabel]; exist {

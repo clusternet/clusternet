@@ -52,10 +52,13 @@ import (
 	"k8s.io/klog/v2"
 	aggregatorclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	aggregatorinformers "k8s.io/kube-aggregator/pkg/client/informers/externalversions"
+	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
+	mcsInformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterlifecycle"
+	"github.com/clusternet/clusternet/pkg/controllers/mcs"
 	"github.com/clusternet/clusternet/pkg/controllers/misc/leasegc"
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
@@ -96,6 +99,7 @@ type Hub struct {
 
 	socketConnection bool
 	deployerEnabled  bool
+	serviceImport    *mcs.ServiceImportController
 }
 
 // NewHub returns a new Hub.
@@ -114,7 +118,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client"))
 	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-client"))
 	electionClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-election-client"))
-
+	mcsClientSet := mcsclientset.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-mcs-client"))
 	//deployer.broadcaster.StartStructuredLogging(5)
 	broadcaster := record.NewBroadcaster()
 	if kubeClient != nil {
@@ -132,6 +136,8 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	// creates the informer factory
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
 	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetClient, known.DefaultResync)
+	mcsInformerFactory := mcsInformers.NewSharedInformerFactory(mcsClientSet, known.DefaultResync)
+
 	aggregatorInformerFactory := aggregatorinformers.NewSharedInformerFactory(aggregatorclient.
 		NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client")), known.DefaultResync)
 
@@ -153,6 +159,8 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 
 	clusterLifecycle := clusterlifecycle.NewController(clusternetClient, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(), recorder)
 
+	serviceImport := mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
+
 	hub := &Hub{
 		peerID:                    utilrand.String(5),
 		crrApprover:               approver,
@@ -169,6 +177,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		recorder:                  recorder,
 		deployerEnabled:           deployerEnabled,
 		clusterLifecycle:          clusterLifecycle,
+		serviceImport:             serviceImport,
 	}
 	return hub, nil
 }
@@ -391,6 +400,10 @@ func (hub *Hub) runControllers(ctx context.Context) {
 			hub.deployer.Run(hub.options.Threadiness, ctx.Done())
 		}()
 	}
+
+	go func() {
+		hub.serviceImport.Run(ctx)
+	}()
 
 	hub.clusterLifecycle.Run(hub.options.Threadiness, ctx.Done())
 }
