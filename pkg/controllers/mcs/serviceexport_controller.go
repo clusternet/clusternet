@@ -34,7 +34,6 @@ import (
 	discoverylisterv1 "k8s.io/client-go/listers/discovery/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/mcs-api/pkg/apis/v1alpha1"
 	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
@@ -126,34 +125,15 @@ func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err
 		klog.Infof("service export %s has been recycled successfully", se.Name)
 		return nil, nil
 	}
-
-	var endpointSliceList []*discoveryv1.EndpointSlice
-	if endpointSliceList, err = c.endpointSlicesLister.EndpointSlices(namespace).List(
-		labels.SelectorFromSet(labels.Set{discoveryv1.LabelServiceName: se.Name})); err != nil {
-		if errors.IsNotFound(err) {
-			// service may not exist now, try next time.
-			d := time.Second
-			return &d, err
-		}
-		return nil, err
-	}
-
-	// remove endpoint slices exist in parent but not in child cluster
-	localEndpointSliceMap := make(map[string]bool, 0)
-	for _, item := range endpointSliceList {
-		localEndpointSliceMap[fmt.Sprintf("%s-%s", se.Namespace, item.Name)] = true
-	}
-	if parentEndpointSliceList, err := c.parentk8sClient.DiscoveryV1().EndpointSlices(c.dedicatedNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{discoveryv1.LabelServiceName: utils.DerivedName(namespace, seName)}).String()}); err == nil {
-		for _, item := range parentEndpointSliceList.Items {
-			if !localEndpointSliceMap[item.Name] {
-				if err = c.parentk8sClient.DiscoveryV1().EndpointSlices(c.dedicatedNamespace).Delete(ctx, item.Name, metav1.DeleteOptions{}); err != nil {
-					utilruntime.HandleError(fmt.Errorf("the endpointclise '%s/%s' in parent cluster deleted failed", item.Namespace, item.Name))
-					d := time.Second
-					return &d, err
-				}
-			}
-		}
+	// src endpoint slice with label of service export name is same to service name.
+	srcLabelMap := labels.Set{discoveryv1.LabelServiceName: se.Name}
+	// dst endpoint slice with label of derived service name combined with namespace and service export name
+	dstLabelMap := labels.Set{discoveryv1.LabelServiceName: utils.DerivedName(namespace, seName)}
+	endpointSliceList, err := utils.RemoveUnexistEndpointslice(c.endpointSlicesLister, namespace,
+		srcLabelMap, c.parentk8sClient, c.dedicatedNamespace, dstLabelMap)
+	if err != nil {
+		d := time.Second
+		return &d, err
 	}
 
 	wg := sync.WaitGroup{}
@@ -165,7 +145,7 @@ func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err
 		newSlice := constructEndpointSlice(slice, se, c.dedicatedNamespace)
 		go func(slice *discoveryv1.EndpointSlice) {
 			defer wg.Done()
-			if err = ApplyEndPointSliceWithRetry(c.parentk8sClient, slice); err != nil {
+			if err = utils.ApplyEndPointSliceWithRetry(c.parentk8sClient, slice); err != nil {
 				errCh <- err
 				klog.Infof("slice %s sync err: %s", slice.Name, err)
 			}
@@ -259,43 +239,11 @@ func constructEndpointSlice(slice *discoveryv1.EndpointSlice, se *v1alpha1.Servi
 	newSlice.Labels[known.ObjectCreatedByLabel] = known.ClusternetAgentName
 	newSlice.Labels[discoveryv1.LabelServiceName] = utils.DerivedName(se.Namespace, se.Name)
 
-	if subNamespace, exist := se.GetLabels()[known.ConfigSubscriptionNamespaceLabel]; exist {
-		newSlice.GetLabels()[known.ConfigSubscriptionNamespaceLabel] = subNamespace
+	if subNamespace, exist := se.Labels[known.ConfigSubscriptionNamespaceLabel]; exist {
+		newSlice.Labels[known.ConfigSubscriptionNamespaceLabel] = subNamespace
 	}
 
 	newSlice.Namespace = namespace
 	newSlice.Name = fmt.Sprintf("%s-%s", se.Namespace, slice.Name)
 	return newSlice
-}
-
-// ApplyEndPointSliceWithRetry create or update existed slices.
-func ApplyEndPointSliceWithRetry(client kubernetes.Interface, slice *discoveryv1.EndpointSlice) error {
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() (err error) {
-		var lastError error
-		_, lastError = client.DiscoveryV1().EndpointSlices(slice.GetNamespace()).Create(context.TODO(), slice, metav1.CreateOptions{})
-		if lastError == nil {
-			return nil
-		}
-		if !errors.IsAlreadyExists(lastError) {
-			return lastError
-		}
-
-		curObj, err := client.DiscoveryV1().EndpointSlices(slice.GetNamespace()).Get(context.TODO(), slice.GetName(), metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		lastError = nil
-
-		if utils.ResourceNeedResync(curObj, slice, false) {
-			// try to update slice
-			curObj.Ports = slice.Ports
-			curObj.Endpoints = slice.Endpoints
-			curObj.AddressType = slice.AddressType
-			_, lastError = client.DiscoveryV1().EndpointSlices(slice.GetNamespace()).Update(context.TODO(), curObj, metav1.UpdateOptions{})
-			if lastError == nil {
-				return nil
-			}
-		}
-		return lastError
-	})
 }
