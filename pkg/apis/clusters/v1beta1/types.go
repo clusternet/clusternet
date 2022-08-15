@@ -84,6 +84,14 @@ type ClusterRegistrationRequestSpec struct {
 	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	ClusterName string `json:"clusterName,omitempty"`
 
+	// ClusterNamespace is the dedicated namespace of the cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+	ClusterNamespace string `json:"clusterNamespace,omitempty"`
+
 	// ClusterLabels is the labels of the child cluster.
 	//
 	// +optional

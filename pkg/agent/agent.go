@@ -345,8 +345,8 @@ func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) er
 	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
 		newClusterRegistrationRequest(*agent.ClusterID, agent.registrationOptions.ClusterType,
 			generateClusterName(agent.registrationOptions.ClusterName, agent.registrationOptions.ClusterNamePrefix),
-			agent.registrationOptions.ClusterSyncMode, agent.registrationOptions.ClusterLabels),
-		metav1.CreateOptions{})
+			agent.registrationOptions.ClusterNamespace, agent.registrationOptions.ClusterSyncMode,
+			agent.registrationOptions.ClusterLabels), metav1.CreateOptions{})
 
 	if err != nil {
 		if !apierrors.IsAlreadyExists(err) {
@@ -477,7 +477,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 	}, known.DefaultRetryPeriod, 0.4, true)
 }
 
-func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterSyncMode, clusterLabels string) *clusterapi.ClusterRegistrationRequest {
+func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterNamespace, clusterSyncMode, clusterLabels string) *clusterapi.ClusterRegistrationRequest {
 	return &clusterapi.ClusterRegistrationRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: generateClusterRegistrationRequestName(clusterID),
@@ -488,11 +488,12 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 			},
 		},
 		Spec: clusterapi.ClusterRegistrationRequestSpec{
-			ClusterID:     clusterID,
-			ClusterType:   clusterapi.ClusterType(clusterType),
-			ClusterName:   clusterName,
-			SyncMode:      clusterapi.ClusterSyncMode(clusterSyncMode),
-			ClusterLabels: parseClusterLabels(clusterLabels),
+			ClusterID:        clusterID,
+			ClusterType:      clusterapi.ClusterType(clusterType),
+			ClusterName:      clusterName,
+			ClusterNamespace: clusterNamespace,
+			SyncMode:         clusterapi.ClusterSyncMode(clusterSyncMode),
+			ClusterLabels:    parseClusterLabels(clusterLabels),
 		},
 	}
 }
