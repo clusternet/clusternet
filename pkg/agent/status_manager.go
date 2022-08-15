@@ -54,6 +54,7 @@ type Manager struct {
 
 func NewStatusManager(
 	apiserverURL string,
+	apiserverConfig string,
 	regOpts *ClusterRegistrationOptions,
 	kubeClient kubernetes.Interface,
 	metricClient *metricsv.Clientset,
@@ -63,6 +64,7 @@ func NewStatusManager(
 		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
 		clusterStatusController: clusterstatus.NewController(
 			apiserverURL,
+			apiserverConfig,
 			kubeClient,
 			metricClient,
 			kubeInformerFactory,

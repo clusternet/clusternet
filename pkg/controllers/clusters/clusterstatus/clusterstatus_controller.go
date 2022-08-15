@@ -51,6 +51,7 @@ type Controller struct {
 	collectingPeriod   metav1.Duration
 	heartbeatFrequency metav1.Duration
 	apiserverURL       string
+	apiserverConfig    string
 	appPusherEnabled   bool
 	useSocket          bool
 	useMetricsServer   bool
@@ -66,6 +67,7 @@ type Controller struct {
 
 func NewController(
 	apiserverURL string,
+	apiserverConfig string,
 	kubeClient kubernetes.Interface,
 	metricClient *metricsv.Clientset,
 	kubeInformerFactory informers.SharedInformerFactory,
@@ -81,6 +83,7 @@ func NewController(
 		collectingPeriod:      collectingPeriod,
 		heartbeatFrequency:    heartbeatFrequency,
 		apiserverURL:          apiserverURL,
+		apiserverConfig:       apiserverConfig,
 		appPusherEnabled:      utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		useSocket:             utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
 		predictorEnable:       utilfeature.DefaultFeatureGate.Enabled(features.Predictor),

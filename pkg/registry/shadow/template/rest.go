@@ -25,12 +25,9 @@ import (
 	"sync"
 
 	"github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-
-	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/client-go/kubernetes"
-
-	"k8s.io/client-go/tools/clientcmd"
 
 	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 
@@ -165,7 +162,6 @@ func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (kubern
 		return nil, err
 	}
 	config, err := clientcmd.RESTConfigFromKubeConfig(kubeConfigBytes)
-	config.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(1000, 1500)
 	clientSet, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, err

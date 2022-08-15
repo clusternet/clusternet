@@ -18,6 +18,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -151,6 +152,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 		controllerOptions:      controllerOpts,
 		statusManager: NewStatusManager(
 			childKubeConfig.Host,
+			base64.RawURLEncoding.EncodeToString([]byte(childKubeConfig.String())),
 			registrationOpts,
 			childKubeClientSet,
 			metricClient,
