@@ -252,10 +252,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	if sub.Spec.SchedulingStrategy == appsapi.DividingSchedulingStrategyType {
 		finv, err = sched.inventoryLister.FeedInventories(ns).Get(name)
 		if err != nil {
-			if !errors.IsNotFound(err) {
-				utilruntime.HandleError(err)
-				sched.SchedulingQueue.AddRateLimited(key)
-			}
+			utilruntime.HandleError(err)
+			sched.SchedulingQueue.AddRateLimited(key)
 			return
 		}
 		feeds := make([]appsapi.Feed, 0, len(finv.Spec.Feeds))
