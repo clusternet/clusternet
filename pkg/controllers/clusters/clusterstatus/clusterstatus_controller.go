@@ -107,48 +107,52 @@ func (c *Controller) Run(ctx context.Context) {
 
 func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	klog.V(7).Info("collecting cluster status...")
+	var status clusterapi.ManagedClusterStatus
+
 	clusterVersion, err := c.getKubernetesVersion(ctx)
 	if err != nil {
 		klog.Warningf("failed to collect kubernetes version: %v", err)
+	} else {
+		status.KubernetesVersion = clusterVersion.GitVersion
+		status.Platform = clusterVersion.Platform
 	}
 
 	nodes, err := c.nodeLister.List(labels.Everything())
 	if err != nil {
 		klog.Warningf("failed to list nodes: %v", err)
+	} else {
+		status.NodeStatistics = getNodeStatistics(nodes)
+
+		capacity, allocatable := getNodeResource(nodes)
+		status.Allocatable = allocatable
+		status.Capacity = capacity
 	}
-
-	nodeStatistics := getNodeStatistics(nodes)
-
-	capacity, allocatable := getNodeResource(nodes)
 
 	clusterCIDR, err := c.discoverClusterCIDR()
 	if err != nil {
 		klog.Warningf("failed to discover cluster CIDR: %v", err)
+	} else {
+		status.ClusterCIDR = clusterCIDR
 	}
 
 	serviceCIDR, err := c.discoverServiceCIDR()
 	if err != nil {
 		klog.Warningf("failed to discover service CIDR: %v", err)
+	} else {
+		status.ServiceCIDR = serviceCIDR
 	}
 
-	var status clusterapi.ManagedClusterStatus
-	status.KubernetesVersion = clusterVersion.GitVersion
-	status.Platform = clusterVersion.Platform
 	status.APIServerURL = c.apiserverURL
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
 	status.AppPusher = c.appPusherEnabled
 	status.UseSocket = c.useSocket
-	status.ClusterCIDR = clusterCIDR
-	status.ServiceCIDR = serviceCIDR
-	status.NodeStatistics = nodeStatistics
+
 	if c.useMetricsServer {
 		status.PodStatistics = getPodStatistics(c.metricClientset)
 		status.ResourceUsage = getResourceUsage(c.metricClientset)
 	}
-	status.Allocatable = allocatable
-	status.Capacity = capacity
 	status.HeartbeatFrequencySeconds = utilpointer.Int64Ptr(int64(c.heartbeatFrequency.Seconds()))
 	status.Conditions = []metav1.Condition{c.getCondition(status)}
 	status.PredictorEnabled = c.predictorEnable
