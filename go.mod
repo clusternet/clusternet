@@ -187,5 +187,5 @@ replace (
 	github.com/spf13/afero => github.com/spf13/afero v1.5.1
 	helm.sh/helm/v3 => github.com/clusternet/helm/v3 v3.8.1-0.20220302083614-dcaa0a1d8a20
 	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.23.0-alpha.0.0.20220224022903-dc3dec363e8c
-	k8s.io/apiserver => github.com/clusternet/apiserver v0.0.0-20220224032722-ac3d780b913f
+	k8s.io/apiserver => github.com/clusternet/apiserver v0.0.0-20220824154834-d9eb5ec4bcd2
 )
