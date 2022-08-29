@@ -259,6 +259,7 @@ func (hub *Hub) Run(ctx context.Context) error {
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
 	hub.kubeInformerFactory.Start(ctx.Done())
 	hub.clusternetInformerFactory.Start(ctx.Done())
+	hub.aggregatorInformerFactory.Start(ctx.Done())
 	config.GenericConfig.SharedInformerFactory.Start(ctx.Done())
 	// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
 	// hub.options.LoopbackSharedInformerFactory.Start(ctx.Done())
@@ -295,6 +296,8 @@ func (hub *Hub) Run(ctx context.Context) error {
 		func(postStartHookContext genericapiserver.PostStartHookContext) error {
 			if server.GenericAPIServer != nil && utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
 				klog.Infof("install shadow apis...")
+				// waits for all started informers' cache got synced
+				hub.aggregatorInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
 
 				crdInformerFactory := crdinformers.NewSharedInformerFactory(
 					crdclientset.NewForConfigOrDie(hub.clientBuilder.ConfigOrDie("crd-shared-informers")),
@@ -313,9 +316,6 @@ func (hub *Hub) Run(ctx context.Context) error {
 					hub.options.ReservedNamespace)
 
 				crdInformerFactory.Start(postStartHookContext.StopCh)
-				hub.aggregatorInformerFactory.Start(postStartHookContext.StopCh)
-				// waits for all started informers' cache got synced
-				hub.aggregatorInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
 				return ss.InstallShadowAPIGroups(postStartHookContext.StopCh, hub.kubeClient.DiscoveryClient)
 			}
 

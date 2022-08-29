@@ -17,9 +17,11 @@ limitations under the License.
 package apiserver
 
 import (
+	"reflect"
 	"strings"
 	"sync"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	apiregistrationapis "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiservicelisters "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
@@ -29,6 +31,18 @@ var (
 	priorityLock sync.Mutex
 
 	resourcePriorityMap = make(map[string]groupPriority)
+
+	apiServiceGVR = schema.GroupVersionResource{
+		Group:    "apiregistration.k8s.io",
+		Version:  "v1",
+		Resource: "apiservices",
+	}
+
+	apiServiceStatusGVR = schema.GroupVersionResource{
+		Group:    "apiregistration.k8s.io",
+		Version:  "v1",
+		Resource: "apiservices/status",
+	}
 )
 
 type groupPriority struct {
@@ -43,6 +57,14 @@ func getAPIService(group, version string, apiserviceLister apiservicelisters.API
 func canBeAddedToStorage(group, version, resourceName string, apiserviceLister apiservicelisters.APIServiceLister) bool {
 	priorityLock.Lock()
 	defer priorityLock.Unlock()
+
+	if reflect.DeepEqual(schema.GroupVersionResource{Group: group, Version: version, Resource: resourceName}, apiServiceGVR) {
+		return false
+	}
+
+	if reflect.DeepEqual(schema.GroupVersionResource{Group: group, Version: version, Resource: resourceName}, apiServiceStatusGVR) {
+		return false
+	}
 
 	apiservice, err := getAPIService(group, version, apiserviceLister)
 	if err != nil {
