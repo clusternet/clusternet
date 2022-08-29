@@ -33,14 +33,14 @@ var (
 	resourcePriorityMap = make(map[string]groupPriority)
 
 	apiServiceGVR = schema.GroupVersionResource{
-		Group:    "apiregistration.k8s.io",
-		Version:  "v1",
+		Group:    apiregistrationapis.GroupName,
+		Version:  apiregistrationapis.SchemeGroupVersion.Version,
 		Resource: "apiservices",
 	}
 
 	apiServiceStatusGVR = schema.GroupVersionResource{
-		Group:    "apiregistration.k8s.io",
-		Version:  "v1",
+		Group:    apiregistrationapis.GroupName,
+		Version:  apiregistrationapis.SchemeGroupVersion.Version,
 		Resource: "apiservices/status",
 	}
 )
