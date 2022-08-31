@@ -103,6 +103,63 @@ type HelmOptions struct {
 	//
 	// +optional
 	ChartVersion string `json:"version,omitempty"`
+
+	// CreateNamespace create namespace when install helm release
+	//
+	// +optional
+	// +kubebuilder:default=true
+	CreateNamespace *bool `json:"createNamespace,omitempty"`
+
+	// TimeoutSeconds is the timeout of the chart to be install/upgrade/rollback/uninstall
+	//
+	// +optional
+	// +kubebuilder:validation:Type=integer
+	// +kubebuilder:default=300
+	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
+
+	// Wait determines whether the wait operation should be performed after the upgrade is requested.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Wait *bool `json:"wait,omitempty"`
+
+	// WaitForJobs determines whether the wait operation for the Jobs should be performed after the upgrade is requested.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	WaitForJob *bool `json:"waitForJob,omitempty"`
+
+	// Replace will re-use the given name, only if that name is a deleted release that remains in the history.
+	// This is unsafe in production.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Replace *bool `json:"replace,omitempty"`
+
+	// Atomic, if true, will roll back on failure.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Atomic *bool `json:"atomic,omitempty"`
+
+	// SkipCRDs skips installing CRDs when install flag is enabled during upgrade
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	SkipCRDs *bool `json:"skipCRDs,omitempty"`
+
+	// DisableHooks disables hook processing if set to true.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	DisableHooks *bool `json:"disableHooks,omitempty"`
+
+	// Force will, if set to `true`, ignore certain warnings and perform the upgrade anyway.
+	// This should be used with caution.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Force *bool `json:"force,omitempty"`
 }
 
 // ChartPullSecret is the name of the secret that contains the auth information for the chart repository.
