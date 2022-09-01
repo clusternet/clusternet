@@ -41,6 +41,7 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
@@ -569,6 +570,10 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	annotations := u.GetAnnotations()
 	// skip validating when SkipValidatingAnnotation is true
 	if annotations != nil && annotations[known.SkipValidatingAnnotation] == "true" {
+		if len(u.GetUID()) == 0 {
+			// fixes https://github.com/clusternet/clusternet/issues/468
+			u.SetUID(uuid.NewUUID())
+		}
 		return u, nil
 	}
 
