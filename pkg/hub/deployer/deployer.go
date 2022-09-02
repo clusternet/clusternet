@@ -215,7 +215,7 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
 		deployer.recorder,
 		feedinventory.NewInTreeRegistry(),
-		reservedNamespace)
+		reservedNamespace, nil)
 	if err != nil {
 		return nil, err
 	}

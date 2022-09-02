@@ -48,6 +48,9 @@ import (
 
 var subKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
 
+// SyncHandlerFunc is the function to sync a Subscription object
+type SyncHandlerFunc func(subscription *appsapi.Subscription) error
+
 // Controller is a controller that handle HelmRelease
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
@@ -70,26 +73,29 @@ type Controller struct {
 	registry Registry
 
 	// namespace where Manifests are created
-	reservedNamespace string
+	reservedNamespace     string
+	customSyncHandlerFunc SyncHandlerFunc
 }
 
 func NewController(clusternetClient clusternetclientset.Interface,
 	subsInformer appinformers.SubscriptionInformer,
 	finvInformer appinformers.FeedInventoryInformer,
 	manifestInformer appinformers.ManifestInformer,
-	recorder record.EventRecorder, registry Registry, reservedNamespace string) (*Controller, error) {
+	recorder record.EventRecorder, registry Registry,
+	reservedNamespace string, customSyncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	c := &Controller{
-		clusternetClient:  clusternetClient,
-		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "feedInventory"),
-		subLister:         subsInformer.Lister(),
-		subSynced:         subsInformer.Informer().HasSynced,
-		finvLister:        finvInformer.Lister(),
-		finvSynced:        finvInformer.Informer().HasSynced,
-		manifestLister:    manifestInformer.Lister(),
-		manifestSynced:    manifestInformer.Informer().HasSynced,
-		recorder:          recorder,
-		registry:          registry,
-		reservedNamespace: reservedNamespace,
+		clusternetClient:      clusternetClient,
+		workqueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "feedInventory"),
+		subLister:             subsInformer.Lister(),
+		subSynced:             subsInformer.Informer().HasSynced,
+		finvLister:            finvInformer.Lister(),
+		finvSynced:            finvInformer.Informer().HasSynced,
+		manifestLister:        manifestInformer.Lister(),
+		manifestSynced:        manifestInformer.Informer().HasSynced,
+		recorder:              recorder,
+		registry:              registry,
+		reservedNamespace:     reservedNamespace,
+		customSyncHandlerFunc: customSyncHandlerFunc,
 	}
 
 	subsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -328,7 +334,13 @@ func (c *Controller) syncHandler(key string) error {
 
 	sub.Kind = subKind.Kind
 	sub.APIVersion = subKind.GroupVersion().String()
+	if c.customSyncHandlerFunc != nil {
+		return c.customSyncHandlerFunc(sub)
+	}
+	return c.handleSubscription(sub)
+}
 
+func (c *Controller) handleSubscription(sub *appsapi.Subscription) error {
 	finv := &appsapi.FeedInventory{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      sub.Name,
@@ -401,6 +413,7 @@ func (c *Controller) syncHandler(key string) error {
 		allErrs = append(allErrs, err3)
 	}
 
+	var err error
 	if len(allErrs) != 0 {
 		err = utilerrors.NewAggregate(allErrs)
 		c.recorder.Event(sub, corev1.EventTypeWarning, "UnParseableFeeds", err.Error())
