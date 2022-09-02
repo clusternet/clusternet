@@ -354,6 +354,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			sched.framework.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
 			sched.handleSchedulingFailure(sub, fmt.Errorf("binding rejected: %w", err), SchedulerError)
 		} else {
+			sched.SchedulingQueue.Forget(key)
+
 			metrics.SubscriptionScheduled(sched.framework.ProfileName(), metrics.SinceInSeconds(start))
 
 			// Run "postbind" plugins.
