@@ -1,0 +1,34 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Subscription
+metadata:
+  name: scheduling-with-mcs-api
+  namespace: default
+spec:
+  subscribers: # defines the clusters to be distributed to
+    - clusterAffinity:
+        matchLabels:
+          clusters.clusternet.io/cluster-id: dc91021d-2361-4f6d-a404-7c33b9e01118 # PLEASE UPDATE THIS CLUSTER-ID TO YOURS!!!
+      weight: 1 # Deployment bar/my-nginx will have 2 replicas running in this cluster
+    - clusterAffinity:
+        matchLabels:
+          clusters.clusternet.io/cluster-id: 5f9da921-0437-4fea-a89d-42aa1ede9b25 # PLEASE UPDATE THIS CLUSTER-ID TO YOURS!!!
+      weight: 2 # Deployment bar/my-nginx will have 4 replicas running in this cluster
+  schedulingStrategy: Dividing
+  dividingScheduling:
+    type: Static
+  feeds: # defines all the resources to be deployed with
+    - apiVersion: v1
+      kind: Namespace
+      name: baz
+    - apiVersion: v1
+      kind: Service
+      name: my-nginx-svc
+      namespace: baz
+    - apiVersion: apps/v1 # with a total of 101 replicas
+      kind: Deployment
+      name: my-nginx
+      namespace: baz
+    - apiVersion:  multicluster.x-k8s.io/v1alpha1
+      kind: ServiceExport
+      name: my-nginx-svc
+      namespace: baz

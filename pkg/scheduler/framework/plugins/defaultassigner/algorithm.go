@@ -17,6 +17,99 @@ type weightList struct {
 	weights   []int64
 }
 
+// DynamicDivideReplicas will fill the target replicas of all feeds based on predictor result and deviation.
+// First time scheduling is considered as a special kind of scaling. When the desired replicas in deviation
+// are negative, it means we should try to scale down, otherwise we try to scale up deviation replicas.
+func DynamicDivideReplicas(sub *appsapi.Subscription, deviations []appsapi.FeedOrder, availableReplicas framework.TargetClusters) (framework.TargetClusters, error) {
+	var err error
+
+	result := framework.NewTargetClusters(sub.Status.BindingClusters, sub.Status.Replicas).DeepCopy()
+	strategy := sub.Spec.DividingScheduling.DynamicDividing.Strategy
+
+	for i := range deviations {
+		d := deviations[i].DesiredReplicas
+		_, scheduled := sub.Status.Replicas[utils.GetFeedKey(deviations[i].Feed)]
+		var r framework.TargetClusters
+		switch {
+		// First scheduling is considered as a special kind of scaling up.
+		case !scheduled || (d != nil && *d > 0):
+			switch strategy {
+			case appsapi.SpreadDividingStrategy:
+				r = spreadScaleUp(&deviations[i], availableReplicas)
+			}
+		case d != nil && *d < 0:
+			switch strategy {
+			case appsapi.SpreadDividingStrategy:
+				r = spreadScaleDown(sub, deviations[i])
+			}
+		}
+		if err != nil {
+			return *result, err
+		}
+		result.Merge(&r)
+	}
+	return *result, nil
+}
+
+func spreadScaleUp(d *appsapi.FeedOrder, availableReplicas framework.TargetClusters) framework.TargetClusters {
+	result := framework.TargetClusters{
+		BindingClusters: availableReplicas.BindingClusters,
+		Replicas:        make(map[string][]int32),
+	}
+	feedKey := utils.GetFeedKey(d.Feed)
+	if d.DesiredReplicas != nil {
+		replicas := dynamicDivideReplicas(*d.DesiredReplicas, availableReplicas.Replicas[feedKey])
+		result.Replicas[feedKey] = replicas
+	} else {
+		result.Replicas[feedKey] = []int32{}
+	}
+	return result
+}
+
+func spreadScaleDown(sub *appsapi.Subscription, d appsapi.FeedOrder) framework.TargetClusters {
+	result := framework.TargetClusters{
+		BindingClusters: sub.Status.BindingClusters,
+		Replicas:        make(map[string][]int32),
+	}
+	feedKey := utils.GetFeedKey(d.Feed)
+	if d.DesiredReplicas != nil {
+		replicas := dynamicDivideReplicas(*d.DesiredReplicas, sub.Status.Replicas[feedKey])
+		result.Replicas[feedKey] = replicas
+	} else {
+		result.Replicas[feedKey] = []int32{}
+	}
+	return result
+}
+
+// dynamicDivideReplicas divides replicas by the MaxAvailableReplicas
+func dynamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) []int32 {
+	res := make([]int32, len(maxAvailableReplicas))
+	weightSum := utils.SumArrayInt32(maxAvailableReplicas)
+
+	if weightSum == 0 || desiredReplicas > weightSum {
+		return maxAvailableReplicas
+	}
+
+	remain := desiredReplicas
+	for i, weight := range maxAvailableReplicas {
+		replica := weight * desiredReplicas / weightSum
+		res[i] = replica
+		remain -= replica
+	}
+
+	if remain > 0 {
+		for i := 0; i < int(remain) && i < len(res); i++ {
+			res[i]++
+		}
+	} else if remain < 0 {
+		for i := 0; i < int(-remain) && i < len(res); i++ {
+			res[i]--
+		}
+	}
+
+	return res
+}
+
 // StaticDivideReplicas will fill the target replicas of all feeds based on a weight list and feed finv.
 func StaticDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster, finv *appsapi.FeedInventory) error {
 	wl := getWeightList(sub.Spec.Subscribers, clusters)

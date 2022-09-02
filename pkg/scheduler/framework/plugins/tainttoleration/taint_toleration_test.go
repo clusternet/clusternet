@@ -256,14 +256,14 @@ func TestTaintTolerationScore(t *testing.T) {
 			p, _ := New(nil, fh)
 			var gotList framework.ClusterScoreList
 			for _, n := range test.clusters {
-				score, status := p.(framework.ScorePlugin).Score(context.Background(), test.subscription, klog.KObj(n).String())
+				score, status := p.(framework.ScorePlugin).Score(context.Background(), nil, test.subscription, klog.KObj(n).String())
 				if !status.IsSuccess() {
 					t.Errorf("unexpected error: %v", status)
 				}
 				gotList = append(gotList, framework.ClusterScore{NamespacedName: klog.KObj(n).String(), Score: score})
 			}
 
-			status := p.(framework.ScorePlugin).ScoreExtensions().NormalizeScore(context.Background(), gotList)
+			status := p.(framework.ScorePlugin).ScoreExtensions().NormalizeScore(context.Background(), nil, nil, gotList)
 			if !status.IsSuccess() {
 				t.Errorf("unexpected error: %v", status)
 			}
@@ -347,7 +347,7 @@ func TestTaintTolerationFilter(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			p, _ := New(nil, nil)
-			gotStatus := p.(framework.FilterPlugin).Filter(context.Background(), test.subscription, test.cluster)
+			gotStatus := p.(framework.FilterPlugin).Filter(context.Background(), nil, test.subscription, test.cluster)
 			if !reflect.DeepEqual(gotStatus, test.wantStatus) {
 				t.Errorf("status does not match: %v, want: %v", gotStatus, test.wantStatus)
 			}

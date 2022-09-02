@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
 	predictorapis "github.com/clusternet/clusternet/pkg/predictor/apis"
 	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/predictor/metrics"
@@ -542,7 +543,7 @@ func (f *frameworkImpl) runPreAggregatePlugin(ctx context.Context, pl framework.
 	return status
 }
 
-func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result framework.AcceptableReplicas, status *framework.Status) {
+func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result schedulerapi.PredictorReplicas, status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(aggregate, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -550,7 +551,7 @@ func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *a
 	if len(f.aggregatePlugins) == 0 {
 		return nil, framework.NewStatus(framework.Skip, "empty aggregate plugins")
 	}
-	result = make(framework.AcceptableReplicas)
+	result = make(schedulerapi.PredictorReplicas)
 	for _, ap := range f.aggregatePlugins {
 		aggreateResult, pluginStatus := f.runAggregatePlugin(ctx, ap, requirements, scores)
 		if pluginStatus != nil && pluginStatus.Code() == framework.Skip {
@@ -569,7 +570,7 @@ func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *a
 	return result, nil
 }
 
-func (f *frameworkImpl) runAggregatePlugin(ctx context.Context, ap framework.AggregatePlugin, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result framework.AcceptableReplicas, status *framework.Status) {
+func (f *frameworkImpl) runAggregatePlugin(ctx context.Context, ap framework.AggregatePlugin, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result schedulerapi.PredictorReplicas, status *framework.Status) {
 	startTime := time.Now()
 	result, status = ap.Aggregate(ctx, requirements, scores)
 	f.metricsRecorder.observePluginDurationAsync(aggregate, ap.Name(), status, metrics.SinceInSeconds(startTime))

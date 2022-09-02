@@ -1,0 +1,150 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Localization
+metadata:
+  name: mysql-local-overrides-demo
+  namespace: clusternet-5l82l # PLEASE UPDATE THIS TO YOUR ManagedCluster NAMESPACE!!!
+spec:
+  # Priority is an integer defining the relative importance of this Localization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Localization will be overridden by those in higher Localization.
+  # (Optional) Default priority is 500.
+  priority: 500
+  feed:
+    apiVersion: apps.clusternet.io/v1alpha1
+    kind: HelmChart
+    name: mysql
+    namespace: default
+  overrides: # defines all the overrides to be processed with
+    - name: update-image
+      type: Helm # This can only be "Helm" for HelmRelease Values.
+      # Value is a YAML/JSON format patch that overrides values to current Helm chart defined by feed.
+      # And the value here is exactly the same as file "values.yaml".
+      # This patch overrides "image.tag" for this Mysql chart.
+      value: |-
+        image:
+          tag: 8.0.26-debian-10-r39
+    - name: update-image
+      type: Helm # This can only be "Helm" for HelmRelease Values.
+      # Value is a YAML/JSON format patch that overrides values to current Helm chart defined by feed.
+      # And the value here is exactly the same as file "values.yaml".
+      # This patch overrides "auth.database" Name for this Mysql chart.
+      # The value here can also be in json format.
+      value: '{"auth":{"database":"database_for_clusternet-5l82l"}}'
+    - name: update-helm-chart-version
+      type: Helm # This can only be "Helm" for HelmChart.
+      overrideChart: true # This is a flag to indicate that this override is for HelmChart CR.
+      # Value is a YAML/JSON format patch that provides MergePatch to current resource defined by feed.
+      # And the value here will be synchronized to HelmRelease.
+      # This override update the version of Helm chart defined by feed.
+      value: |-
+        spec:
+          version: 9.1.8
+    - name: add-helm-chart-labels
+      type: Helm # This can only be "Helm" for HelmChart.
+      overrideChart: true # This is a flag to indicate that this override is for HelmChart CR.
+      # Value is a YAML/JSON format patch that provides MergePatch to current resource defined by feed.
+      # And the value here will be synchronized to HelmRelease.
+      # This override adds or updates some labels.
+      value: |-
+        metadata:
+          labels:
+            some-label: some-value-2
+            another-label: another-value-2
+---
+
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Localization
+metadata:
+  name: nginx-local-overrides-demo-higher-priority
+  namespace: clusternet-5l82l # PLEASE UPDATE THIS TO YOUR ManagedCluster NAMESPACE!!!
+spec:
+  # Priority is an integer defining the relative importance of this Localization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Localization will be overridden by those in higher Localization.
+  # (Optional) Default priority is 500.
+  priority: 600
+  feed:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-nginx
+    namespace: foo
+  overrides: # defines all the overrides to be processed with
+    - name: scale-and-add-annotations
+      type: JSONPatch
+      # Value is a YAML/JSON format patch that provides JSONPatch to current resource defined by feed.
+      # This patch sets replicas to 3 and adds a new annotation "foo=bar".
+      value: |-
+        [
+          {
+            "path": "/spec/replicas",
+            "value": 3,
+            "op": "replace"
+          },
+          {
+            "path": "/metadata/annotations",
+            "value": {
+              "foo":"bar"
+            },
+            "op": "add"
+          }
+        ]
+    - name: change-container-image-and-name
+      type: JSONPatch
+      # Value is a YAML/JSON format patch that provides JSONPatch to current resource defined by feed
+      # This patch changes container name and image.
+      # The value here can also be in yaml format.
+      value: |-
+        - path: "/spec/template/spec/containers/0/image"
+          value: "nginx:1.14.0-alpine"
+          op: replace
+        - path: "/spec/template/spec/containers/0/name"
+          value: "nginx-container"
+          op: replace
+    - name: inject-new-container
+      type: JSONPatch
+      # Value is a YAML/JSON format patch that provide JSONPatch to current resource defined by feed
+      # This patch injects a sidecar container.
+      # The value here can also be in yaml format.
+      value: |-
+        - op: add
+          path: "/spec/template/spec/containers/1"
+          value:
+            name: "redis-container"
+            image: "redis:6.2.5"
+---
+
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Localization
+metadata:
+  name: nginx-local-overrides-demo-lower-priority
+  namespace: clusternet-5l82l # PLEASE UPDATE THIS TO YOUR ManagedCluster NAMESPACE!!!
+spec:
+  # Priority is an integer defining the relative importance of this Localization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Localization will be overridden by those in higher Localization.
+  # (Optional) Default priority is 500.
+  priority: 300
+  feed:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-nginx
+    namespace: foo
+  overrides: # defines all the overrides to be processed with
+    - name: add-update-labels
+      type: MergePatch
+      # Value is a YAML/JSON format patch that provides MergePatch to current resource defined by feed.
+      # This override adds or updates some labels.
+      value: '{"metadata":{"labels":{"deployed-in-cluster":"clusternet-5l82l"}}}'
+    - name: scale-replicas
+      type: JSONPatch
+      # Value is a YAML/JSON format patch that provides JSONPatch to current resource defined by feed.
+      # This patch sets replicas to 1.
+      # But due to lower priority, this value will be overridden by above "nginx-local-overrides-demo-higher-priority" eventually.
+      value: |-
+        [
+          {
+            "path": "/spec/replicas",
+            "value": 1,
+            "op": "replace"
+          }
+        ]

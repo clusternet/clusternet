@@ -107,3 +107,10 @@ func MinInt32(a, b int32) int32 {
 	}
 	return b
 }
+
+func SumArrayInt32(array []int32) (sum int32) {
+	for _, v := range array {
+		sum += v
+	}
+	return
+}

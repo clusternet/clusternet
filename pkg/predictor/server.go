@@ -18,14 +18,17 @@ package predictor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sync/atomic"
 
+	"github.com/emicklei/go-restful"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/informers"
 	kubeinformers "k8s.io/client-go/informers"
 	informerv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -54,10 +57,10 @@ const (
 // and returns the pods that assigned to the node.
 type GetPodsAssignedToNodeFunc func(string) ([]*corev1.Pod, error)
 
-type PredictorServer struct {
+type Server struct {
 	kubeClient kubernetes.Interface
 
-	informerFactory informers.SharedInformerFactory
+	informerFactory kubeinformers.SharedInformerFactory
 	nodeInformer    informerv1.NodeInformer
 	podInformer     informerv1.PodInformer
 	nodeLister      listerv1.NodeLister
@@ -68,13 +71,17 @@ type PredictorServer struct {
 	// default in-tree registry
 	registry  frameworkruntime.Registry
 	framework framework.Framework
+
+	address     string
+	restfulCont *restful.Container
 }
 
-func NewPredictorServer(
+func NewServer(
 	clientConfig *restclient.Config,
 	kubeClient kubernetes.Interface,
 	informerFactory kubeinformers.SharedInformerFactory,
-) (*PredictorServer, error) {
+	addr string,
+) (*Server, error) {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
 		Interface: kubeClient.CoreV1().Events(""),
@@ -101,7 +108,8 @@ func NewPredictorServer(
 		return nil, err
 	}
 
-	ps := &PredictorServer{
+	return &Server{
+		address:         addr,
 		kubeClient:      kubeClient,
 		informerFactory: informerFactory,
 		nodeInformer:    informerFactory.Core().V1().Nodes(),
@@ -111,24 +119,45 @@ func NewPredictorServer(
 		registry:        registry,
 		framework:       framework,
 		getPodFunc:      getPodFunc,
-	}
-	return ps, nil
+		restfulCont:     restful.NewContainer(),
+	}, nil
 }
 
-var _ schedulerapi.PredictorProvider = &PredictorServer{}
+var _ schedulerapi.PredictorProvider = &Server{}
 
-func (ps *PredictorServer) Run(ctx context.Context) {
+func (s *Server) Run(ctx context.Context) {
 	klog.Infof("Starting clusternet predictor")
 	defer klog.Infof("Shutting down clusternet predictor")
 
 	// Wait for all caches to sync before scheduling.
-	if !cache.WaitForCacheSync(ctx.Done(), ps.podInformer.Informer().HasSynced, ps.nodeInformer.Informer().HasSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), s.podInformer.Informer().HasSynced, s.nodeInformer.Informer().HasSynced) {
 		klog.Errorf("failed to wait for caches to sync")
 		return
 	}
 
-	// TODO: add communication interface to scheduler
-	<-ctx.Done()
+	s.installDefaultHandlers(ctx)
+
+	srv := http.Server{
+		Addr:              s.address,
+		Handler:           s.restfulCont,
+		TLSConfig:         nil,
+		ReadTimeout:       0,
+		ReadHeaderTimeout: 0,
+		WriteTimeout:      0,
+		IdleTimeout:       0,
+		MaxHeaderBytes:    0,
+		TLSNextProto:      nil,
+		ConnState:         nil,
+		ErrorLog:          nil,
+		BaseContext:       nil,
+		ConnContext:       nil,
+	}
+
+	defer srv.Close()
+	if err := srv.ListenAndServe(); err != nil {
+		// Error starting or closing listener:
+		klog.ErrorS(err, "Failed to listen and serve predictor")
+	}
 }
 
 // BuildGetPodsAssignedToNodeFunc establishes an indexer to map the pods and their assigned nodes.
@@ -171,20 +200,59 @@ func BuildGetPodsAssignedToNodeFunc(podInformer informerv1.PodInformer) (GetPods
 	return getPodsAssignedToNode, nil
 }
 
-func (ps *PredictorServer) MaxAcceptableReplicas(ctx context.Context, requirements appsapi.ReplicaRequirements) (map[string]int32, error) {
+// installDefaultHandlers registers the default set of supported HTTP request
+// patterns with the restful Container.
+func (s *Server) installDefaultHandlers(ctx context.Context) {
+	ws := new(restful.WebService)
+	ws.Path(schedulerapi.RootPathReplicas)
 
-	defaultAcceptableReplicas := map[string]int32{
-		framework.DefaultAcceptableReplicasKey: 0,
-	}
+	ws.Route(ws.POST(schedulerapi.SubPathPredict).To(func(request *restful.Request, response *restful.Response) {
+		defer request.Request.Body.Close()
+		data, err := io.ReadAll(request.Request.Body)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	nodes, err := ps.nodeLister.List(labels.SelectorFromSet(requirements.NodeSelector))
+		var require appsapi.ReplicaRequirements
+		err = json.Unmarshal(data, &require)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		replicas, err := s.MaxAcceptableReplicas(ctx, require)
+		if err != nil {
+			klog.Warningf("failed to predict max acceptable replicas for %q, error: %v", data, err)
+			http.Error(response, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		err = response.WriteAsJson(replicas)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}).Operation("predictReplicas"))
+
+	ws.Route(ws.GET(schedulerapi.SubPathUnscheduled).To(func(request *restful.Request, response *restful.Response) {
+		// TODO: unschedulable replicas http handler function logic
+		http.Error(response, "Not Implemented", http.StatusInternalServerError)
+		return
+	}).Operation("getUnscheduledReplicas"))
+
+	s.restfulCont.Add(ws)
+}
+
+func (s *Server) MaxAcceptableReplicas(ctx context.Context, requirements appsapi.ReplicaRequirements) (schedulerapi.PredictorResults, error) {
+	nodes, err := s.nodeLister.List(labels.SelectorFromSet(requirements.NodeSelector))
 	if err != nil {
-		return defaultAcceptableReplicas, fmt.Errorf("failed to get nodes that match node selector, err: %v", err)
+		return schedulerapi.PredictorResults{}, fmt.Errorf("failed to get nodes that match node selector, err: %v", err)
 	}
 	nodeInfoList := make([]*framework.NodeInfo, len(nodes))
 	var nodesLen int32
 	getNodeInfo := func(i int) {
-		pods, err := ps.getPodFunc(nodes[i].Name)
+		pods, err := s.getPodFunc(nodes[i].Name)
 		if err != nil {
 			klog.V(6).InfoS("failed to get pods in nodes", "nodes", nodes[i].Name)
 		} else {
@@ -193,39 +261,39 @@ func (ps *PredictorServer) MaxAcceptableReplicas(ctx context.Context, requiremen
 			nodeInfoList[length-1] = nodeInfo
 		}
 	}
-	ps.framework.Parallelizer().Until(ctx, len(nodes), getNodeInfo)
+	s.framework.Parallelizer().Until(ctx, len(nodes), getNodeInfo)
 
 	// Step 1: Filter Nodes.
-	feasibleNodes, err := findNodesThatFitRequirements(ctx, ps.framework, &requirements, nodeInfoList)
+	feasibleNodes, err := findNodesThatFitRequirements(ctx, s.framework, &requirements, nodeInfoList)
 	if err != nil {
-		return defaultAcceptableReplicas, err
+		return schedulerapi.PredictorResults{}, err
 	}
 
 	if len(feasibleNodes) == 0 {
-		return defaultAcceptableReplicas, fmt.Errorf("no feasible nodes found")
+		return schedulerapi.PredictorResults{}, fmt.Errorf("no feasible nodes found")
 	}
 
 	// Step 2: cal max available replicas for each feasibleNodes.
-	nodeScoreList, err := computeReplicas(ctx, ps.framework, &requirements, feasibleNodes)
+	nodeScoreList, err := computeReplicas(ctx, s.framework, &requirements, feasibleNodes)
 	if err != nil {
-		return defaultAcceptableReplicas, err
+		return schedulerapi.PredictorResults{}, err
 	}
 
 	// Step 3: Prioritize clusters.
-	priorityList, err := prioritizeNodes(ctx, ps.framework, &requirements, feasibleNodes, nodeScoreList)
+	priorityList, err := prioritizeNodes(ctx, s.framework, &requirements, feasibleNodes, nodeScoreList)
 	if err != nil {
-		return defaultAcceptableReplicas, err
+		return schedulerapi.PredictorResults{}, err
 	}
 
 	// step4 aggregate the max available replicas
-	result, err := aggregateReplicas(ctx, ps.framework, &requirements, priorityList)
+	result, err := aggregateReplicas(ctx, s.framework, &requirements, priorityList)
 	if err != nil {
-		return defaultAcceptableReplicas, err
+		return schedulerapi.PredictorResults{}, err
 	}
-	return result, nil
+	return schedulerapi.PredictorResults{Replicas: result}, nil
 }
 
-func (ps *PredictorServer) UnschedulableReplicas(ctx context.Context, gvk metav1.GroupVersionKind, namespacedName string,
+func (s *Server) UnschedulableReplicas(ctx context.Context, gvk metav1.GroupVersionKind, namespacedName string,
 	labelSelector map[string]string) (int32, error) {
 	// TODO: add real logic
 	return 0, nil

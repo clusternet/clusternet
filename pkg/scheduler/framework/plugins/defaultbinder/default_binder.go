@@ -18,10 +18,14 @@ package defaultbinder
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sort"
 
+	jsonpatch "github.com/evanphx/json-patch"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -48,7 +52,7 @@ func (pl *DefaultBinder) Name() string {
 }
 
 // Bind binds subscriptions to clusters using the clusternet client.
-func (pl *DefaultBinder) Bind(ctx context.Context, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
+func (pl *DefaultBinder) Bind(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, targetClusters framework.TargetClusters) *framework.Status {
 	klog.V(3).InfoS("Attempting to bind subscription to clusters",
 		"subscription", klog.KObj(sub), "clusters", targetClusters.BindingClusters)
 
@@ -61,7 +65,20 @@ func (pl *DefaultBinder) Bind(ctx context.Context, sub *appsapi.Subscription, ta
 	subCopy.Status.SpecHash = utils.HashSubscriptionSpec(&subCopy.Spec)
 	subCopy.Status.DesiredReleases = len(targetClusters.BindingClusters)
 
-	_, err := pl.handle.ClientSet().AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(ctx, subCopy, metav1.UpdateOptions{})
+	oldData, err := json.Marshal(sub)
+	if err != nil {
+		return framework.AsStatus(fmt.Errorf("failed to marshal original subscription: %v", err))
+	}
+	newData, err := json.Marshal(subCopy)
+	if err != nil {
+		return framework.AsStatus(fmt.Errorf("failed to marshal new subscription: %v", err))
+	}
+	patchBytes, err := jsonpatch.CreateMergePatch(oldData, newData)
+	if err != nil {
+		return framework.AsStatus(fmt.Errorf("failed to create a merge patch: %v", err))
+	}
+
+	_, err = pl.handle.ClientSet().AppsV1alpha1().Subscriptions(sub.Namespace).Patch(ctx, sub.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{}, "status")
 	if err != nil {
 		return framework.AsStatus(err)
 	}

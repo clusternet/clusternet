@@ -1,0 +1,7 @@
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: my-nginx-svc # must be same to service name
+  namespace: baz
+  labels:
+    apps.clusternet.io/subs.namespace: default

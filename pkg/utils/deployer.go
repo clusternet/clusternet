@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -128,8 +129,13 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	cfg.Releases.MaxHistory = 5
 	cfg.RegistryClient = registryClient
 
+	hrStatus := &appsapi.HelmReleaseStatus{}
 	// delete helm release
 	if hr.DeletionTimestamp != nil {
+		hrStatus.Phase = release.StatusUninstalling
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
 		err2 := UninstallRelease(cfg, hr)
 		if err2 != nil {
 			return err2
@@ -156,6 +162,13 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	chart, err = LocateAuthHelmChart(cfg, hr.Spec.Repository, username, password, hr.Spec.Chart, hr.Spec.ChartVersion)
 	if err != nil {
 		recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
+		hrStatus = &appsapi.HelmReleaseStatus{
+			Phase: release.StatusFailed,
+			Notes: err.Error(),
+		}
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
 		return err
 	}
 
@@ -172,23 +185,35 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	rel, err = cfg.Releases.Deployed(releaseName)
 	if err != nil {
 		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
+			hrStatus.Phase = release.StatusPendingInstall
+			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+				return err
+			}
 			rel, err = InstallRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		}
 	} else {
 		// verify the release is changed or not
 		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
 			klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
+			hrStatus.Phase = release.StatusPendingUpgrade
+			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+				return err
+			}
 			rel, err = UpgradeRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
 		} else {
 			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
 		}
 	}
 
-	var hrStatus *appsapi.HelmReleaseStatus
 	if err != nil {
 		// repo update
 		if strings.Contains(err.Error(), "helm repo update") {
-			return UpdateRepo(hr.Spec.Repository)
+			err2 := UpdateRepo(hr.Spec.Repository)
+			if err2 == nil {
+				// return an error to let it reconcile
+				err2 = fmt.Errorf("[Helm Repo Update] requeue HelmRelease %s", klog.KObj(hr))
+			}
+			return err2
 		}
 		hrStatus = &appsapi.HelmReleaseStatus{
 			Phase: release.StatusFailed,
@@ -263,11 +288,24 @@ func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetcl
 		if desc == nil {
 			return nil
 		}
-		if status.Phase == release.StatusDeployed {
+		switch status.Phase {
+		case release.StatusDeployed:
 			desc.Status.Phase = appsapi.DescriptionPhaseSuccess
 			desc.Status.Reason = ""
-		} else {
+		case release.StatusPendingInstall:
+			desc.Status.Phase = appsapi.DescriptionPhaseInstalling
+		case release.StatusPendingUpgrade:
+			desc.Status.Phase = appsapi.DescriptionPhaseUpgrading
+		case release.StatusUninstalling:
+			desc.Status.Phase = appsapi.DescriptionPhaseUninstalling
+		case release.StatusSuperseded:
+			desc.Status.Phase = appsapi.DescriptionPhaseSuperseded
+			desc.Status.Reason = status.Notes
+		case release.StatusFailed:
 			desc.Status.Phase = appsapi.DescriptionPhaseFailure
+			desc.Status.Reason = status.Notes
+		default:
+			desc.Status.Phase = appsapi.DescriptionPhaseUnknown
 			desc.Status.Reason = status.Notes
 		}
 		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
@@ -385,9 +423,15 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 	}
 
 	// update status
-	desc.Status.Phase = statusPhase
-	desc.Status.Reason = reason
-	_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+	descStatus := desc.Status.DeepCopy()
+	descStatus.Phase = statusPhase
+	descStatus.Reason = reason
+
+	var err error
+	if !reflect.DeepEqual(desc.Status.Phase, descStatus.Phase) || !reflect.DeepEqual(desc.Status.Reason, descStatus.Reason) {
+		err = UpdateDescriptionStatus(desc, descStatus, clusternetClient)
+		klog.V(5).Infof("ApplyDescription phaseStatus has changed, UpdateStatus. err: %s", err)
+	}
 
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
@@ -452,9 +496,6 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 
 func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
 	resource *unstructured.Unstructured, ignoreAdd bool) error {
-	// set UID as empty
-	resource.SetUID("")
-
 	var lastError error
 	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
@@ -703,4 +744,29 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, i
 	}
 
 	return false
+}
+
+func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus, clusternetClient *clusternetclientset.Clientset) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+
+	klog.V(5).Infof("try to update Description %q status", desc.Name)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		desc.Status = *status
+		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+		if err == nil {
+			//TODO
+			return nil
+		}
+
+		if updated, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(context.TODO(), desc.Name, metav1.GetOptions{}); err == nil {
+			// make a copy so we don't mutate the shared cache
+			desc = updated.DeepCopy()
+		} else {
+			utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err))
+		}
+		return err
+	})
 }

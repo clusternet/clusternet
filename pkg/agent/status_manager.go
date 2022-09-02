@@ -18,19 +18,24 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterstatus"
@@ -51,15 +56,19 @@ func NewStatusManager(
 	apiserverURL string,
 	regOpts *ClusterRegistrationOptions,
 	kubeClient kubernetes.Interface,
+	metricClient *metricsv.Clientset,
 	kubeInformerFactory informers.SharedInformerFactory,
 ) *Manager {
 	return &Manager{
 		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
 		clusterStatusController: clusterstatus.NewController(
 			apiserverURL,
-			regOpts.PredictorAddress,
 			kubeClient,
+			metricClient,
 			kubeInformerFactory,
+			regOpts.PredictorAddress,
+			regOpts.PredictorDirectAccess,
+			regOpts.UseMetricsServer,
 			regOpts.ClusterStatusCollectFrequency,
 			regOpts.ClusterStatusReportFrequency,
 		),
@@ -126,6 +135,15 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 			return false, nil
 		}
 
+		newLabels := mgr.getManagedClusterNewLabels()
+		if !reflect.DeepEqual(mgr.managedCluster.GetLabels(), newLabels) {
+			mcls, lastError = patchManagedClusterTwoWayMergeLabels(client, mgr.managedCluster, newLabels)
+			if lastError == nil {
+				mgr.managedCluster = mcls
+			} else {
+				return false, nil
+			}
+		}
 		mgr.managedCluster.Status = *status
 		mcls, lastError = client.ClustersV1beta1().ManagedClusters(namespace).UpdateStatus(ctx, mgr.managedCluster, metav1.UpdateOptions{})
 		if lastError == nil {
@@ -143,4 +161,39 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 	if err != nil {
 		klog.WarningDepth(2, "failed to update status of ManagedCluster: %v", lastError)
 	}
+}
+
+func (mgr *Manager) getManagedClusterNewLabels() map[string]string {
+	originLabels := mgr.managedCluster.GetLabels()
+	modifiedLabels := map[string]string{}
+	for k, v := range originLabels {
+		if strings.HasPrefix(k, known.NodeLabelsKeyPrefix) {
+			continue
+		}
+		modifiedLabels[k] = v
+	}
+	return labels.Merge(modifiedLabels, mgr.clusterStatusController.GetManagedClusterLabels())
+}
+
+func patchManagedClusterTwoWayMergeLabels(client clusternetclientset.Interface, mcls *clusterapi.ManagedCluster,
+	newLabels map[string]string) (result *clusterapi.ManagedCluster, err error) {
+	actualCopy := mcls.DeepCopy()
+	actualCopy.Labels = newLabels
+
+	oldData, err := json.Marshal(mcls)
+	if err != nil {
+		return nil, err
+	}
+
+	newData, err := json.Marshal(actualCopy)
+	if err != nil {
+		return nil, err
+	}
+
+	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, clusterapi.ManagedCluster{})
+	if err != nil {
+		return nil, err
+	}
+
+	return client.ClustersV1beta1().ManagedClusters(mcls.Namespace).Patch(context.TODO(), mcls.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 }

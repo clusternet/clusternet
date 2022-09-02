@@ -66,7 +66,7 @@ type genericScheduler struct {
 // Schedule tries to schedule the given subscription to multiple clusters.
 // If it succeeds, it will return the namespaced names of ManagedClusters.
 // If it fails, it will return a FitError error with reasons.
-func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (result ScheduleResult, err error) {
+func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (result ScheduleResult, err error) {
 	trace := utiltrace.New("Scheduling", utiltrace.Field{Key: "namespace", Value: sub.Namespace}, utiltrace.Field{Key: "name", Value: sub.Name})
 	defer trace.LogIfLong(100 * time.Millisecond)
 
@@ -75,7 +75,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 	}
 
 	// Step 1: Filter clusters.
-	feasibleClusters, diagnosis, err := g.findClustersThatFitSubscription(ctx, fwk, sub)
+	feasibleClusters, diagnosis, err := g.findClustersThatFitSubscription(ctx, fwk, state, sub)
 	if err != nil {
 		return result, err
 	}
@@ -90,18 +90,18 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 	}
 
 	// Step 2: Predict max available replicas if necessary.
-	availableList, err := predictReplicas(ctx, fwk, sub, finv, feasibleClusters)
+	availableList, err := predictReplicas(ctx, fwk, state, sub, finv, feasibleClusters)
 	if err != nil {
 		return result, err
 	}
 
 	// Step 3: Prioritize clusters.
-	priorityList, err := prioritizeClusters(ctx, fwk, sub, feasibleClusters, availableList)
+	priorityList, err := prioritizeClusters(ctx, fwk, state, sub, feasibleClusters, availableList)
 	if err != nil {
 		return result, err
 	}
 
-	clusters, err := g.selectClusters(ctx, priorityList, fwk, sub, finv)
+	clusters, err := g.selectClusters(ctx, state, priorityList, fwk, sub, finv)
 	trace.Step("Prioritizing done")
 
 	return ScheduleResult{
@@ -111,7 +111,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 	}, err
 }
 
-func predictReplicas(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (framework.ClusterScoreList, error) {
+func predictReplicas(ctx context.Context, fwk framework.Framework, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, clusters []*clusterapi.ManagedCluster) (framework.ClusterScoreList, error) {
 	availableList := make(framework.ClusterScoreList, len(clusters))
 	for i := range clusters {
 		availableList[i] = framework.ClusterScore{
@@ -134,13 +134,13 @@ func predictReplicas(ctx context.Context, fwk framework.Framework, sub *appsapi.
 	}
 
 	// Run PrePredict plugins.
-	prePredictStatus := fwk.RunPrePredictPlugins(ctx, sub, finv, clusters)
+	prePredictStatus := fwk.RunPrePredictPlugins(ctx, state, sub, finv, clusters)
 	if !prePredictStatus.IsSuccess() {
 		return nil, prePredictStatus.AsError()
 	}
 
 	// Run Predict plugins.
-	availableList, predictStatus := fwk.RunPredictPlugins(ctx, sub, finv, clusters, availableList)
+	availableList, predictStatus := fwk.RunPredictPlugins(ctx, state, sub, finv, clusters, availableList)
 	if !predictStatus.IsSuccess() {
 		return nil, predictStatus.AsError()
 	}
@@ -155,7 +155,7 @@ func predictReplicas(ctx context.Context, fwk framework.Framework, sub *appsapi.
 
 // selectClusters takes a prioritized list of clusters and then picks a fraction of clusters
 // in a reservoir sampling manner from the clusters that had the highest score.
-func (g *genericScheduler) selectClusters(ctx context.Context, clusterScoreList framework.ClusterScoreList, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (framework.TargetClusters, error) {
+func (g *genericScheduler) selectClusters(ctx context.Context, state *framework.CycleState, clusterScoreList framework.ClusterScoreList, fwk framework.Framework, sub *appsapi.Subscription, finv *appsapi.FeedInventory) (framework.TargetClusters, error) {
 	if len(clusterScoreList) == 0 {
 		return framework.TargetClusters{}, fmt.Errorf("empty clusterScoreList")
 	}
@@ -170,23 +170,32 @@ func (g *genericScheduler) selectClusters(ctx context.Context, clusterScoreList 
 		return selected, nil
 	}
 
-	selected.Replicas = make(map[string][]int32)
-	// transfer to available replicas
-	for _, clusterScore := range clusterScoreList {
-		for i := range finv.Spec.Feeds {
-			feed := &finv.Spec.Feeds[i].Feed
-			selected.Replicas[utils.GetFeedKey(*feed)] = append(selected.Replicas[utils.GetFeedKey(*feed)], clusterScore.MaxAvailableReplicas[i])
+	// transfer available replicas only if dynamic dividing
+	if sub.Spec.DividingScheduling != nil && sub.Spec.DividingScheduling.Type == appsapi.DynamicReplicaDividingType {
+		selected.Replicas = make(map[string][]int32)
+		// transfer to available replicas if necessary
+		for index, feedOrder := range finv.Spec.Feeds {
+			if feedOrder.DesiredReplicas == nil {
+				continue
+			}
+			for _, clusterScore := range clusterScoreList {
+				feedKey := utils.GetFeedKey(feedOrder.Feed)
+				if clusterScore.MaxAvailableReplicas[index] == nil {
+					return framework.TargetClusters{}, fmt.Errorf("unable to get replicas for feed %q in cluster %q", feedKey, clusterScore.NamespacedName)
+				}
+				selected.Replicas[feedKey] = append(selected.Replicas[feedKey], *clusterScore.MaxAvailableReplicas[index])
+			}
 		}
 	}
 
 	// Run PreAssign plugins.
-	preAssignStatus := fwk.RunPreAssignPlugins(ctx, sub, finv, selected)
+	preAssignStatus := fwk.RunPreAssignPlugins(ctx, state, sub, finv, selected)
 	if !preAssignStatus.IsSuccess() {
 		return framework.TargetClusters{}, preAssignStatus.AsError()
 	}
 
 	// Run the Assign plugins.
-	selected, assignStatus := fwk.RunAssignPlugins(ctx, sub, finv, selected)
+	selected, assignStatus := fwk.RunAssignPlugins(ctx, state, sub, finv, selected)
 	if assignStatus.IsSuccess() {
 		return selected, nil
 	}
@@ -222,7 +231,7 @@ func (g *genericScheduler) numFeasibleClustersToFind(numAllClusters int32, sched
 }
 
 // Filters the clusters to find the ones that fit the subscription based on the framework filter plugins.
-func (g *genericScheduler) findClustersThatFitSubscription(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription) ([]*clusterapi.ManagedCluster, framework.Diagnosis, error) {
+func (g *genericScheduler) findClustersThatFitSubscription(ctx context.Context, fwk framework.Framework, state *framework.CycleState, sub *appsapi.Subscription) ([]*clusterapi.ManagedCluster, framework.Diagnosis, error) {
 	diagnosis := framework.Diagnosis{
 		ClusterToStatusMap:   make(framework.ClusterToStatusMap),
 		UnschedulablePlugins: sets.NewString(),
@@ -243,7 +252,7 @@ func (g *genericScheduler) findClustersThatFitSubscription(ctx context.Context, 
 	}
 
 	// Run "prefilter" plugins.
-	s := fwk.RunPreFilterPlugins(ctx, sub)
+	s := fwk.RunPreFilterPlugins(ctx, state, sub)
 	if !s.IsSuccess() {
 		if !s.IsUnschedulable() {
 			return nil, diagnosis, s.AsError()
@@ -258,7 +267,7 @@ func (g *genericScheduler) findClustersThatFitSubscription(ctx context.Context, 
 		return nil, diagnosis, nil
 	}
 
-	feasibleClusters, err := g.findClustersThatPassFilters(ctx, fwk, sub, diagnosis, allClusters)
+	feasibleClusters, err := g.findClustersThatPassFilters(ctx, state, fwk, sub, diagnosis, allClusters)
 	if err != nil {
 		return nil, diagnosis, err
 	}
@@ -266,9 +275,7 @@ func (g *genericScheduler) findClustersThatFitSubscription(ctx context.Context, 
 }
 
 // findClustersThatPassFilters finds the clusters that fit the filter plugins.
-func (g *genericScheduler) findClustersThatPassFilters(ctx context.Context, fwk framework.Framework,
-	sub *appsapi.Subscription, diagnosis framework.Diagnosis,
-	clusters []*clusterapi.ManagedCluster) ([]*clusterapi.ManagedCluster, error) {
+func (g *genericScheduler) findClustersThatPassFilters(ctx context.Context, state *framework.CycleState, fwk framework.Framework, sub *appsapi.Subscription, diagnosis framework.Diagnosis, clusters []*clusterapi.ManagedCluster) ([]*clusterapi.ManagedCluster, error) {
 	numClustersToFind := g.numFeasibleClustersToFind(int32(len(clusters)), sub.Spec.SchedulingStrategy)
 
 	// Create feasible list with enough space to avoid growing it
@@ -293,7 +300,7 @@ func (g *genericScheduler) findClustersThatPassFilters(ctx context.Context, fwk 
 		// this is to make sure all clusters have the same chance of being examined across subscriptions.
 		cluster := clusters[(g.nextStartClusterIndex+i)%len(clusters)]
 
-		status := fwk.RunFilterPlugins(ctx, sub, cluster).Merge()
+		status := fwk.RunFilterPlugins(ctx, state, sub, cluster).Merge()
 		if status.Code() == framework.Error {
 			errCh.SendErrorWithCancel(status.AsError(), cancel)
 			return
@@ -341,7 +348,7 @@ func (g *genericScheduler) findClustersThatPassFilters(ctx context.Context, fwk 
 // The scores from each plugin are added together to make the score for that cluster, then
 // any extenders are run as well.
 // All scores are finally combined (added) to get the total weighted scores of all clusters
-func prioritizeClusters(ctx context.Context, fwk framework.Framework, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster, result framework.ClusterScoreList) (framework.ClusterScoreList, error) {
+func prioritizeClusters(ctx context.Context, fwk framework.Framework, state *framework.CycleState, sub *appsapi.Subscription, clusters []*clusterapi.ManagedCluster, result framework.ClusterScoreList) (framework.ClusterScoreList, error) {
 	// If no priority configs are provided, then all clusters will have a score of one.
 	// This is required to generate the priority list in the required format
 	if !fwk.HasScorePlugins() {
@@ -352,13 +359,13 @@ func prioritizeClusters(ctx context.Context, fwk framework.Framework, sub *appsa
 	}
 
 	// Run PreScore plugins.
-	preScoreStatus := fwk.RunPreScorePlugins(ctx, sub, clusters)
+	preScoreStatus := fwk.RunPreScorePlugins(ctx, state, sub, clusters)
 	if !preScoreStatus.IsSuccess() {
 		return nil, preScoreStatus.AsError()
 	}
 
 	// Run the Score plugins.
-	scoresMap, scoreStatus := fwk.RunScorePlugins(ctx, sub, clusters)
+	scoresMap, scoreStatus := fwk.RunScorePlugins(ctx, state, sub, clusters)
 	if !scoreStatus.IsSuccess() {
 		return nil, scoreStatus.AsError()
 	}

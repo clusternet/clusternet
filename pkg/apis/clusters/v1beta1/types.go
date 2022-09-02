@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -28,8 +29,9 @@ type ClusterType string
 
 // These are the valid values for ClusterType
 const (
-	// edge cluster
 	EdgeCluster ClusterType = "EdgeCluster"
+
+	StandardCluster ClusterType = "StandardCluster"
 
 	// todo: add more types
 )
@@ -81,6 +83,14 @@ type ClusterRegistrationRequestSpec struct {
 	// +kubebuilder:validation:MaxLength=30
 	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	ClusterName string `json:"clusterName,omitempty"`
+
+	// ClusterNamespace is the dedicated namespace of the cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+	ClusterNamespace string `json:"clusterNamespace,omitempty"`
 
 	// ClusterLabels is the labels of the child cluster.
 	//
@@ -265,6 +275,14 @@ type ManagedClusterStatus struct {
 	// +optional
 	NodeStatistics NodeStatistics `json:"nodeStatistics,omitempty"`
 
+	// PodStatistics is the info summary of pods in the cluster
+	// +optional
+	PodStatistics *PodStatistics `json:"podStatistics,omitempty"`
+
+	// ResourceUsage is the cpu(m) and memory(Mi) already used in the cluster
+	// +optional
+	ResourceUsage *ResourceUsage `json:"resourceUsage,omitempty"`
+
 	// Conditions is an array of current cluster conditions.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -280,6 +298,9 @@ type ManagedClusterStatus struct {
 	// PredictorAddress shows the predictor address
 	// +optional
 	PredictorAddress string `json:"predictorAddress,omitempty"`
+
+	// PredictorDirectAccess indicates whether the predictor can be accessed directly by clusternet-scheduler
+	PredictorDirectAccess bool `json:"predictorDirectAccess,omitempty"`
 }
 
 // +genclient
@@ -328,4 +349,24 @@ type NodeStatistics struct {
 	// LostNodes is the number of states lost nodes in the cluster
 	// +optional
 	LostNodes int32 `json:"lostNodes,omitempty"`
+}
+
+type PodStatistics struct {
+	// RunningPods is the number of running pods in the cluster
+	// +optional
+	RunningPods int32 `json:"runningPods,omitempty"`
+
+	// TotalPods is the number of all pods in the cluster
+	// +optional
+	TotalPods int32 `json:"totalPods,omitempty"`
+}
+
+type ResourceUsage struct {
+	// CpuUsage is the total cpu(m) already used in the whole cluster, k8s reserved not include
+	// +optional
+	CpuUsage resource.Quantity `json:"cpuUsage,omitempty"`
+
+	// MemoryUsage is the total memory(Mi) already used in the whole cluster, k8s reserved not include
+	// +optional
+	MemoryUsage resource.Quantity `json:"memoryUsage,omitempty"`
 }

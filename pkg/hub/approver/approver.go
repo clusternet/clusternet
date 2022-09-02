@@ -229,7 +229,7 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 
 	// 1. create dedicated namespace
 	klog.V(5).Infof("create dedicated namespace for cluster %q (%q) if needed", crr.Spec.ClusterID, crr.Spec.ClusterName)
-	ns, err := crrApprover.createNamespaceForChildClusterIfNeeded(crr.Spec.ClusterID, crr.Spec.ClusterName)
+	ns, err := crrApprover.createNamespaceForChildClusterIfNeeded(crr.Spec.ClusterID, crr.Spec.ClusterName, crr.Spec.ClusterNamespace)
 	if err != nil {
 		return err
 	}
@@ -283,7 +283,7 @@ func (crrApprover *CRRApprover) handleClusterRegistrationRequests(crr *clusterap
 	return nil
 }
 
-func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clusterName string) (*corev1.Namespace, error) {
+func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID types.UID, clusterName, clusterNamespace string) (*corev1.Namespace, error) {
 	// checks for an existed dedicated namespace for child cluster
 	// the clusterName here may vary, we use clusterID as the identifier
 	namespaces, err := crrApprover.nsLister.List(labels.SelectorFromSet(labels.Set{
@@ -303,13 +303,17 @@ func (crrApprover *CRRApprover) createNamespaceForChildClusterIfNeeded(clusterID
 	klog.V(4).Infof("no dedicated namespace for cluster %s found, will create a new one", clusterID)
 	newNs := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: known.NamePrefixForClusternetObjects,
 			Labels: map[string]string{
 				known.ObjectCreatedByLabel: known.ClusternetAgentName,
 				known.ClusterIDLabel:       string(clusterID),
 				known.ClusterNameLabel:     clusterName,
 			},
 		},
+	}
+	if clusterNamespace != "" {
+		newNs.Name = clusterNamespace
+	} else {
+		newNs.GenerateName = known.NamePrefixForClusternetObjects
 	}
 	newNs, err = crrApprover.kubeclient.CoreV1().Namespaces().Create(context.TODO(), newNs, metav1.CreateOptions{})
 	if err != nil {

@@ -35,8 +35,8 @@ type StaticAssigner struct {
 
 var _ framework.AssignPlugin = &StaticAssigner{}
 
-// New creates a DefaultAssigner.
-func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
+// NewStaticAssigner creates a Default Assigner.
+func NewStaticAssigner(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 	return &StaticAssigner{handle: handle}, nil
 }
 
@@ -46,7 +46,7 @@ func (pl *StaticAssigner) Name() string {
 }
 
 // Assign assigns subscriptions to clusters using the clusternet client.
-func (pl *StaticAssigner) Assign(ctx context.Context, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (framework.TargetClusters, *framework.Status) {
+func (pl *StaticAssigner) Assign(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (framework.TargetClusters, *framework.Status) {
 	klog.V(3).InfoS("Attempting to assign replicas to clusters",
 		"subscription", klog.KObj(sub), "clusters", availableReplicas.BindingClusters)
 	if sub.Spec.DividingScheduling == nil || sub.Spec.DividingScheduling.Type != appsapi.StaticReplicaDividingType {

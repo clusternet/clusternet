@@ -47,6 +47,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	apiservicelisters "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
+	custommetricsapi "k8s.io/metrics/pkg/apis/custom_metrics"
 	metricsapi "k8s.io/metrics/pkg/apis/metrics"
 
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
@@ -62,8 +63,6 @@ var (
 	// Codecs provides methods for retrieving codecs and serializers for specific
 	// versions and content types.
 	Codecs = serializer.NewCodecFactory(Scheme)
-	// ParameterCodec handles versioning of objects that are converted to query parameters.
-	ParameterCodec = runtime.NewParameterCodec(Scheme)
 )
 
 const (
@@ -166,7 +165,6 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 	if err != nil {
 		return err
 	}
-
 	shadowv1alpha1storage := map[string]rest.Storage{}
 	for _, apiGroupResource := range apiGroupResources {
 		// no need to duplicate xxx.clusternet.io
@@ -186,6 +184,11 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			continue
 		}
 
+		// ignore "custom.metrics.k8s.io" group
+		if apiGroupResource.Group.Name == custommetricsapi.GroupName {
+			continue
+		}
+
 		// skip CRDs, which will be handled by crdHandler later
 		if crdGroups.Has(apiGroupResource.Group.Name) {
 			continue
@@ -199,11 +202,13 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 
 			ss.crdHandler.AddNonCRDAPIResource(apiresource)
 			// register scheme for original GVK
-			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}.WithKind(apiresource.Kind),
+			groupVersion := schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}
+			Scheme.AddKnownTypeWithName(groupVersion.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
+			metav1.AddToGroupVersion(Scheme, groupVersion)
 
-			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister, ss.reservedNamespace)
+			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, runtime.NewParameterCodec(Scheme), ss.manifestLister, ss.reservedNamespace)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)
@@ -219,7 +224,7 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 		}
 	}
 
-	shadowAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, ParameterCodec, Codecs)
+	shadowAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, runtime.NewParameterCodec(Scheme), Codecs)
 	shadowAPIGroupInfo.PrioritizedVersions = []schema.GroupVersion{
 		{
 			Group:   shadowapi.GroupName,

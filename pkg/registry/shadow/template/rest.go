@@ -25,6 +25,9 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
@@ -38,6 +41,7 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
@@ -49,6 +53,10 @@ import (
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/registry/shadow/printers"
+	printersinternal "github.com/clusternet/clusternet/pkg/registry/shadow/printers/internalversion"
+	printerstorage "github.com/clusternet/clusternet/pkg/registry/shadow/printers/storage"
+	"github.com/clusternet/clusternet/pkg/registry/shadow/printers/util"
 )
 
 const (
@@ -87,6 +95,9 @@ type REST struct {
 
 	// namespace where Manifests are created
 	reservedNamespace string
+
+	// is this Rest for CRD resource.
+	CRD *apiextensionsv1.CustomResourceDefinition
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -324,7 +335,6 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		return nil, err
 	}
 
-	klog.V(5).Infof("%v", label)
 	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).Watch(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
@@ -343,9 +353,9 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		}
 
 		if manifest, ok := object.(*appsapi.Manifest); ok {
-			obj, err := transformManifest(manifest)
-			if err != nil {
-				klog.ErrorDepth(3, fmt.Sprintf("failed to transform Manifest %s: %v", klog.KObj(manifest), err))
+			obj, err2 := transformManifest(manifest)
+			if err2 != nil {
+				klog.ErrorDepth(3, fmt.Sprintf("failed to transform Manifest %s: %v", klog.KObj(manifest), err2))
 				return manifest
 			}
 			return obj
@@ -412,8 +422,15 @@ func (r *REST) NewList() runtime.Object {
 }
 
 func (r *REST) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
-	tableConvertor := rest.NewDefaultTableConvertor(schema.GroupResource{Group: r.group, Resource: r.name})
-	return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	if r.CRD != nil {
+		storageVersion, _ := apiextensionshelpers.GetCRDStorageVersion(r.CRD)
+		columns, _ := util.GetColumnsForVersion(r.CRD, storageVersion)
+		tableConvertor, _ := tableconvertor.New(columns)
+		return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	} else {
+		tableConvertor := printerstorage.TableConvertor{TableGenerator: printers.NewTableGenerator().With(printersinternal.AddHandlers)}
+		return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	}
 }
 
 func (r *REST) ShortNames() []string {
@@ -450,6 +467,10 @@ func (r *REST) SetVersion(version string) {
 
 func (r *REST) SetKind(kind string) {
 	r.kind = kind
+}
+
+func (r *REST) SetCRD(crd *apiextensionsv1.CustomResourceDefinition) {
+	r.CRD = crd
 }
 
 func (r *REST) New() runtime.Object {
@@ -549,6 +570,10 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	annotations := u.GetAnnotations()
 	// skip validating when SkipValidatingAnnotation is true
 	if annotations != nil && annotations[known.SkipValidatingAnnotation] == "true" {
+		if len(u.GetUID()) == 0 {
+			// fixes https://github.com/clusternet/clusternet/issues/468
+			u.SetUID(uuid.NewUUID())
+		}
 		return u, nil
 	}
 

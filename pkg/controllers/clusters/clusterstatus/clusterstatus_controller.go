@@ -19,6 +19,7 @@ package clusterstatus
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +34,7 @@ import (
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	utilpointer "k8s.io/utils/pointer"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -43,6 +45,7 @@ import (
 // Controller is a controller that collects cluster status
 type Controller struct {
 	kubeClient         kubernetes.Interface
+	metricClientset    *metricsv.Clientset
 	lock               *sync.Mutex
 	clusterStatus      *clusterapi.ManagedClusterStatus
 	collectingPeriod   metav1.Duration
@@ -50,35 +53,44 @@ type Controller struct {
 	apiserverURL       string
 	appPusherEnabled   bool
 	useSocket          bool
-	predictorEnable    bool
-	predictorAddress   string
+	useMetricsServer   bool
 	nodeLister         corev1lister.NodeLister
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
+
+	predictorEnable       bool
+	predictorAddress      string
+	predictorDirectAccess bool
 }
 
 func NewController(
-	apiserverURL, predictorAddress string,
+	apiserverURL string,
 	kubeClient kubernetes.Interface,
+	metricClient *metricsv.Clientset,
 	kubeInformerFactory informers.SharedInformerFactory,
+	predictorAddress string,
+	predictorDirectAccess, useMetricsServer bool,
 	collectingPeriod metav1.Duration,
 	heartbeatFrequency metav1.Duration,
 ) *Controller {
 	return &Controller{
-		kubeClient:         kubeClient,
-		lock:               &sync.Mutex{},
-		collectingPeriod:   collectingPeriod,
-		heartbeatFrequency: heartbeatFrequency,
-		apiserverURL:       apiserverURL,
-		appPusherEnabled:   utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
-		useSocket:          utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
-		predictorEnable:    utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
-		predictorAddress:   predictorAddress,
-		nodeLister:         kubeInformerFactory.Core().V1().Nodes().Lister(),
-		nodeSynced:         kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
-		podLister:          kubeInformerFactory.Core().V1().Pods().Lister(),
-		podSynced:          kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
+		kubeClient:            kubeClient,
+		metricClientset:       metricClient,
+		lock:                  &sync.Mutex{},
+		collectingPeriod:      collectingPeriod,
+		heartbeatFrequency:    heartbeatFrequency,
+		apiserverURL:          apiserverURL,
+		appPusherEnabled:      utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
+		useSocket:             utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		predictorEnable:       utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
+		useMetricsServer:      useMetricsServer,
+		predictorAddress:      predictorAddress,
+		predictorDirectAccess: predictorDirectAccess,
+		nodeLister:            kubeInformerFactory.Core().V1().Nodes().Lister(),
+		nodeSynced:            kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
+		podLister:             kubeInformerFactory.Core().V1().Pods().Lister(),
+		podSynced:             kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
 	}
 }
 
@@ -95,48 +107,57 @@ func (c *Controller) Run(ctx context.Context) {
 
 func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	klog.V(7).Info("collecting cluster status...")
+	var status clusterapi.ManagedClusterStatus
+
 	clusterVersion, err := c.getKubernetesVersion(ctx)
 	if err != nil {
 		klog.Warningf("failed to collect kubernetes version: %v", err)
+	} else {
+		status.KubernetesVersion = clusterVersion.GitVersion
+		status.Platform = clusterVersion.Platform
 	}
 
 	nodes, err := c.nodeLister.List(labels.Everything())
 	if err != nil {
 		klog.Warningf("failed to list nodes: %v", err)
+	} else {
+		status.NodeStatistics = getNodeStatistics(nodes)
+
+		capacity, allocatable := getNodeResource(nodes)
+		status.Allocatable = allocatable
+		status.Capacity = capacity
 	}
-
-	nodeStatistics := getNodeStatistics(nodes)
-
-	capacity, allocatable := getNodeResource(nodes)
 
 	clusterCIDR, err := c.discoverClusterCIDR()
 	if err != nil {
 		klog.Warningf("failed to discover cluster CIDR: %v", err)
+	} else {
+		status.ClusterCIDR = clusterCIDR
 	}
 
 	serviceCIDR, err := c.discoverServiceCIDR()
 	if err != nil {
 		klog.Warningf("failed to discover service CIDR: %v", err)
+	} else {
+		status.ServiceCIDR = serviceCIDR
 	}
 
-	var status clusterapi.ManagedClusterStatus
-	status.KubernetesVersion = clusterVersion.GitVersion
-	status.Platform = clusterVersion.Platform
 	status.APIServerURL = c.apiserverURL
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
 	status.AppPusher = c.appPusherEnabled
 	status.UseSocket = c.useSocket
-	status.ClusterCIDR = clusterCIDR
-	status.ServiceCIDR = serviceCIDR
-	status.NodeStatistics = nodeStatistics
-	status.Allocatable = allocatable
-	status.Capacity = capacity
+
+	if c.useMetricsServer {
+		status.PodStatistics = getPodStatistics(c.metricClientset)
+		status.ResourceUsage = getResourceUsage(c.metricClientset)
+	}
 	status.HeartbeatFrequencySeconds = utilpointer.Int64Ptr(int64(c.heartbeatFrequency.Seconds()))
 	status.Conditions = []metav1.Condition{c.getCondition(status)}
 	status.PredictorEnabled = c.predictorEnable
 	status.PredictorAddress = c.predictorAddress
+	status.PredictorDirectAccess = c.predictorDirectAccess
 	c.setClusterStatus(status)
 }
 
@@ -162,6 +183,15 @@ func (c *Controller) GetClusterStatus() *clusterapi.ManagedClusterStatus {
 	}
 
 	return c.clusterStatus.DeepCopy()
+}
+
+func (c *Controller) GetManagedClusterLabels() labels.Set {
+	nodes, err := c.nodeLister.List(labels.Everything())
+	if err != nil {
+		klog.Warningf("failed to list nodes: %v", err)
+		return nil
+	}
+	return getCommonNodeLabels(nodes)
 }
 
 func (c *Controller) getKubernetesVersion(_ context.Context) (*version.Info, error) {
@@ -216,6 +246,52 @@ func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStat
 	return
 }
 
+// getPodStatistics returns the PodStatistics in the cluster
+// get pods num in running conditions and the total pods num in the cluster
+func getPodStatistics(clientset *metricsv.Clientset) *clusterapi.PodStatistics {
+	if clientset == nil {
+		klog.Warningf("empty metris client, will return directly ")
+		return nil
+	}
+
+	podMetricsList, err := clientset.MetricsV1beta1().PodMetricses(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		klog.Warningf("failed to list podMetris with err: %v", err.Error)
+		return nil
+	}
+	podStatistics := &clusterapi.PodStatistics{}
+	for _, item := range podMetricsList.Items {
+		if len(item.Containers) != 0 {
+			podStatistics.RunningPods += 1
+		}
+	}
+	podStatistics.TotalPods = int32(len(podMetricsList.Items))
+
+	return podStatistics
+}
+
+// getResourceUsage returns the ResourceUsage in the cluster
+// get cpu(m) and memory(Mi) used
+func getResourceUsage(clientset *metricsv.Clientset) *clusterapi.ResourceUsage {
+	if clientset == nil {
+		klog.Warningf("empty metris client, will return directly ")
+		return nil
+	}
+
+	nodeMetricsList, err := clientset.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		klog.Warningf("failed to list nodeMetris with err: %v", err.Error)
+		return nil
+	}
+	resourceUsage := &clusterapi.ResourceUsage{}
+	for _, item := range nodeMetricsList.Items {
+		resourceUsage.CpuUsage.Add(*(item.Usage.Cpu()))
+		resourceUsage.MemoryUsage.Add(*(item.Usage.Memory()))
+	}
+
+	return resourceUsage
+}
+
 // discoverServiceCIDR returns the service CIDR for the cluster.
 func (c *Controller) discoverServiceCIDR() (string, error) {
 	return findServiceIPRange(c.podLister)
@@ -266,4 +342,28 @@ func getNodeCondition(status *corev1.NodeStatus, conditionType corev1.NodeCondit
 		}
 	}
 	return -1, nil
+}
+
+// getCommonNodeLabels return the common labels from nodes meta.label
+func getCommonNodeLabels(nodes []*corev1.Node) map[string]string {
+	if len(nodes) == 0 {
+		return nil
+	}
+	initLabels := nodes[0].Labels
+	for _, node := range nodes {
+		currentLabels := map[string]string{}
+		for k, v := range node.Labels {
+			c, ok := initLabels[k]
+			if ok && c == v {
+				if strings.HasPrefix(k, known.NodeLabelsKeyPrefix) {
+					currentLabels[k] = v
+				}
+			}
+		}
+		if len(currentLabels) == 0 {
+			return nil
+		}
+		initLabels = currentLabels
+	}
+	return initLabels
 }

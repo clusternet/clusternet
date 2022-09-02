@@ -18,6 +18,7 @@ package helm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -260,8 +261,8 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 		hrsToBeDeleted.Insert(klog.KObj(hr).String())
 	}
 
-	if len(desc.Spec.Raw) != len(desc.Spec.Charts) {
-		msg := fmt.Sprintf("unequal lengths of Spec.Raw and Spec.Charts in Description %s", klog.KObj(desc))
+	if len(desc.Spec.Raw) != len(desc.Spec.Charts) || len(desc.Spec.ChartRaw) != len(desc.Spec.Charts) {
+		msg := fmt.Sprintf("unequal lengths of (Spec.Raw|Spec.ChartRaw) and Spec.Charts in Description %s", klog.KObj(desc))
 		klog.ErrorDepth(5, msg)
 		deployer.recorder.Event(desc, corev1.EventTypeWarning, "UnequalLengths", msg)
 		return errors.New(msg)
@@ -269,28 +270,38 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 
 	var allErrs []error
 	for idx, chartRef := range desc.Spec.Charts {
-		chart, err := deployer.chartLister.HelmCharts(chartRef.Namespace).Get(chartRef.Name)
-		if err != nil {
+		chart := &appsapi.HelmChart{}
+		if err := json.Unmarshal(desc.Spec.ChartRaw[idx], chart); err != nil {
 			return err
+		}
+		defaultLabels := map[string]string{
+			known.ObjectCreatedByLabel: known.ClusternetHubName,
+			known.ConfigKindLabel:      descriptionKind.Kind,
+			known.ConfigNameLabel:      desc.Name,
+			known.ConfigNamespaceLabel: desc.Namespace,
+			known.ConfigUIDLabel:       string(desc.UID),
+			known.ClusterIDLabel:       desc.Labels[known.ClusterIDLabel],
+			known.ClusterNameLabel:     desc.Labels[known.ClusterNameLabel],
+			// add subscription info
+			known.ConfigSubscriptionNameLabel:      desc.Labels[known.ConfigSubscriptionNameLabel],
+			known.ConfigSubscriptionNamespaceLabel: desc.Labels[known.ConfigSubscriptionNamespaceLabel],
+			known.ConfigSubscriptionUIDLabel:       desc.Labels[known.ConfigSubscriptionUIDLabel],
+		}
+
+		if chart.Labels == nil {
+			chart.Labels = make(map[string]string)
+		}
+		// add default labels to chart
+		for key, value := range defaultLabels {
+			chart.Labels[key] = value
 		}
 
 		hr := &appsapi.HelmRelease{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      utils.GenerateHelmReleaseName(desc.Name, chartRef),
-				Namespace: desc.Namespace,
-				Labels: map[string]string{
-					known.ObjectCreatedByLabel: known.ClusternetHubName,
-					known.ConfigKindLabel:      descriptionKind.Kind,
-					known.ConfigNameLabel:      desc.Name,
-					known.ConfigNamespaceLabel: desc.Namespace,
-					known.ConfigUIDLabel:       string(desc.UID),
-					known.ClusterIDLabel:       desc.Labels[known.ClusterIDLabel],
-					known.ClusterNameLabel:     desc.Labels[known.ClusterNameLabel],
-					// add subscription info
-					known.ConfigSubscriptionNameLabel:      desc.Labels[known.ConfigSubscriptionNameLabel],
-					known.ConfigSubscriptionNamespaceLabel: desc.Labels[known.ConfigSubscriptionNamespaceLabel],
-					known.ConfigSubscriptionUIDLabel:       desc.Labels[known.ConfigSubscriptionUIDLabel],
-				},
+				Name:        utils.GenerateHelmReleaseName(desc.Name, chartRef),
+				Namespace:   desc.Namespace,
+				Annotations: chart.Annotations,
+				Labels:      chart.Labels,
 				Finalizers: []string{
 					known.AppFinalizer,
 				},
@@ -337,13 +348,21 @@ func (deployer *Deployer) syncHelmRelease(desc *appsapi.Description, helmRelease
 			helmRelease.Spec.ReleaseName = nil
 		}
 
-		if reflect.DeepEqual(hr.Spec, helmRelease.Spec) {
+		if reflect.DeepEqual(hr.Spec, helmRelease.Spec) &&
+			reflect.DeepEqual(hr.Annotations, helmRelease.Annotations) &&
+			reflect.DeepEqual(hr.Labels, helmRelease.Labels) {
 			// seems to get overrides changed
 			return deployer.handleHelmRelease(hr)
 		}
 
 		// update it
 		hrCopy := hr.DeepCopy()
+		if hrCopy.Annotations == nil {
+			hrCopy.Annotations = make(map[string]string)
+		}
+		for key, value := range helmRelease.Annotations {
+			hrCopy.Annotations[key] = value
+		}
 		if hrCopy.Labels == nil {
 			hrCopy.Labels = make(map[string]string)
 		}
