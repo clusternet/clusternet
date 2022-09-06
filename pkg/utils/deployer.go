@@ -78,12 +78,15 @@ func DeployableByHub(clusterLister clusterlisters.ManagedClusterLister, clusterI
 		return false, fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", dedicatedNamespace)
 	}
 
-	if mcls[0].Spec.SyncMode == clusterapi.Pull || !mcls[0].Status.AppPusher {
-		msg := "set syncMode as Pull"
-		if !mcls[0].Status.AppPusher {
-			msg = "disabled AppPusher"
-		}
-		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, msg)
+	if mcls[0].Spec.SyncMode == clusterapi.Pull {
+		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, "set syncMode as Pull")
+		return false, nil
+	}
+	if mcls[0].Status.AppPusher == nil {
+		return false, fmt.Errorf("unknown AppPusher")
+	}
+	if !*mcls[0].Status.AppPusher {
+		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, "disabled AppPusher")
 		return false, nil
 	}
 	return true, nil

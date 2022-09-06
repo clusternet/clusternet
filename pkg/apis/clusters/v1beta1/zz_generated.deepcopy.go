@@ -229,6 +229,11 @@ func (in *ManagedClusterSpec) DeepCopy() *ManagedClusterSpec {
 func (in *ManagedClusterStatus) DeepCopyInto(out *ManagedClusterStatus) {
 	*out = *in
 	in.LastObservedTime.DeepCopyInto(&out.LastObservedTime)
+	if in.AppPusher != nil {
+		in, out := &in.AppPusher, &out.AppPusher
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Allocatable != nil {
 		in, out := &in.Allocatable, &out.Allocatable
 		*out = make(v1.ResourceList, len(*in))
