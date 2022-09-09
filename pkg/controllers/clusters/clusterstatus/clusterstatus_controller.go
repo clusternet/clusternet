@@ -146,7 +146,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
-	status.AppPusher = c.appPusherEnabled
+	status.AppPusher = &c.appPusherEnabled
 	status.UseSocket = c.useSocket
 
 	if c.useMetricsServer {

@@ -248,7 +248,7 @@ type ManagedClusterStatus struct {
 	// AppPusher indicates whether to allow parent cluster deploying applications in Push or Dual Mode.
 	// Mainly for security concerns.
 	// +optional
-	AppPusher bool `json:"appPusher,omitempty"`
+	AppPusher *bool `json:"appPusher,omitempty"`
 
 	// UseSocket indicates whether to use socket proxy when connecting to child cluster.
 	//

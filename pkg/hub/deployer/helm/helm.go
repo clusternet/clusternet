@@ -193,7 +193,11 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", desc.Labels[known.ClusterIDLabel]))
 		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", desc.Namespace)
 	}
-	if !mcls[0].Status.AppPusher {
+	if mcls[0].Status.AppPusher == nil {
+		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "unknown AppPusher")
+		return fmt.Errorf("unknown AppPusher for ManagedCluster with uid=%s", mcls[0].UID)
+	}
+	if !*mcls[0].Status.AppPusher {
 		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
 		klog.V(5).Infof("ManagedCluster with uid=%s has disabled AppPusher", mcls[0].UID)
 		return nil
