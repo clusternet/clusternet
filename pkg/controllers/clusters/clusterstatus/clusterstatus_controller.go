@@ -351,6 +351,9 @@ func getCommonNodeLabels(nodes []*corev1.Node) map[string]string {
 	}
 	initLabels := nodes[0].Labels
 	for _, node := range nodes {
+		if isMasterNode(node.Labels) {
+			continue
+		}
 		currentLabels := map[string]string{}
 		for k, v := range node.Labels {
 			c, ok := initLabels[k]
@@ -366,4 +369,18 @@ func getCommonNodeLabels(nodes []*corev1.Node) map[string]string {
 		initLabels = currentLabels
 	}
 	return initLabels
+}
+
+// isMasterNode return true if the node is a master node.
+func isMasterNode(labels map[string]string) bool {
+	if len(labels) == 0 {
+		return false
+	}
+	if _, ok := labels["node-role.kubernetes.io/control-plane"]; ok {
+		return true
+	}
+	if _, ok := labels["node-role.kubernetes.io/master"]; ok {
+		return true
+	}
+	return false
 }
