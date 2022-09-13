@@ -16,8 +16,8 @@ CRD_OPTIONS ?= "crd:crdVersions=v1"
 
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
-BASEIMAGE ?= alpine:3.13.5
-GOVERSION ?= 1.17.6
+BASEIMAGE ?= alpine:3.16.2
+GOVERSION ?= 1.17.13
 REGISTRY ?= ghcr.io
 
 # Run tests
