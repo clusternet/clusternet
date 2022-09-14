@@ -18,17 +18,14 @@ package template
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 
+	"k8s.io/client-go/dynamic"
+
 	"github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	"k8s.io/client-go/tools/clientcmd"
-
-	"k8s.io/client-go/kubernetes"
-
 	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -85,7 +82,7 @@ const (
 // ChildClsClient for cls cache
 type ChildClsClient struct {
 	lock           *sync.RWMutex
-	childClsClient map[string]kubernetes.Interface
+	childClsClient map[string]dynamic.Interface
 }
 
 // REST implements a RESTStorage for Shadow API
@@ -139,7 +136,7 @@ func (r *REST) resourceInCCls() bool {
 }
 
 // getCClsCliFromCache get child cluster client from cache
-func (r *REST) getCClsCliFromCache(clusterID string) (kubernetes.Interface, bool) {
+func (r *REST) getCClsCliFromCache(clusterID string) (dynamic.Interface, bool) {
 	r.childClsClientCache.lock.RLock()
 	defer r.childClsClientCache.lock.RUnlock()
 	client, ok := r.childClsClientCache.childClsClient[clusterID]
@@ -147,7 +144,7 @@ func (r *REST) getCClsCliFromCache(clusterID string) (kubernetes.Interface, bool
 }
 
 // setCClsCliToCache set child cluster client to cache
-func (r *REST) setCClsCliToCache(clusterID string, client kubernetes.Interface) {
+func (r *REST) setCClsCliToCache(clusterID string, client dynamic.Interface) {
 	r.childClsClientCache.lock.Lock()
 	defer r.childClsClientCache.lock.Unlock()
 	r.childClsClientCache.childClsClient[clusterID] = client
@@ -155,14 +152,15 @@ func (r *REST) setCClsCliToCache(clusterID string, client kubernetes.Interface) 
 }
 
 // newCClsCLi create a new child cluster client
-func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (kubernetes.Interface, error) {
-	kubeConfig := cls.Status.APIServerConfig
-	kubeConfigBytes, err := base64.RawURLEncoding.DecodeString(kubeConfig)
-	if err != nil {
-		return nil, err
+func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (dynamic.Interface, error) {
+	// TODO: need add child clusters certificates for security
+	config := &clientgorest.Config{
+		Host:            cls.Status.APIServerURL,
+		TLSClientConfig: clientgorest.TLSClientConfig{Insecure: true},
+		BearerToken:     cls.Status.APIServerConfig,
 	}
-	config, err := clientcmd.RESTConfigFromKubeConfig(kubeConfigBytes)
-	clientSet, err := kubernetes.NewForConfig(config)
+	//clientSet, err := kubernetes.NewForConfig(config)
+	clientSet, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -264,20 +262,45 @@ func (r *REST) GetFromCCls(ctx context.Context, name string, options *metav1.Get
 		return nil, apierrors.NewServiceUnavailable(err.Error())
 	}
 	resource, _ := r.getResourceName()
-	switch resource {
-	case Pods:
-		return r.getPodsFromCCls(ctx, name, options, mcls)
-	case events:
-		return r.getEventsFromCCls(ctx, name, options, mcls)
-	default:
-		return nil, apierrors.NewServiceUnavailable("not allowed")
+	return r.getResourceFromCCls(ctx, strings.ToLower(resource), name, options, mcls)
+}
+
+// getResourceFromCCls get resource From child cluster
+func (r *REST) getResourceFromCCls(ctx context.Context, resource string, name string, options *metav1.GetOptions,
+	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
+	var unstructObj *unstructured.Unstructured
+	var err error
+	for _, cls := range mcls {
+		clusterID := string(cls.Spec.ClusterID)
+		clientset, ok := r.getCClsCliFromCache(clusterID)
+		if !ok {
+			clientset, err = r.newCClsCLi(clusterID, cls)
+			if err != nil {
+				return nil, apierrors.NewServiceUnavailable(err.Error())
+			}
+		}
+		namespace := request.NamespaceValue(ctx)
+		gvr := schema.GroupVersionResource{Version: "v1", Resource: resource}
+		unstructObj, err = clientset.
+			Resource(gvr).
+			Namespace(namespace).
+			Get(ctx, name, *options)
+		if err != nil {
+			klog.Errorf("get %s %s failed from %s: %v", resource, name, cls.Spec.ClusterID, err)
+			continue
+		} else {
+			err = nil
+			break
+		}
 	}
+	return unstructObj, err
 }
 
 // getPodsFromCCls get Pods From child cluster
 func (r *REST) getPodsFromCCls(ctx context.Context, name string, options *metav1.GetOptions,
 	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
-	var pod *corev1.Pod
+	//var pod *corev1.Pod
+	var unstructObj *unstructured.Unstructured
 	var err error
 	for _, cls := range mcls {
 		clusterID := string(cls.Spec.ClusterID)
@@ -289,23 +312,30 @@ func (r *REST) getPodsFromCCls(ctx context.Context, name string, options *metav1
 			}
 		}
 		namespace := request.NamespaceValue(ctx)
-		pod, err = clientset.CoreV1().Pods(namespace).Get(ctx, name, *options)
+		gvr := schema.GroupVersionResource{Version: "v1", Resource: "pods"}
+		unstructObj, err = clientset.
+			Resource(gvr).
+			Namespace(namespace).
+			Get(ctx, name, *options)
+		//pod, err = clientset.CoreV1().Pods(namespace).Get(ctx, name, *options)
 		if err != nil {
 			klog.Errorf("get pod %s failed from %s: %v", name, cls.Spec.ClusterID, err)
 			continue
 		} else {
-			pod.Annotations[ChildClusterID] = clusterID
+			err = nil
 			break
 		}
 	}
-	return pod, nil
+	return unstructObj, err
 }
 
 // getEventsFromCCls get Events From child cluster
 func (r *REST) getEventsFromCCls(ctx context.Context, name string, options *metav1.GetOptions,
 	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
-	var event *corev1.Event
+	var unstructObj *unstructured.Unstructured
 	var err error
+	namespace := request.NamespaceValue(ctx)
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: "pods"}
 	for _, cls := range mcls {
 		clusterID := string(cls.Spec.ClusterID)
 		clientset, ok := r.getCClsCliFromCache(clusterID)
@@ -315,17 +345,20 @@ func (r *REST) getEventsFromCCls(ctx context.Context, name string, options *meta
 				return nil, apierrors.NewServiceUnavailable(err.Error())
 			}
 		}
-		namespace := request.NamespaceValue(ctx)
-		event, err = clientset.CoreV1().Events(namespace).Get(ctx, name, *options)
+		unstructObj, err = clientset.
+			Resource(gvr).
+			Namespace(namespace).
+			Get(ctx, name, *options)
+		//pod, err = clientset.CoreV1().Pods(namespace).Get(ctx, name, *options)
 		if err != nil {
-			klog.Errorf("get event %s failed from %s: %v", name, cls.Spec.ClusterID, err)
+			klog.Errorf("get events %s failed from %s: %v", name, cls.Spec.ClusterID, err)
 			continue
 		} else {
-			event.Annotations[ChildClusterID] = clusterID
+			err = nil
 			break
 		}
 	}
-	return event, nil
+	return unstructObj, err
 }
 
 // Update performs an atomic update and set of the object. Returns the result of the update
@@ -592,23 +625,18 @@ func (r *REST) ListFromCCls(ctx context.Context, options *internalversion.ListOp
 		return nil, apierrors.NewServiceUnavailable(err.Error())
 	}
 	resource, _ := r.getResourceName()
-	switch resource {
-	case Pods:
-		return r.listPodsFromCCls(ctx, options, mcls)
-	case events:
-		return r.listEventsFromCCls(ctx, options, mcls)
-	default:
-		return nil, apierrors.NewServiceUnavailable("not allowed")
-	}
+	return r.listResourceFromCCls(ctx, strings.ToLower(resource), options, mcls)
 }
 
-// listPodsFromCCls list Pods From child cluster
-func (r *REST) listPodsFromCCls(ctx context.Context, options *internalversion.ListOptions,
+// listResourceFromCCls list resource From child cluster
+func (r *REST) listResourceFromCCls(ctx context.Context, resource string, options *internalversion.ListOptions,
 	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
-	var podL *corev1.PodList
+	var unstructObjList *unstructured.UnstructuredList
 	var err error
 	isSuc := false
 	listOptions := r.convertToListOptions(options)
+	namespace := request.NamespaceValue(ctx)
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: resource}
 	for _, cls := range mcls {
 		clusterID := string(cls.Spec.ClusterID)
 		clientset, ok := r.getCClsCliFromCache(clusterID)
@@ -618,60 +646,26 @@ func (r *REST) listPodsFromCCls(ctx context.Context, options *internalversion.Li
 				return nil, apierrors.NewServiceUnavailable(err.Error())
 			}
 		}
-		namespace := request.NamespaceValue(ctx)
-		podLTmp, err := clientset.CoreV1().Pods(namespace).List(ctx, listOptions)
+		listTmp, err := clientset.
+			Resource(gvr).
+			Namespace(namespace).
+			List(ctx, listOptions)
 		if err != nil {
-			klog.Errorf("list pod %s failed from %s: %v", cls.Spec.ClusterID, err)
+			klog.Errorf("list %s failed from %s: %v", resource, cls.Spec.ClusterID, err)
 			continue
 		}
-		for _, pod := range podLTmp.Items {
-			pod.Annotations[ChildClusterID] = clusterID
-		}
 		if !isSuc {
-			podL = podLTmp
+			unstructObjList = listTmp
 			isSuc = true
 		} else {
-			// merge pod list
-			podL.Items = append(podL.Items, podLTmp.Items...)
+			// merge resource list
+			unstructObjList.Items = append(unstructObjList.Items, listTmp.Items...)
 		}
 	}
-	return podL, nil
-}
-
-// listEventsFromCCls list Events From child cluster
-func (r *REST) listEventsFromCCls(ctx context.Context, options *internalversion.ListOptions,
-	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
-	var eventL *corev1.EventList
-	var err error
-	isSuc := false
-	listOptions := r.convertToListOptions(options)
-	for _, cls := range mcls {
-		clusterID := string(cls.Spec.ClusterID)
-		clientset, ok := r.getCClsCliFromCache(clusterID)
-		if !ok {
-			clientset, err = r.newCClsCLi(clusterID, cls)
-			if err != nil {
-				return nil, apierrors.NewServiceUnavailable(err.Error())
-			}
-		}
-		namespace := request.NamespaceValue(ctx)
-		eventLTmp, err := clientset.CoreV1().Events(namespace).List(ctx, listOptions)
-		if err != nil {
-			klog.Errorf("list pod %s failed from %s: %v", cls.Spec.ClusterID, err)
-			continue
-		}
-		for _, event := range eventLTmp.Items {
-			event.Annotations[ChildClusterID] = clusterID
-		}
-		if !isSuc {
-			eventL = eventLTmp
-			isSuc = true
-		} else {
-			// merge events list
-			eventL.Items = append(eventL.Items, eventLTmp.Items...)
-		}
+	if !isSuc {
+		return nil, err
 	}
-	return eventL, nil
+	return unstructObjList, err
 }
 
 func (r *REST) NewList() runtime.Object {
@@ -994,7 +988,7 @@ func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.C
 		mcLister:                mcLister,
 		childClsClientCache: ChildClsClient{
 			lock:           new(sync.RWMutex),
-			childClsClient: map[string]kubernetes.Interface{},
+			childClsClient: map[string]dynamic.Interface{},
 		},
 	}
 }

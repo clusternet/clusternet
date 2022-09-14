@@ -131,6 +131,10 @@ spec:
                 description: APIServerURL indicates the advertising url/address of
                   managed Kubernetes cluster
                 type: string
+              apiserverConfig:
+                description: apiserverConfig indicates the kube-config of
+                  managed Kubernetes cluster
+                type: string
               appPusher:
                 description: AppPusher indicates whether to allow parent cluster deploying
                   applications in Push or Dual Mode. Mainly for security concerns.

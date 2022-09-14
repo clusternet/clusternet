@@ -146,6 +146,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	}
 
 	status.APIServerURL = c.apiserverURL
+	status.APIServerConfig = c.apiserverConfig
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")

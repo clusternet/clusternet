@@ -30,7 +30,7 @@ metadata:
   name: clusternet:agent:admin
 rules:
   - apiGroups: [ "" ]
-    resources: [ "pods", "nodes" ]
+    resources: [ "pods", "nodes", "events"]
     verbs: [ "get", "list", "watch" ]
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods", "nodes"]
