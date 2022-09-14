@@ -66,7 +66,9 @@ var (
 	}
 )
 
-// Controller is a controller that discovers clusters provisioned with cluster-api
+// Controller is a controller that discovers clusters provisioned with cluster-api.
+// Please make sure that feature gate ClusterResourceSet is enabled in capi-controller-manager running in
+// cluster-api management cluster.
 // This controller only interacts with cluster-api management cluster
 type Controller struct {
 	kubeClient          kubernetes.Interface
@@ -86,6 +88,9 @@ func NewController(clusterapiClient dynamic.Interface, kubeClient kubernetes.Int
 }
 
 func (c *Controller) Run(ctx context.Context) {
+	klog.Warning("please make sure feature gate ClusterResourceSet is enabled in capi-controller-manager " +
+		"running in cluster-api management cluster")
+
 	var err error
 	var regCfg *RegistrationConfig
 	initCtx, cancel := context.WithCancel(ctx)
