@@ -124,7 +124,6 @@ func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionCo
 	}
 
 	var cfg *rest.Config
-	var clientConfig *clientcmdapi.Config
 	var err error
 
 	switch clientConnectionCfg.Kubeconfig {
@@ -132,11 +131,7 @@ func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionCo
 		// use in-cluster config
 		cfg, err = rest.InClusterConfig()
 	default:
-		clientConfig, err = clientcmd.LoadFromFile(clientConnectionCfg.Kubeconfig)
-		if err != nil {
-			return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", clientConnectionCfg.Kubeconfig, err)
-		}
-		cfg, err = clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+		cfg, err = LoadsKubeConfigFromFile(clientConnectionCfg.Kubeconfig)
 	}
 
 	if err != nil {
@@ -147,6 +142,15 @@ func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionCo
 	cfg.QPS = clientConnectionCfg.QPS
 	cfg.Burst = int(clientConnectionCfg.Burst)
 	return cfg, nil
+}
+
+// LoadsKubeConfigFromFile tries to load kubeconfig from specified kubeconfig file
+func LoadsKubeConfigFromFile(fileName string) (*rest.Config, error) {
+	clientConfig, err := clientcmd.LoadFromFile(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", fileName, err)
+	}
+	return clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 }
 
 // GenerateKubeConfigFromToken composes a kubeconfig from token

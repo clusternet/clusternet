@@ -85,6 +85,8 @@ type HubServerOptions struct {
 
 	// token used for authentication with peers
 	PeerToken string
+
+	ClusterAPIKubeconfig string
 }
 
 // NewHubServerOptions returns a new HubServerOptions
@@ -194,6 +196,7 @@ func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&o.Threadiness, "threadiness", o.Threadiness, "The number of threads to use for controller workers")
 	fs.IntVar(&o.PeerPort, "peer-port", o.PeerPort, "The port on which to serve HTTPS for communicating with peers.")
 	fs.StringVar(&o.PeerToken, "peer-token", o.PeerToken, "The token for authentication with peers with peers.")
+	fs.StringVar(&o.ClusterAPIKubeconfig, "cluster-api-kubeconfig", o.ClusterAPIKubeconfig, "Path to a kubeconfig file pointing at the management cluster for cluster-api.")
 }
 
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
