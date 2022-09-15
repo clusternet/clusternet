@@ -136,7 +136,7 @@ type HelmOptions struct {
 	// +kubebuilder:validation:Type=boolean
 	Replace *bool `json:"replace,omitempty"`
 
-	// Atomic, if true, will roll back on failure.
+	// Atomic, if true, for install case, will uninstall failed release, for upgrade case, will roll back on failure.
 	//
 	// +optional
 	// +kubebuilder:validation:Type=boolean

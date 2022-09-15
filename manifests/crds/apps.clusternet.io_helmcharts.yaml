@@ -62,7 +62,8 @@ spec:
             description: HelmChartSpec defines the spec of HelmChart
             properties:
               atomic:
-                description: Atomic, if true, will roll back on failure.
+                description: Atomic, if true, for install case, will uninstall failed
+                  release, for upgrade case, will roll back on failure.
                 type: boolean
               chart:
                 description: Chart is the name of a Helm Chart in the Repository.

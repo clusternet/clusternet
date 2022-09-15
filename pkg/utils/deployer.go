@@ -184,16 +184,32 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	}
 
 	var rel *release.Release
-	// check whether the release is deployed
-	rel, err = cfg.Releases.Deployed(releaseName)
-	if err != nil {
-		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
-			hrStatus.Phase = release.StatusPendingInstall
-			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
-				return err
-			}
-			rel, err = InstallRelease(cfg, hr, chart, overrideValues)
+	rel, err = cfg.Releases.Last(releaseName)
+	if err != nil && !strings.Contains(err.Error(), driver.ErrReleaseNotFound.Error()) {
+		return err
+	}
+
+	// Install or upgrade failed and atomic is set, uninstalling release
+	if hr.Spec.Atomic != nil && *hr.Spec.Atomic && rel != nil && rel.Info.Status != release.StatusDeployed {
+		klog.V(5).Infof("Uninstalling undeployed HelmRelease %s", klog.KObj(hr))
+		hrStatus.Phase = release.StatusUninstalling
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
 		}
+		err = UninstallRelease(cfg, hr)
+		if err != nil {
+			return err
+		}
+		rel = nil
+	}
+
+	if rel == nil {
+		klog.V(5).Infof("Installing HelmRelease %s", klog.KObj(hr))
+		hrStatus.Phase = release.StatusPendingInstall
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
+		rel, err = InstallRelease(cfg, hr, chart, overrideValues)
 	} else {
 		// verify the release is changed or not
 		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
