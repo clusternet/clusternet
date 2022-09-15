@@ -1,0 +1,21 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Subscription
+metadata:
+  name: scheduling-with-nfd-demo
+  namespace: default
+spec:
+  subscribers: # defines the clusters to be distributed to
+    - clusterAffinity:
+        matchLabels:
+          "node.clusternet.io/sample-key": "sample-value"
+  schedulingStrategy: Dividing
+  dividingScheduling:
+    type: Static
+  feeds: # defines all the resources to be deployed with
+    - apiVersion: v1
+      kind: Namespace
+      name: nfd-app-ns
+    - apiVersion: apps/v1 # with a total of 101 replicas
+      kind: Deployment
+      name: my-nginx-nfd
+      namespace: nfd-app-ns

@@ -1,0 +1,15 @@
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: label-aggregate-rule
+  annotations:
+    apps.clusternet.io/skip-validating: "true"
+spec:
+  rules:
+    - name: "sample rule"
+      labels:
+        "node.clusternet.io/sample-key": "sample-value"
+      matchFeatures:
+        - feature: cpu.cpuid
+          matchExpressions:
+            AVX512F: {op: Exists}
