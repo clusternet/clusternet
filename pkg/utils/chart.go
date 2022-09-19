@@ -171,6 +171,7 @@ func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 	client := action.NewUpgrade(cfg)
+	client.MaxHistory = cfg.Releases.MaxHistory // need to rewire it here
 	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	client.Namespace = hr.Spec.TargetNamespace
 	if hr.Spec.Atomic != nil {
