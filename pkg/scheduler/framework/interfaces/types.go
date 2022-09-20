@@ -98,6 +98,10 @@ func (t *TargetClusters) DeepCopy() *TargetClusters {
 }
 
 func (t *TargetClusters) Merge(b *TargetClusters) {
+	// TODO: use matrix addition to merge
+	// 1. Align t and b using the union of clusters and feeds , no value use 0 fill
+	// 2. Addition t and b which filled
+	// 3. Remove all 0 rows and columns
 	if b == nil || len(b.BindingClusters) == 0 {
 		return
 	}
@@ -137,6 +141,9 @@ func (t *TargetClusters) Merge(b *TargetClusters) {
 		}
 		for feed, bReplicas := range b.Replicas {
 			if len(bReplicas) != 0 {
+				if len(t.Replicas[feed]) == 0 {
+					t.Replicas[feed] = append(t.Replicas[feed], 0)
+				}
 				t.Replicas[feed][ti] += bReplicas[bi]
 			}
 		}
