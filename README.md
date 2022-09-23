@@ -44,6 +44,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - managing any [Certified Kubernetes Distributions](https://www.cncf.io/certification/software-conformance/), such
       as [k3s](https://github.com/k3s-io/k3s)
     - managing Kubernetes clusters running at the edge
+    - auto discovering clusters created by [cluster-api](https://github.com/kubernetes-sigs/cluster-api)
     - parent cluster can also register itself as a child cluster to run workloads
     - managing Kubernetes version skewed from v1.17.x to v1.22.x (Learn more
       about [Kubernetes Version Skew](https://clusternet.io/docs/introduction/#kubernetes-version-skew))
