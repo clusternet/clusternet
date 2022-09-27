@@ -314,7 +314,10 @@ func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *g
 		apiGroupVersion.MaxRequestBodyBytes = ss.maxRequestBodyBytes
 
 		r, err := apiGroupVersion.InstallREST(ss.GenericAPIServer.Handler.GoRestfulContainer)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), "missing parent storage") {
+			// Some subresources for CRDs are implemented with another group, like `kubevirt`.
+			// We just ignore those non-harmful "missing parent storage" errors.
+			// Please do remember to create fake CRDs to let clusternet install handlers for those subresources.
 			return fmt.Errorf("unable to setup API %v: %v", apiGroupInfo, err)
 		}
 
