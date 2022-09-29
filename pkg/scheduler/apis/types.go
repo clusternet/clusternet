@@ -16,7 +16,7 @@ limitations under the License.
 
 // This file was copied from k8s.io/kubernetes/pkg/scheduler/apis/config/types.go and modified
 
-package config
+package apis
 
 import (
 	"encoding/json"

@@ -24,7 +24,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/clusternet/clusternet/pkg/known"
-	"github.com/clusternet/clusternet/pkg/scheduler/apis/config"
+	"github.com/clusternet/clusternet/pkg/scheduler/apis"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -33,7 +33,7 @@ import (
 type SchedulerOptions struct {
 	*utils.ControllerOptions
 	FrameworkOutOfTreeRegistry frameworkruntime.Registry
-	SchedulerConfiguration     *config.SchedulerConfiguration
+	SchedulerConfiguration     *apis.SchedulerConfiguration
 	ConfigFile                 string
 }
 
@@ -59,7 +59,7 @@ func (o *SchedulerOptions) Validate() error {
 	}
 
 	if o.SchedulerConfiguration != nil {
-		if err := config.ValidateSchedulerConfiguration(o.SchedulerConfiguration); err != nil {
+		if err := apis.ValidateSchedulerConfiguration(o.SchedulerConfiguration); err != nil {
 			errors = append(errors, err)
 		}
 	}
@@ -91,17 +91,17 @@ func (o *SchedulerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.ConfigFile, "config", o.ConfigFile, "The path to the configuration file.")
 }
 
-func loadConfigFromFile(file string) (*config.SchedulerConfiguration, error) {
+func loadConfigFromFile(file string) (*apis.SchedulerConfiguration, error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
 
-	configObj := &config.SchedulerConfiguration{}
+	configObj := &apis.SchedulerConfiguration{}
 	err = yaml.Unmarshal(data, configObj)
 	if err != nil {
 		return nil, err
 	}
-	config.SetDefaultsSchedulerConfiguration(configObj)
+	apis.SetDefaultsSchedulerConfiguration(configObj)
 	return configObj, nil
 }

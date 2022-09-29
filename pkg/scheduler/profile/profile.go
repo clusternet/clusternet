@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 
-	"github.com/clusternet/clusternet/pkg/scheduler/apis/config"
+	"github.com/clusternet/clusternet/pkg/scheduler/apis"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 )
@@ -35,7 +35,7 @@ import (
 type RecorderFactory func(string) events.EventRecorder
 
 // newProfile builds a Profile for the given configuration.
-func newProfile(cfg config.SchedulerProfile, r frameworkruntime.Registry,
+func newProfile(cfg apis.SchedulerProfile, r frameworkruntime.Registry,
 	opts ...frameworkruntime.Option) (framework.Framework, error) {
 	fwk, err := frameworkruntime.NewFramework(r, &cfg, opts...)
 	if err != nil {
@@ -48,7 +48,7 @@ func newProfile(cfg config.SchedulerProfile, r frameworkruntime.Registry,
 type Map map[string]framework.Framework
 
 // NewMap builds the frameworks given by the configuration, indexed by name.
-func NewMap(cfgs []config.SchedulerProfile, r frameworkruntime.Registry,
+func NewMap(cfgs []apis.SchedulerProfile, r frameworkruntime.Registry,
 	opts ...frameworkruntime.Option) (Map, error) {
 	m := make(Map)
 	v := cfgValidator{m: m}
@@ -83,7 +83,7 @@ type cfgValidator struct {
 	m Map
 }
 
-func (v *cfgValidator) validate(cfg config.SchedulerProfile, f framework.Framework) error {
+func (v *cfgValidator) validate(cfg apis.SchedulerProfile, f framework.Framework) error {
 	if len(f.ProfileName()) == 0 {
 		return errors.New("scheduler name is needed")
 	}

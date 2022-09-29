@@ -32,7 +32,7 @@ import (
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis/config"
+	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
 	"github.com/clusternet/clusternet/pkg/scheduler/cache"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 )

@@ -31,6 +31,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/leaderelection"
@@ -46,7 +47,7 @@ import (
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/scheduler/algorithm"
-	schedulerapi "github.com/clusternet/clusternet/pkg/scheduler/apis/config"
+	"github.com/clusternet/clusternet/pkg/scheduler/apis"
 	schedulercache "github.com/clusternet/clusternet/pkg/scheduler/cache"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins"
@@ -56,7 +57,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 	"github.com/clusternet/clusternet/pkg/scheduler/profile"
 	"github.com/clusternet/clusternet/pkg/utils"
-	"k8s.io/client-go/kubernetes/scheme"
 )
 
 // These are reasons for a subscription's transition to a condition.
@@ -153,15 +153,15 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		subscribersMap:            make(map[string][]appsapi.Subscriber),
 	}
 
-	var profiles []schedulerapi.SchedulerProfile
+	var profiles []apis.SchedulerProfile
 	if schedulerOptions.SchedulerConfiguration != nil {
 		profiles = schedulerOptions.SchedulerConfiguration.Profiles
 	}
 	//add default profile
 	if len(profiles) == 0 {
-		cfg := &schedulerapi.SchedulerConfiguration{}
-		schedulerapi.SetDefaultsSchedulerConfiguration(cfg)
-		profiles = append([]schedulerapi.SchedulerProfile(nil), cfg.Profiles...)
+		cfg := &apis.SchedulerConfiguration{}
+		apis.SetDefaultsSchedulerConfiguration(cfg)
+		profiles = append([]apis.SchedulerProfile(nil), cfg.Profiles...)
 	}
 	profileMap, err := profile.NewMap(profiles, sched.registry,
 		frameworkruntime.WithEventRecorder(recorder),
