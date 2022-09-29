@@ -153,6 +153,7 @@ func (c *Controller) updateSubscription(old, cur interface{}) {
 	}
 	// no changes on binding namespaces and spec hash
 	if reflect.DeepEqual(oldSub.Status.BindingClusters, newSub.Status.BindingClusters) &&
+		reflect.DeepEqual(oldSub.Status.Replicas, newSub.Status.Replicas) &&
 		oldSub.Status.SpecHash == newSub.Status.SpecHash {
 		klog.V(4).Infof("no changes on binding namespaces and spec hash of Subscription %s, skipping syncing", klog.KObj(oldSub))
 		return

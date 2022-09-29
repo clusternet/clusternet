@@ -29,8 +29,9 @@ type ClusterType string
 
 // These are the valid values for ClusterType
 const (
-	// edge cluster
 	EdgeCluster ClusterType = "EdgeCluster"
+
+	StandardCluster ClusterType = "StandardCluster"
 
 	// todo: add more types
 )
@@ -82,6 +83,14 @@ type ClusterRegistrationRequestSpec struct {
 	// +kubebuilder:validation:MaxLength=30
 	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	ClusterName string `json:"clusterName,omitempty"`
+
+	// ClusterNamespace is the dedicated namespace of the cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+	ClusterNamespace string `json:"clusterNamespace,omitempty"`
 
 	// ClusterLabels is the labels of the child cluster.
 	//
@@ -239,7 +248,7 @@ type ManagedClusterStatus struct {
 	// AppPusher indicates whether to allow parent cluster deploying applications in Push or Dual Mode.
 	// Mainly for security concerns.
 	// +optional
-	AppPusher bool `json:"appPusher,omitempty"`
+	AppPusher *bool `json:"appPusher,omitempty"`
 
 	// UseSocket indicates whether to use socket proxy when connecting to child cluster.
 	//
@@ -268,11 +277,11 @@ type ManagedClusterStatus struct {
 
 	// PodStatistics is the info summary of pods in the cluster
 	// +optional
-	PodStatistics PodStatistics `json:"podStatistics,omitempty"`
+	PodStatistics *PodStatistics `json:"podStatistics,omitempty"`
 
 	// ResourceUsage is the cpu(m) and memory(Mi) already used in the cluster
 	// +optional
-	ResourceUsage ResourceUsage `json:"resourceUsage,omitempty"`
+	ResourceUsage *ResourceUsage `json:"resourceUsage,omitempty"`
 
 	// Conditions is an array of current cluster conditions.
 	// +optional

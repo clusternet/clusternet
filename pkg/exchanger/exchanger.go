@@ -59,12 +59,6 @@ var (
 	urlPrefix = fmt.Sprintf("/apis/%s/sockets/", proxies.SchemeGroupVersion.String())
 )
 
-const (
-	TokenHeaderKey       = "Clusternet-Token"
-	CertificateHeaderKey = "Clusternet-Certificate"
-	PrivateKeyHeaderKey  = "Clusternet-PrivateKey"
-)
-
 func authorizer(req *http.Request) (string, bool, error) {
 	if strings.Contains(req.URL.Path, urlPrefix) {
 		clusterID := strings.TrimPrefix(strings.TrimRight(req.URL.Path, "/"), urlPrefix)
@@ -138,8 +132,22 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 		klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), id)
 
 		extra := getExtraFromHeaders(request.Header, extraHeaderPrefixes)
+		for key, vals := range extra {
+			if !strings.HasPrefix(key, known.HeaderPrefixKey) {
+				continue
+			}
 
-		if token, ok := extra[strings.ToLower(TokenHeaderKey)]; ok && len(token) > 0 {
+			switch key {
+			case known.TokenHeaderKey, known.CertificateHeaderKey, known.PrivateKeyHeaderKey:
+				continue
+			default:
+				for _, val := range vals {
+					request.Header.Add(strings.TrimPrefix(key, known.HeaderPrefixKey), val)
+				}
+			}
+		}
+
+		if token, ok := extra[strings.ToLower(known.TokenHeaderKey)]; ok && len(token) > 0 {
 			request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token[0]))
 		}
 
@@ -155,17 +163,17 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 			ExpectContinueTimeout: 1 * time.Second,
 		}
 
-		publicCertificate := extra[strings.ToLower(CertificateHeaderKey)]
-		privateKey := extra[strings.ToLower(PrivateKeyHeaderKey)]
+		publicCertificate := extra[strings.ToLower(known.CertificateHeaderKey)]
+		privateKey := extra[strings.ToLower(known.PrivateKeyHeaderKey)]
 		if len(publicCertificate) > 0 && len(privateKey) > 0 {
 			certPEMBlock, err2 := base64.StdEncoding.DecodeString(publicCertificate[0])
 			if err2 != nil {
-				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid certificate in header %s: %v", CertificateHeaderKey, err2)))
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid certificate in header %s: %v", known.CertificateHeaderKey, err2)))
 				return
 			}
 			keyPEMBlock, err2 := base64.StdEncoding.DecodeString(privateKey[0])
 			if err2 != nil {
-				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid private key in header %s: %v", PrivateKeyHeaderKey, err2)))
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid private key in header %s: %v", known.PrivateKeyHeaderKey, err2)))
 				return
 			}
 			cert, err2 := tls.X509KeyPair(certPEMBlock, keyPEMBlock)

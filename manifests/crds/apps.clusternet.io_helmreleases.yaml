@@ -60,6 +60,10 @@ spec:
           spec:
             description: HelmReleaseSpec defines the spec of HelmRelease
             properties:
+              atomic:
+                description: Atomic, if true, for install case, will uninstall failed
+                  release, for upgrade case, will roll back on failure.
+                type: boolean
               chart:
                 description: Chart is the name of a Helm Chart in the Repository.
                 type: string
@@ -72,6 +76,17 @@ spec:
                   namespace:
                     type: string
                 type: object
+              createNamespace:
+                default: true
+                description: CreateNamespace create namespace when install helm release
+                type: boolean
+              disableHooks:
+                description: DisableHooks disables hook processing if set to true.
+                type: boolean
+              force:
+                description: Force will, if set to `true`, ignore certain warnings
+                  and perform the upgrade anyway. This should be used with caution.
+                type: boolean
               overrides:
                 description: Overrides specifies the override values for this release.
                 format: byte
@@ -81,20 +96,42 @@ spec:
                   cluster. If nil, the default release name will be in the format
                   of "{Description Name}-{HelmChart Namespace}-{HelmChart Name}"
                 type: string
+              replace:
+                description: Replace will re-use the given name, only if that name
+                  is a deleted release that remains in the history. This is unsafe
+                  in production.
+                type: boolean
               repo:
                 description: a Helm Repository to be used. OCI-based registries are
                   also supported. For example, https://charts.bitnami.com/bitnami
                   or oci://localhost:5000/helm-charts
                 pattern: ^(http|https|oci)?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$
                 type: string
+              skipCRDs:
+                description: SkipCRDs skips installing CRDs when install flag is enabled
+                  during upgrade
+                type: boolean
               targetNamespace:
                 description: TargetNamespace specifies the namespace to install the
                   chart
                 type: string
+              timeoutSeconds:
+                default: 300
+                description: TimeoutSeconds is the timeout of the chart to be install/upgrade/rollback/uninstall
+                format: int32
+                type: integer
               version:
                 description: ChartVersion is the version of the chart to be deployed.
                   It will be defaulted with current latest version if empty.
                 type: string
+              wait:
+                description: Wait determines whether the wait operation should be
+                  performed after the upgrade is requested.
+                type: boolean
+              waitForJob:
+                description: WaitForJobs determines whether the wait operation for
+                  the Jobs should be performed after the upgrade is requested.
+                type: boolean
             required:
             - chart
             - repo

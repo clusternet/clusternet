@@ -229,6 +229,11 @@ func (in *ManagedClusterSpec) DeepCopy() *ManagedClusterSpec {
 func (in *ManagedClusterStatus) DeepCopyInto(out *ManagedClusterStatus) {
 	*out = *in
 	in.LastObservedTime.DeepCopyInto(&out.LastObservedTime)
+	if in.AppPusher != nil {
+		in, out := &in.AppPusher, &out.AppPusher
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Allocatable != nil {
 		in, out := &in.Allocatable, &out.Allocatable
 		*out = make(v1.ResourceList, len(*in))
@@ -244,8 +249,16 @@ func (in *ManagedClusterStatus) DeepCopyInto(out *ManagedClusterStatus) {
 		}
 	}
 	out.NodeStatistics = in.NodeStatistics
-	out.PodStatistics = in.PodStatistics
-	in.ResourceUsage.DeepCopyInto(&out.ResourceUsage)
+	if in.PodStatistics != nil {
+		in, out := &in.PodStatistics, &out.PodStatistics
+		*out = new(PodStatistics)
+		**out = **in
+	}
+	if in.ResourceUsage != nil {
+		in, out := &in.ResourceUsage, &out.ResourceUsage
+		*out = new(ResourceUsage)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]metav1.Condition, len(*in))

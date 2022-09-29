@@ -38,10 +38,3 @@ bash "${CODEGEN_PKG}/generate-internal-groups.sh" "deepcopy,defaulter,conversion
   "proxies:v1alpha1" \
   --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
   --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
-
-bash "${CODEGEN_PKG}/generate-internal-groups.sh" "deepcopy,defaulter,conversion" \
-  github.com/clusternet/clusternet/pkg/generated \
-  github.com/clusternet/clusternet/pkg/scheduler/apis github.com/clusternet/clusternet/pkg/scheduler/apis \
-  "config:v1alpha1" \
-  --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
-  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"

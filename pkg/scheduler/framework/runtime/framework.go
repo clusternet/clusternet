@@ -246,12 +246,7 @@ func NewFramework(r Registry, profile *schedulerapis.SchedulerProfile, opts ...O
 		if _, ok := pluginConfig[name]; ok {
 			return nil, fmt.Errorf("repeated config for plugin %s", name)
 		}
-		pluginConfig[name] = profile.PluginConfig[i].Args
-	}
-	outputProfile := schedulerapis.SchedulerProfile{
-		SchedulerName: f.profileName,
-		Plugins:       profile.Plugins,
-		PluginConfig:  make([]schedulerapis.PluginConfig, 0, len(pg)),
+		pluginConfig[name] = profile.PluginConfig[i].Args.Object
 	}
 
 	// initialize plugins per individual extension points
@@ -263,12 +258,6 @@ func NewFramework(r Registry, profile *schedulerapis.SchedulerProfile, opts ...O
 		}
 
 		args := pluginConfig[name]
-		if args != nil {
-			outputProfile.PluginConfig = append(outputProfile.PluginConfig, schedulerapis.PluginConfig{
-				Name: name,
-				Args: args,
-			})
-		}
 		p, err := factory(args, f)
 		if err != nil {
 			return nil, fmt.Errorf("initializing plugin %q: %w", name, err)

@@ -170,18 +170,21 @@ func (g *genericScheduler) selectClusters(ctx context.Context, state *framework.
 		return selected, nil
 	}
 
-	selected.Replicas = make(map[string][]int32)
-	// transfer to available replicas
-	for index, feedOrder := range finv.Spec.Feeds {
-		if feedOrder.DesiredReplicas == nil {
-			continue
-		}
-		for _, clusterScore := range clusterScoreList {
-			feedKey := utils.GetFeedKey(feedOrder.Feed)
-			if clusterScore.MaxAvailableReplicas[index] == nil {
-				return framework.TargetClusters{}, fmt.Errorf("unable to get replicas for feed %q in cluster %q", feedKey, clusterScore.NamespacedName)
+	// transfer available replicas only if dynamic dividing
+	if sub.Spec.DividingScheduling != nil && sub.Spec.DividingScheduling.Type == appsapi.DynamicReplicaDividingType {
+		selected.Replicas = make(map[string][]int32)
+		// transfer to available replicas if necessary
+		for index, feedOrder := range finv.Spec.Feeds {
+			if feedOrder.DesiredReplicas == nil {
+				continue
 			}
-			selected.Replicas[feedKey] = append(selected.Replicas[feedKey], *clusterScore.MaxAvailableReplicas[index])
+			for _, clusterScore := range clusterScoreList {
+				feedKey := utils.GetFeedKey(feedOrder.Feed)
+				if clusterScore.MaxAvailableReplicas[index] == nil {
+					return framework.TargetClusters{}, fmt.Errorf("unable to get replicas for feed %q in cluster %q", feedKey, clusterScore.NamespacedName)
+				}
+				selected.Replicas[feedKey] = append(selected.Replicas[feedKey], *clusterScore.MaxAvailableReplicas[index])
+			}
 		}
 	}
 

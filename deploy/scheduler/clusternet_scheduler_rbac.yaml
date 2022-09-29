@@ -9,7 +9,7 @@ rules:
     verbs: [ "get", "list", "watch" ]
   - apiGroups: [ "apps.clusternet.io" ]
     resources: [ "subscriptions/status" ]
-    verbs: [ "update" ]
+    verbs: [ "update", "patch" ]
   - apiGroups: [ "clusters.clusternet.io" ]
     resources: [ "managedclusters" ]
     verbs: [ "get", "list", "watch" ]
@@ -40,7 +40,7 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: clusternet:scheduler
+  name: clusternet:scheduler:predictor
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

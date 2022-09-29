@@ -17,13 +17,11 @@ limitations under the License.
 package options
 
 import (
-	"fmt"
+	"encoding/json"
 	"io/ioutil"
 
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/scheduler/apis/config"
-	"github.com/clusternet/clusternet/pkg/scheduler/apis/config/scheme"
-	"github.com/clusternet/clusternet/pkg/scheduler/apis/config/validation"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/utils"
 	"github.com/spf13/pflag"
@@ -60,7 +58,7 @@ func (o *SchedulerOptions) Validate() error {
 	}
 
 	if o.SchedulerConfiguration != nil {
-		if err := validation.ValidateSchedulerConfiguration(o.SchedulerConfiguration); err != nil {
+		if err := config.ValidateSchedulerConfiguration(o.SchedulerConfiguration); err != nil {
 			errors = append(errors, err)
 		}
 	}
@@ -98,22 +96,11 @@ func loadConfigFromFile(file string) (*config.SchedulerConfiguration, error) {
 		return nil, err
 	}
 
-	return loadConfig(data)
-}
-
-func loadConfig(data []byte) (*config.SchedulerConfiguration, error) {
-	// The UniversalDecoder runs defaulting and returns the internal type by default.
-	obj, gvk, err := scheme.Codecs.UniversalDecoder().Decode(data, nil, nil)
+	configObj := &config.SchedulerConfiguration{}
+	err = json.Unmarshal(data, configObj)
 	if err != nil {
 		return nil, err
 	}
-	if cfgObj, ok := obj.(*config.SchedulerConfiguration); ok {
-		// We don't set this field in pkg/scheduler/apis/config/{version}/conversion.go
-		// because the field will be cleared later by API machinery during
-		// conversion. See SchedulerConfiguration internal type definition for
-		// more details.
-		cfgObj.TypeMeta.APIVersion = gvk.GroupVersion().String()
-		return cfgObj, nil
-	}
-	return nil, fmt.Errorf("couldn't decode as SchedulerConfiguration, got %s: ", gvk)
+	config.SetDefaultsSchedulerConfiguration(configObj)
+	return configObj, nil
 }

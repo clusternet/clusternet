@@ -91,10 +91,6 @@ func TestTrimCoreService(t *testing.T) {
 						"uid":       "28f5ae38-9eea-431c-918b-68ffdf263c24",
 					},
 					"spec": map[string]interface{}{
-						"clusterIP": "10.98.177.115",
-						"clusterIPs": []string{
-							"10.98.177.115",
-						},
 						"externalTrafficPolicy": "Cluster",
 						"ipFamilies": []string{
 							"IPv4",
@@ -116,6 +112,90 @@ func TestTrimCoreService(t *testing.T) {
 						},
 						"sessionAffinity": "None",
 						"type":            "NodePort",
+					},
+					"status": map[string]interface{}{},
+				},
+			},
+		},
+		{
+			name: "Headless Service",
+			resultRaw: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "Service",
+					"metadata": map[string]interface{}{
+						"creationTimestamp": "2021-11-01T08:12:43Z",
+						"labels": map[string]string{
+							"clusternet.io/created-by": "clusternet-hub",
+						},
+						"name":            "my-test-nodeport-svc",
+						"namespace":       "nginx-test",
+						"resourceVersion": "4457294",
+						"selfLink":        "test-link",
+						"uid":             "28f5ae38-9eea-431c-918b-68ffdf263c24",
+					},
+					"spec": map[string]interface{}{
+						"clusterIP":             "None",
+						"externalTrafficPolicy": "Cluster",
+						"ipFamilies": []string{
+							"IPv4",
+						},
+						"ipFamilyPolicy": "SingleStack",
+						"ports": []interface{}{
+							map[string]interface{}{
+								"name":       "tcp-80-80",
+								"port":       int64(80),
+								"protocol":   "TCP",
+								"targetPort": int64(80),
+							},
+							map[string]interface{}{
+								"name":       "tcp-443-443",
+								"port":       int64(443),
+								"protocol":   "TCP",
+								"targetPort": int64(443),
+							},
+						},
+						"sessionAffinity": "None",
+						"type":            "ClusterIP",
+					},
+					"status": map[string]interface{}{},
+				},
+			},
+			resultDesired: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "Service",
+					"metadata": map[string]interface{}{
+						"labels": map[string]string{
+							"clusternet.io/created-by": "clusternet-hub",
+						},
+						"name":      "my-test-nodeport-svc",
+						"namespace": "nginx-test",
+						"uid":       "28f5ae38-9eea-431c-918b-68ffdf263c24",
+					},
+					"spec": map[string]interface{}{
+						"clusterIP":             "None",
+						"externalTrafficPolicy": "Cluster",
+						"ipFamilies": []string{
+							"IPv4",
+						},
+						"ipFamilyPolicy": "SingleStack",
+						"ports": []interface{}{
+							map[string]interface{}{
+								"name":       "tcp-80-80",
+								"port":       int64(80),
+								"protocol":   "TCP",
+								"targetPort": int64(80),
+							},
+							map[string]interface{}{
+								"name":       "tcp-443-443",
+								"port":       int64(443),
+								"protocol":   "TCP",
+								"targetPort": int64(443),
+							},
+						},
+						"sessionAffinity": "None",
+						"type":            "ClusterIP",
 					},
 					"status": map[string]interface{}{},
 				},

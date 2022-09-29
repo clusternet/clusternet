@@ -36,7 +36,7 @@ type SchedulerConfiguration struct {
 	// choose to be scheduled under a particular profile by setting its associated
 	// scheduler name. subscription that don't specify any scheduler name are scheduled
 	// with the "default" profile, if present here.
-	Profiles []SchedulerProfile
+	Profiles []SchedulerProfile `json:"profiles,omitempty"`
 }
 
 // SchedulerProfile is a scheduling profile.
@@ -44,7 +44,7 @@ type SchedulerProfile struct {
 	// SchedulerName is the name of the scheduler associated to this profile.
 	// If SchedulerName matches with the pod's "spec.schedulerName", then the pod
 	// is scheduled with this profile.
-	SchedulerName string
+	SchedulerName string `json:"schedulerName,omitempty"`
 
 	// Plugins specify the set of plugins that should be enabled or disabled.
 	// Enabled plugins are the ones that should be enabled in addition to the
@@ -52,12 +52,12 @@ type SchedulerProfile struct {
 	// should be disabled.
 	// When no enabled or disabled plugin is specified for an extension point,
 	// default plugins for that extension point will be used if there is any.
-	Plugins *Plugins
+	Plugins *Plugins `json:"plugins,omitempty"`
 
 	// PluginConfig is an optional set of custom plugin arguments for each plugin.
 	// Omitting config args for a plugin is equivalent to using the default config
 	// for that plugin.
-	PluginConfig []PluginConfig
+	PluginConfig []PluginConfig `json:"pluginConfig,omitempty"`
 }
 
 // PluginConfig specifies arguments that should be passed to a plugin at the time of initialization.
@@ -65,9 +65,9 @@ type SchedulerProfile struct {
 // It is up to the plugin to process these Args.
 type PluginConfig struct {
 	// Name defines the name of plugin being configured
-	Name string
+	Name string `json:"name,omitempty"`
 	// Args defines the arguments passed to the plugins at the time of initialization. Args can have arbitrary structure.
-	Args runtime.Object
+	Args runtime.RawExtension `json:"args,omitempty"`
 }
 
 // Plugins include multiple extension points. When specified, the list of plugins for
@@ -77,48 +77,48 @@ type PluginConfig struct {
 // be invoked before default plugins, default plugins must be disabled and re-enabled here in desired order.
 type Plugins struct {
 	// PreFilter is a list of plugins that should be invoked at "PreFilter" extension point of the scheduling framework.
-	PreFilter PluginSet
+	PreFilter PluginSet `json:"preFilter,omitempty"`
 
 	// Filter is a list of plugins that should be invoked when filtering out clusters that cannot run the Subscription.
-	Filter PluginSet
+	Filter PluginSet `json:"filter,omitempty"`
 
 	// PostFilter is a list of plugins that are invoked after filtering phase, no matter whether filtering succeeds or not.
-	PostFilter PluginSet
+	PostFilter PluginSet `json:"postFilter,omitempty"`
 
 	// PrePredict is a list of plugins that are invoked before predicting.
-	PrePredict PluginSet
+	PrePredict PluginSet `json:"prePredict,omitempty"`
 
 	// Predict is a list of plugins that should be invoked when predicting max available replicas for clusters that have passed the filtering phase.
-	Predict PluginSet
+	Predict PluginSet `json:"predict,omitempty"`
 
 	// PreScore is a list of plugins that are invoked before scoring.
-	PreScore PluginSet
+	PreScore PluginSet `json:"preScore,omitempty"`
 
 	// Score is a list of plugins that should be invoked when ranking clusters that have passed the filtering phase.
-	Score PluginSet
+	Score PluginSet `json:"score,omitempty"`
 
 	// PreAssign is a list of plugins that are invoked before assigning.
-	PreAssign PluginSet
+	PreAssign PluginSet `json:"preAssign,omitempty"`
 
 	// Assign is a list of plugins that should be invoked when assigning replicas.
-	Assign PluginSet
+	Assign PluginSet `json:"assign,omitempty"`
 
 	// Reserve is a list of plugins invoked when reserving/unreserving resources
 	// after a cluster is assigned to run the Subscription.
-	Reserve PluginSet
+	Reserve PluginSet `json:"reserve,omitempty"`
 
 	// Permit is a list of plugins that control binding of a Subscription. These plugins can prevent or delay binding of a Subscription.
-	Permit PluginSet
+	Permit PluginSet `json:"permit,omitempty"`
 
 	// PreBind is a list of plugins that should be invoked before a Subscription is bound.
-	PreBind PluginSet
+	PreBind PluginSet `json:"preBind,omitempty"`
 
 	// Bind is a list of plugins that should be invoked at "Bind" extension point of the scheduling framework.
 	// The scheduler call these plugins in order. Scheduler skips the rest of these plugins as soon as one returns success.
-	Bind PluginSet
+	Bind PluginSet `json:"bind,omitempty"`
 
 	// PostBind is a list of plugins that should be invoked after a Subscription is successfully bound.
-	PostBind PluginSet
+	PostBind PluginSet `json:"postBind,omitempty"`
 }
 
 // PluginSet specifies enabled and disabled plugins for an extension point.
@@ -126,18 +126,18 @@ type Plugins struct {
 type PluginSet struct {
 	// Enabled specifies plugins that should be enabled in addition to default plugins.
 	// These are called after default plugins and in the same order specified here.
-	Enabled []Plugin
+	Enabled []Plugin `json:"enabled,omitempty"`
 	// Disabled specifies default plugins that should be disabled.
 	// When all default plugins need to be disabled, an array containing only one "*" should be provided.
-	Disabled []Plugin
+	Disabled []Plugin `json:"disabled,omitempty"`
 }
 
 // Plugin specifies a plugin name and its weight when applicable. Weight is used only for Score plugins.
 type Plugin struct {
 	// Name defines the name of plugin
-	Name string
+	Name string `json:"name,omitempty"`
 	// Weight defines the weight of plugin, only used for Score plugins.
-	Weight int32
+	Weight int32 `json:"weight,omitempty"`
 }
 
 /*

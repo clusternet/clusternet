@@ -18,10 +18,11 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+readonly CLUSTERNET_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
+
+WHAT=${WHAT:-$(cd "${CLUSTERNET_ROOT}"/cmd; ls -d * | paste -s -d, -)}
 PLATFORMS=${PLATFORMS:-linux/amd64}
 CGO_ENABLED=${CGO_ENABLED:-0}
-
-readonly CLUSTERNET_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
 
 source "${CLUSTERNET_ROOT}/hack/lib/version.sh"
 

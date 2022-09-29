@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -77,12 +78,15 @@ func DeployableByHub(clusterLister clusterlisters.ManagedClusterLister, clusterI
 		return false, fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", dedicatedNamespace)
 	}
 
-	if mcls[0].Spec.SyncMode == clusterapi.Pull || !mcls[0].Status.AppPusher {
-		msg := "set syncMode as Pull"
-		if !mcls[0].Status.AppPusher {
-			msg = "disabled AppPusher"
-		}
-		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, msg)
+	if mcls[0].Spec.SyncMode == clusterapi.Pull {
+		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, "set syncMode as Pull")
+		return false, nil
+	}
+	if mcls[0].Status.AppPusher == nil {
+		return false, fmt.Errorf("unknown AppPusher")
+	}
+	if !*mcls[0].Status.AppPusher {
+		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, "disabled AppPusher")
 		return false, nil
 	}
 	return true, nil
@@ -161,6 +165,13 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	chart, err = LocateAuthHelmChart(cfg, hr.Spec.Repository, username, password, hr.Spec.Chart, hr.Spec.ChartVersion)
 	if err != nil {
 		recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
+		hrStatus = &appsapi.HelmReleaseStatus{
+			Phase: release.StatusFailed,
+			Notes: err.Error(),
+		}
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
 		return err
 	}
 
@@ -173,16 +184,32 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	}
 
 	var rel *release.Release
-	// check whether the release is deployed
-	rel, err = cfg.Releases.Deployed(releaseName)
-	if err != nil {
-		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
-			hrStatus.Phase = release.StatusPendingInstall
-			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
-				return err
-			}
-			rel, err = InstallRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
+	rel, err = cfg.Releases.Last(releaseName)
+	if err != nil && !strings.Contains(err.Error(), driver.ErrReleaseNotFound.Error()) {
+		return err
+	}
+
+	// Install or upgrade failed and atomic is set, uninstalling release
+	if hr.Spec.Atomic != nil && *hr.Spec.Atomic && rel != nil && rel.Info.Status != release.StatusDeployed {
+		klog.V(5).Infof("Uninstalling undeployed HelmRelease %s", klog.KObj(hr))
+		hrStatus.Phase = release.StatusUninstalling
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
 		}
+		err = UninstallRelease(cfg, hr)
+		if err != nil {
+			return err
+		}
+		rel = nil
+	}
+
+	if rel == nil {
+		klog.V(5).Infof("Installing HelmRelease %s", klog.KObj(hr))
+		hrStatus.Phase = release.StatusPendingInstall
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
+		rel, err = InstallRelease(cfg, hr, chart, overrideValues)
 	} else {
 		// verify the release is changed or not
 		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
@@ -191,7 +218,7 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
 				return err
 			}
-			rel, err = UpgradeRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
+			rel, err = UpgradeRelease(cfg, hr, chart, overrideValues)
 		} else {
 			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
 		}
@@ -200,7 +227,12 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	if err != nil {
 		// repo update
 		if strings.Contains(err.Error(), "helm repo update") {
-			return UpdateRepo(hr.Spec.Repository)
+			err2 := UpdateRepo(hr.Spec.Repository)
+			if err2 == nil {
+				// return an error to let it reconcile
+				err2 = fmt.Errorf("[Helm Repo Update] requeue HelmRelease %s", klog.KObj(hr))
+			}
+			return err2
 		}
 		hrStatus = &appsapi.HelmReleaseStatus{
 			Phase: release.StatusFailed,
@@ -410,9 +442,15 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 	}
 
 	// update status
-	desc.Status.Phase = statusPhase
-	desc.Status.Reason = reason
-	_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+	descStatus := desc.Status.DeepCopy()
+	descStatus.Phase = statusPhase
+	descStatus.Reason = reason
+
+	var err error
+	if !reflect.DeepEqual(desc.Status.Phase, descStatus.Phase) || !reflect.DeepEqual(desc.Status.Reason, descStatus.Reason) {
+		err = UpdateDescriptionStatus(desc, descStatus, clusternetClient)
+		klog.V(5).Infof("ApplyDescription phaseStatus has changed, UpdateStatus. err: %s", err)
+	}
 
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
@@ -477,9 +515,6 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 
 func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
 	resource *unstructured.Unstructured, ignoreAdd bool) error {
-	// set UID as empty
-	resource.SetUID("")
-
 	var lastError error
 	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
@@ -728,4 +763,29 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, i
 	}
 
 	return false
+}
+
+func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus, clusternetClient *clusternetclientset.Clientset) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+
+	klog.V(5).Infof("try to update Description %q status", desc.Name)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		desc.Status = *status
+		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+		if err == nil {
+			//TODO
+			return nil
+		}
+
+		if updated, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(context.TODO(), desc.Name, metav1.GetOptions{}); err == nil {
+			// make a copy so we don't mutate the shared cache
+			desc = updated.DeepCopy()
+		} else {
+			utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err))
+		}
+		return err
+	})
 }

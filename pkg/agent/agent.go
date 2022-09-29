@@ -37,17 +37,20 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	utilpointer "k8s.io/utils/pointer"
+	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
+	mcsInformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
 
 	"github.com/clusternet/clusternet/pkg/agent/deployer"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/controllers/mcs"
 	"github.com/clusternet/clusternet/pkg/controllers/proxies/sockets"
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/predictor"
 	"github.com/clusternet/clusternet/pkg/utils"
-	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 const (
@@ -90,7 +93,8 @@ type Agent struct {
 
 	deployer *deployer.Deployer
 
-	predictor *predictor.Server
+	predictor    *predictor.Server
+	seController *mcs.SeController
 }
 
 // NewAgent returns a new Agent.
@@ -114,6 +118,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 		ClientConfig: childKubeConfig,
 	}
 	childKubeClientSet := kubernetes.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-kube-client"))
+	mcsClientSet := mcsclientset.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-mcs-client"))
 	var electionClientSet *kubernetes.Clientset
 	if controllerOpts.LeaderElection.LeaderElect {
 		electionClientSet = kubernetes.NewForConfigOrDie(clientBuilder.ConfigOrDie("clusternet-agent-election-client"))
@@ -124,6 +129,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 
 	// creates the informer factory
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(childKubeClientSet, known.DefaultResync)
+	mcsInformerFactory := mcsInformers.NewSharedInformerFactory(mcsClientSet, known.DefaultResync)
 
 	var p *predictor.Server
 	if registrationOpts.serveInternalPredictor {
@@ -154,7 +160,8 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 			registrationOpts.ClusterSyncMode,
 			childKubeConfig.Host,
 			controllerOpts.LeaderElection.ResourceNamespace),
-		predictor: p,
+		predictor:    p,
+		seController: mcs.NewSeController(kubeInformerFactory.Discovery().V1().EndpointSlices(), mcsClientSet, mcsInformerFactory),
 	}
 	return agent, nil
 }
@@ -233,6 +240,12 @@ func (agent *Agent) run(ctx context.Context) {
 			agent.DedicatedNamespace,
 			agent.ClusterID,
 			defaultThreadiness); err != nil {
+			klog.Error(err)
+		}
+	}, time.Duration(0))
+
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		if err := agent.seController.Run(ctx, agent.parentDedicatedKubeConfig, *agent.DedicatedNamespace); err != nil {
 			klog.Error(err)
 		}
 	}, time.Duration(0))
@@ -332,8 +345,8 @@ func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) er
 	crr, err := client.ClustersV1beta1().ClusterRegistrationRequests().Create(ctx,
 		newClusterRegistrationRequest(*agent.ClusterID, agent.registrationOptions.ClusterType,
 			generateClusterName(agent.registrationOptions.ClusterName, agent.registrationOptions.ClusterNamePrefix),
-			agent.registrationOptions.ClusterSyncMode, agent.registrationOptions.ClusterLabels),
-		metav1.CreateOptions{})
+			agent.registrationOptions.ClusterNamespace, agent.registrationOptions.ClusterSyncMode,
+			agent.registrationOptions.ClusterLabels), metav1.CreateOptions{})
 
 	if err != nil {
 		if !apierrors.IsAlreadyExists(err) {
@@ -464,7 +477,7 @@ func (agent *Agent) storeParentClusterCredentials(ctx context.Context, crr *clus
 	}, known.DefaultRetryPeriod, 0.4, true)
 }
 
-func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterSyncMode, clusterLabels string) *clusterapi.ClusterRegistrationRequest {
+func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName, clusterNamespace, clusterSyncMode, clusterLabels string) *clusterapi.ClusterRegistrationRequest {
 	return &clusterapi.ClusterRegistrationRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: generateClusterRegistrationRequestName(clusterID),
@@ -475,11 +488,12 @@ func newClusterRegistrationRequest(clusterID types.UID, clusterType, clusterName
 			},
 		},
 		Spec: clusterapi.ClusterRegistrationRequestSpec{
-			ClusterID:     clusterID,
-			ClusterType:   clusterapi.ClusterType(clusterType),
-			ClusterName:   clusterName,
-			SyncMode:      clusterapi.ClusterSyncMode(clusterSyncMode),
-			ClusterLabels: parseClusterLabels(clusterLabels),
+			ClusterID:        clusterID,
+			ClusterType:      clusterapi.ClusterType(clusterType),
+			ClusterName:      clusterName,
+			ClusterNamespace: clusterNamespace,
+			SyncMode:         clusterapi.ClusterSyncMode(clusterSyncMode),
+			ClusterLabels:    parseClusterLabels(clusterLabels),
 		},
 	}
 }

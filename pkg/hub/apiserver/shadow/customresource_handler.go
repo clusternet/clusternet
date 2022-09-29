@@ -41,7 +41,6 @@ import (
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/endpoints"
-	"k8s.io/apiserver/pkg/endpoints/discovery"
 	apiserverdiscovery "k8s.io/apiserver/pkg/endpoints/discovery"
 	"k8s.io/apiserver/pkg/endpoints/handlers"
 	"k8s.io/apiserver/pkg/endpoints/handlers/negotiation"
@@ -279,10 +278,11 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	if !canBeAddedToStorage(crd.Spec.Group, storageVersion, crd.Spec.Names.Plural, r.apiserviceLister) {
 		return nil
 	}
+	metav1.AddToGroupVersion(Scheme, schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion})
 
 	r.versionDiscoveryHandler.updateCRD(crd)
 
-	crdGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, ParameterCodec, Codecs)
+	crdGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, runtime.NewParameterCodec(Scheme), Codecs)
 	var standardSerializers []runtime.SerializerInfo
 	for _, s := range crdGroupInfo.NegotiatedSerializer.SupportedMediaTypes() {
 		if s.MediaType == runtime.ContentTypeProtobuf {
@@ -301,7 +301,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		selfLinkPrefix = "/" + path.Join("apis", shadowapi.GroupName, shadowapi.SchemeGroupVersion.Version, "namespaces") + "/"
 	}
 
-	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, ParameterCodec, r.manifestLister, r.reservedNamespace)
+	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, runtime.NewParameterCodec(Scheme), r.manifestLister, r.reservedNamespace)
 	restStorage.SetNamespaceScoped(crd.Spec.Scope == apiextensionsv1.NamespaceScoped)
 	restStorage.SetName(resource)
 	restStorage.SetShortNames(crd.Spec.Names.ShortNames)
@@ -659,7 +659,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 type versionDiscoveryHandler struct {
 	lock sync.RWMutex
 
-	apiVersionHandler  *discovery.APIVersionHandler
+	apiVersionHandler  *apiserverdiscovery.APIVersionHandler
 	nonCRDAPIResources []metav1.APIResource
 
 	crdAPIResources []metav1.APIResource
@@ -670,7 +670,7 @@ func newVersionDiscoveryHandler(serializer runtime.NegotiatedSerializer, groupVe
 		nonCRDAPIResources: nonCRDAPIResources,
 		crdAPIResources:    []metav1.APIResource{},
 	}
-	s.apiVersionHandler = discovery.NewAPIVersionHandler(serializer, groupVersion, s)
+	s.apiVersionHandler = apiserverdiscovery.NewAPIVersionHandler(serializer, groupVersion, s)
 	return s
 }
 

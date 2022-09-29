@@ -19,7 +19,7 @@ package generic
 import (
 	"context"
 	"fmt"
-	"strings"
+	"reflect"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -175,34 +175,40 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 	return nil
 }
 
-func (deployer *Deployer) handleResource(ownedByValue string) error {
-	// get description ns and name
-	parts := strings.Split(ownedByValue, ".")
-	if len(parts) < 2 {
-		return fmt.Errorf("unexpected value for annotation %s: %s", known.ObjectOwnedByDescriptionAnnotation, ownedByValue)
+func (deployer *Deployer) handleResource(resAttrs *resourcecontroller.ResourceAttrs) error {
+	klog.Infof("handle handleResource [%s]", resAttrs)
+	if resAttrs == nil {
+		return fmt.Errorf("unexpected value for resAttrs nil")
 	}
-	// namespace contains no ".", while name does
-	namespace := parts[0]
-	name := strings.TrimPrefix(ownedByValue, namespace+".")
 
-	desc, err := deployer.descLister.Descriptions(namespace).Get(name)
+	desc, err := deployer.descLister.Descriptions(resAttrs.Namespace).Get(resAttrs.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(2).Infof("the owner description %q has been deleted", ownedByValue)
+			klog.V(2).Infof("the owner description %s/%s has been deleted", resAttrs.Namespace, resAttrs.Name)
 			return nil
 		}
 		return err
 	}
 
 	if desc.DeletionTimestamp != nil {
-		klog.V(4).Infof("do not rollback in-deleting Description %s", ownedByValue)
+		klog.V(4).Infof("do not rollback in-deleting Description %s/%s", resAttrs.Namespace, resAttrs.Name)
 		return nil
 	}
 
-	err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil, true)
-	if err == nil {
-		klog.V(4).Infof("successfully rollback Description %s", ownedByValue)
+	if resAttrs.ObjectAction != resourcecontroller.ObjectDelete {
+		err = deployer.SyncDescriptionStatus(deployer.clusternetClient, deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
+		if err != nil {
+			klog.Errorf("filed SyncDescriptionStatus. %v", err)
+			return err
+		}
+	}
+
+	if resAttrs.ObjectAction != resourcecontroller.ObjectUpdateStatus {
+		err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+			deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil, true)
+		if err == nil {
+			klog.V(4).Infof("successfully rollback Description %s/%s", resAttrs.Namespace, resAttrs.Name)
+		}
 	}
 	return err
 }
@@ -225,4 +231,76 @@ func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller 
 	} else {
 		deployer.rsControllers[gvk] = controller
 	}
+}
+
+func (deployer *Deployer) SyncDescriptionStatus(clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
+	restMapper meta.RESTMapper, desc *appsapi.Description) error {
+	descStatus := desc.Status.DeepCopy()
+	// descStatusMap for check and update exsit ManifestStatus
+	descStatusMap := make(map[string]int)
+	for index, status := range descStatus.ManifestStatuses {
+		descStatusMap[status.Namespace+"/"+status.Name] = index
+	}
+
+	objectsToBeDeployed := desc.Spec.Raw
+	for _, object := range objectsToBeDeployed {
+		resource := &unstructured.Unstructured{}
+		err := resource.UnmarshalJSON(object)
+		if err != nil {
+			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			continue
+		}
+
+		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		if err != nil {
+			klog.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
+			return err
+		}
+
+		// Get cluster Resource
+		resourceObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+			Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
+		if err != nil {
+			msg := fmt.Sprintf("failed to Get resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			return err
+		}
+		manifestStatus := appsapi.ManifestStatus{
+			Feed: appsapi.Feed{
+				Kind:       resourceObj.GetKind(),
+				APIVersion: resourceObj.GetAPIVersion(),
+				Namespace:  resourceObj.GetNamespace(),
+				Name:       resourceObj.GetName(),
+			},
+		}
+		statusMap, _, err := unstructured.NestedMap(resourceObj.Object, "status")
+		if err != nil {
+			klog.Errorf("Failed to get status field from %s(%s/%s), error: %v", resourceObj.GetKind(),
+				resourceObj.GetNamespace(), resourceObj.GetName(), err)
+			return err
+		}
+		result := &unstructured.Unstructured{}
+		result.SetUnstructuredContent(statusMap)
+
+		manifestStatus.ObservedStatus.Reset()
+		manifestStatus.ObservedStatus.Object = result.DeepCopyObject()
+
+		key := manifestStatus.Namespace + "/" + manifestStatus.Name
+		if index, ok := descStatusMap[key]; ok {
+			descStatus.ManifestStatuses[index] = *manifestStatus.DeepCopy()
+		} else {
+			descStatus.ManifestStatuses = append(descStatus.ManifestStatuses, *manifestStatus.DeepCopy())
+			descStatusMap[key] = len(descStatus.ManifestStatuses) - 1
+		}
+	}
+
+	// try to update Descriptions Status
+	var err error
+	if !reflect.DeepEqual(desc.Status.ManifestStatuses, descStatus.ManifestStatuses) {
+		err = utils.UpdateDescriptionStatus(desc, descStatus, deployer.clusternetClient)
+		klog.V(5).Infof("SyncDescriptionStatus Descriptions manifestStatus has changed, UpdateStatus. err: %s", err)
+	}
+
+	return err
 }

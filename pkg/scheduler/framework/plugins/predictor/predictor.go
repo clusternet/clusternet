@@ -22,7 +22,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -117,13 +117,16 @@ func predictMaxAcceptableReplicas(httpClient *http.Client, address string, requi
 		return nil, err
 	}
 
-	resp, err := httpClient.Post(address, "application/json", bytes.NewBuffer(payload))
+	// TODO: Use the url.JoinPath function in Go 1.19
+	resp, err := httpClient.Post(address+schedulerapi.RootPathReplicas+schedulerapi.SubPathPredict,
+		"application/json",
+		bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
 
 	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}

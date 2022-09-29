@@ -18,6 +18,7 @@ package clusterstatus
 
 import (
 	"errors"
+	"os"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -31,6 +32,11 @@ import (
 // copied from submariner.io/submariner-operator/pkg/discovery/network/generic.go and modified
 func findServiceIPRange(podLister corev1Lister.PodLister) (string, error) {
 	clusterIPRange := findPodCommandParameter(podLister, "kube-apiserver", "--service-cluster-ip-range")
+	if clusterIPRange != "" {
+		return clusterIPRange, nil
+	}
+	// Try to find the pod IP range from the env.
+	clusterIPRange = os.Getenv("SERVICE_CIDR")
 	if clusterIPRange != "" {
 		return clusterIPRange, nil
 	}
@@ -57,7 +63,11 @@ func findPodIPRange(nodeLister corev1Lister.NodeLister, podLister corev1Lister.P
 	if podIPRange != "" {
 		return podIPRange, nil
 	}
-
+	// Try to find the pod IP range from the env.
+	podIPRange = os.Getenv("CLUSTER_CIDR")
+	if podIPRange != "" {
+		return podIPRange, nil
+	}
 	return "", errors.New("can't get PodIPRange")
 }
 

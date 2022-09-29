@@ -1,0 +1,43 @@
+run:
+  # default concurrency is a available CPU number
+  concurrency: 4
+  # timeout for analysis, e.g. 30s, 5m, default is 1m
+  deadline: 10m
+
+linters:
+  fast: false
+  enable:
+    - deadcode
+    - unused
+    - gci
+    - varcheck
+    - ineffassign
+    - goimports
+    - gofmt
+    - misspell
+    - unparam
+    - unconvert
+    - govet
+    - errcheck
+    - structcheck
+  disable-all: true
+
+linters-settings:
+  gci:
+    # Checks that no inline Comments are present.
+    # Default: false
+    no-inline-comments: false
+    # Checks that no prefix Comments(comment lines above an import) are present.
+    # Default: false
+    no-prefix-comments: false
+    # Section configuration to compare against.
+    # Section names are case-insensitive and may contain parameters in ().
+    # Default: ["standard", "default"]
+    sections:
+      - standard # Captures all standard packages if they do not match another section.
+      - default # Contains all imports that could not be matched to another section type.
+      - prefix(github.com/clusternet) # Groups all imports with the specified Prefix.
+    # Separators that should be present between sections.
+    # Default: ["newLine"]
+    section-separators:
+      - newLine

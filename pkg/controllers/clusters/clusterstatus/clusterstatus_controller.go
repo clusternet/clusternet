@@ -19,6 +19,7 @@ package clusterstatus
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -106,53 +107,52 @@ func (c *Controller) Run(ctx context.Context) {
 
 func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	klog.V(7).Info("collecting cluster status...")
+	var status clusterapi.ManagedClusterStatus
+
 	clusterVersion, err := c.getKubernetesVersion(ctx)
 	if err != nil {
 		klog.Warningf("failed to collect kubernetes version: %v", err)
+	} else {
+		status.KubernetesVersion = clusterVersion.GitVersion
+		status.Platform = clusterVersion.Platform
 	}
 
 	nodes, err := c.nodeLister.List(labels.Everything())
 	if err != nil {
 		klog.Warningf("failed to list nodes: %v", err)
+	} else {
+		status.NodeStatistics = getNodeStatistics(nodes)
+
+		capacity, allocatable := getNodeResource(nodes)
+		status.Allocatable = allocatable
+		status.Capacity = capacity
 	}
-
-	nodeStatistics := getNodeStatistics(nodes)
-
-	var podStatistics clusterapi.PodStatistics
-	var resourceUsage clusterapi.ResourceUsage
-	if c.useMetricsServer {
-		podStatistics = getPodStatistics(c.metricClientset)
-		resourceUsage = getResourceUsage(c.metricClientset)
-	}
-
-	capacity, allocatable := getNodeResource(nodes)
 
 	clusterCIDR, err := c.discoverClusterCIDR()
 	if err != nil {
 		klog.Warningf("failed to discover cluster CIDR: %v", err)
+	} else {
+		status.ClusterCIDR = clusterCIDR
 	}
 
 	serviceCIDR, err := c.discoverServiceCIDR()
 	if err != nil {
 		klog.Warningf("failed to discover service CIDR: %v", err)
+	} else {
+		status.ServiceCIDR = serviceCIDR
 	}
 
-	var status clusterapi.ManagedClusterStatus
-	status.KubernetesVersion = clusterVersion.GitVersion
-	status.Platform = clusterVersion.Platform
 	status.APIServerURL = c.apiserverURL
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
-	status.AppPusher = c.appPusherEnabled
+	status.AppPusher = &c.appPusherEnabled
 	status.UseSocket = c.useSocket
-	status.ClusterCIDR = clusterCIDR
-	status.ServiceCIDR = serviceCIDR
-	status.NodeStatistics = nodeStatistics
-	status.PodStatistics = podStatistics
-	status.ResourceUsage = resourceUsage
-	status.Allocatable = allocatable
-	status.Capacity = capacity
+
+	if c.useMetricsServer {
+		status.PodStatistics = getPodStatistics(c.metricClientset)
+		status.ResourceUsage = getResourceUsage(c.metricClientset)
+	}
 	status.HeartbeatFrequencySeconds = utilpointer.Int64Ptr(int64(c.heartbeatFrequency.Seconds()))
 	status.Conditions = []metav1.Condition{c.getCondition(status)}
 	status.PredictorEnabled = c.predictorEnable
@@ -183,6 +183,15 @@ func (c *Controller) GetClusterStatus() *clusterapi.ManagedClusterStatus {
 	}
 
 	return c.clusterStatus.DeepCopy()
+}
+
+func (c *Controller) GetManagedClusterLabels() labels.Set {
+	nodes, err := c.nodeLister.List(labels.Everything())
+	if err != nil {
+		klog.Warningf("failed to list nodes: %v", err)
+		return nil
+	}
+	return getCommonNodeLabels(nodes)
 }
 
 func (c *Controller) getKubernetesVersion(_ context.Context) (*version.Info, error) {
@@ -239,17 +248,18 @@ func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStat
 
 // getPodStatistics returns the PodStatistics in the cluster
 // get pods num in running conditions and the total pods num in the cluster
-func getPodStatistics(clientset *metricsv.Clientset) (podStatistics clusterapi.PodStatistics) {
+func getPodStatistics(clientset *metricsv.Clientset) *clusterapi.PodStatistics {
 	if clientset == nil {
 		klog.Warningf("empty metris client, will return directly ")
-		return
+		return nil
 	}
-	podStatistics = clusterapi.PodStatistics{}
+
 	podMetricsList, err := clientset.MetricsV1beta1().PodMetricses(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		klog.Warningf("failed to list podMetris with err: %v", err.Error)
-		return
+		return nil
 	}
+	podStatistics := &clusterapi.PodStatistics{}
 	for _, item := range podMetricsList.Items {
 		if len(item.Containers) != 0 {
 			podStatistics.RunningPods += 1
@@ -257,28 +267,29 @@ func getPodStatistics(clientset *metricsv.Clientset) (podStatistics clusterapi.P
 	}
 	podStatistics.TotalPods = int32(len(podMetricsList.Items))
 
-	return
+	return podStatistics
 }
 
 // getResourceUsage returns the ResourceUsage in the cluster
 // get cpu(m) and memory(Mi) used
-func getResourceUsage(clientset *metricsv.Clientset) (resourceUsage clusterapi.ResourceUsage) {
+func getResourceUsage(clientset *metricsv.Clientset) *clusterapi.ResourceUsage {
 	if clientset == nil {
 		klog.Warningf("empty metris client, will return directly ")
-		return
+		return nil
 	}
-	resourceUsage = clusterapi.ResourceUsage{}
+
 	nodeMetricsList, err := clientset.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		klog.Warningf("failed to list nodeMetris with err: %v", err.Error)
-		return
+		return nil
 	}
+	resourceUsage := &clusterapi.ResourceUsage{}
 	for _, item := range nodeMetricsList.Items {
 		resourceUsage.CpuUsage.Add(*(item.Usage.Cpu()))
 		resourceUsage.MemoryUsage.Add(*(item.Usage.Memory()))
 	}
 
-	return
+	return resourceUsage
 }
 
 // discoverServiceCIDR returns the service CIDR for the cluster.
@@ -331,4 +342,45 @@ func getNodeCondition(status *corev1.NodeStatus, conditionType corev1.NodeCondit
 		}
 	}
 	return -1, nil
+}
+
+// getCommonNodeLabels return the common labels from nodes meta.label
+func getCommonNodeLabels(nodes []*corev1.Node) map[string]string {
+	if len(nodes) == 0 {
+		return nil
+	}
+	initLabels := nodes[0].Labels
+	for _, node := range nodes {
+		if isMasterNode(node.Labels) {
+			continue
+		}
+		currentLabels := map[string]string{}
+		for k, v := range node.Labels {
+			c, ok := initLabels[k]
+			if ok && c == v {
+				if strings.HasPrefix(k, known.NodeLabelsKeyPrefix) {
+					currentLabels[k] = v
+				}
+			}
+		}
+		if len(currentLabels) == 0 {
+			return nil
+		}
+		initLabels = currentLabels
+	}
+	return initLabels
+}
+
+// isMasterNode return true if the node is a master node.
+func isMasterNode(labels map[string]string) bool {
+	if len(labels) == 0 {
+		return false
+	}
+	if _, ok := labels["node-role.kubernetes.io/control-plane"]; ok {
+		return true
+	}
+	if _, ok := labels["node-role.kubernetes.io/master"]; ok {
+		return true
+	}
+	return false
 }

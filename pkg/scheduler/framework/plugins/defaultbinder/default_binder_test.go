@@ -60,21 +60,16 @@ func TestDefaultBinder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var bindedClusters []string
+			var boundClusters []string
 			client := fake.NewSimpleClientset(testSubscription)
-			client.PrependReactor("update", "subscriptions", func(action clienttesting.Action) (bool, runtime.Object, error) {
+			client.PrependReactor("patch", "subscriptions", func(action clienttesting.Action) (bool, runtime.Object, error) {
 				if action.GetSubresource() != "status" {
 					return false, nil, nil
 				}
 				if tt.injectErr != nil {
 					return true, nil, tt.injectErr
 				}
-
-				bindedSubscription := action.(clienttesting.UpdateAction).GetObject().(*appsapi.Subscription)
-				if bindedSubscription != nil {
-					bindedClusters = bindedSubscription.Status.BindingClusters
-				}
-				return true, bindedSubscription, nil
+				return false, nil, nil
 			})
 
 			fh, err := frameworkruntime.NewFramework(nil, nil, frameworkruntime.WithClientSet(client))
@@ -83,10 +78,15 @@ func TestDefaultBinder(t *testing.T) {
 			}
 			binder := &DefaultBinder{handle: fh}
 			status := binder.Bind(context.Background(), nil, testSubscription, testClusters)
+			gotSubscription, err := client.AppsV1alpha1().Subscriptions(testSubscription.Namespace).Get(context.Background(), testSubscription.Name, metav1.GetOptions{})
+			if err != nil {
+				t.Errorf("failed to get subscription: %v", err)
+			}
+			boundClusters = gotSubscription.Status.BindingClusters
 			if got := status.AsError(); (tt.injectErr != nil) != (got != nil) {
 				t.Errorf("got error %q, want %q", got, tt.injectErr)
 			}
-			if diff := cmp.Diff(tt.wantedBindings, bindedClusters); diff != "" {
+			if diff := cmp.Diff(tt.wantedBindings, boundClusters); diff != "" {
 				t.Errorf("got different binding (-want, +got): %s", diff)
 			}
 		})

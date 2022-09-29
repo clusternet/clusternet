@@ -138,28 +138,66 @@ func CheckIfInstallable(chart *chart.Chart) error {
 	return fmt.Errorf("chart %s is %s, which is not installable", chart.Name(), chart.Metadata.Type)
 }
 
-func InstallRelease(cfg *action.Configuration, releaseName, targetNamespace string,
+func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 	client := action.NewInstall(cfg)
-	client.ReleaseName = releaseName
-	client.CreateNamespace = true
-	client.Timeout = time.Minute * 5
-	client.Namespace = targetNamespace
-
+	client.ReleaseName = getReleaseName(hr)
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
+	client.Namespace = hr.Spec.TargetNamespace
+	if hr.Spec.CreateNamespace != nil {
+		client.CreateNamespace = *hr.Spec.CreateNamespace
+	}
+	if hr.Spec.Atomic != nil {
+		client.Atomic = *hr.Spec.Atomic
+	}
+	if hr.Spec.Replace != nil {
+		client.Replace = *hr.Spec.Replace
+	}
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
+	if hr.Spec.WaitForJob != nil {
+		client.WaitForJobs = *hr.Spec.WaitForJob
+	}
+	if hr.Spec.SkipCRDs != nil {
+		client.SkipCRDs = *hr.Spec.SkipCRDs
+	}
+	if hr.Spec.DisableHooks != nil {
+		client.DisableHooks = *hr.Spec.DisableHooks
+	}
 	return client.Run(chart, vals)
 }
 
-func UpgradeRelease(cfg *action.Configuration, releaseName, targetNamespace string,
+func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 	client := action.NewUpgrade(cfg)
-	client.Timeout = time.Minute * 5
-	client.Namespace = targetNamespace
-	return client.Run(releaseName, chart, vals)
+	client.MaxHistory = cfg.Releases.MaxHistory // need to rewire it here
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
+	client.Namespace = hr.Spec.TargetNamespace
+	if hr.Spec.Atomic != nil {
+		client.Atomic = *hr.Spec.Atomic
+	}
+	if hr.Spec.Force != nil {
+		client.Force = *hr.Spec.Force
+	}
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
+	if hr.Spec.WaitForJob != nil {
+		client.WaitForJobs = *hr.Spec.WaitForJob
+	}
+	if hr.Spec.SkipCRDs != nil {
+		client.SkipCRDs = *hr.Spec.SkipCRDs
+	}
+	if hr.Spec.DisableHooks != nil {
+		client.DisableHooks = *hr.Spec.DisableHooks
+	}
+	return client.Run(getReleaseName(hr), chart, vals)
 }
 
 func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {
 	client := action.NewUninstall(cfg)
-	client.Timeout = time.Minute * 5
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	_, err := client.Run(getReleaseName(hr))
 	if err != nil {
 		if strings.Contains(err.Error(), "Release not loaded") {
@@ -204,7 +242,7 @@ func UpdateRepo(repoURL string) error {
 		return err
 	}
 
-	if _, err := cr.DownloadIndexFile(); err != nil {
+	if _, err = cr.DownloadIndexFile(); err != nil {
 		return err
 	}
 

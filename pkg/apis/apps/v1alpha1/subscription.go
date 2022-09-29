@@ -182,6 +182,7 @@ type ReplicaStatus struct {
 
 	// currentReplicas is the number of Pods created by the workload controller from the StatefulSet version
 	// indicated by currentRevision.
+	// +optional
 	CurrentReplicas int32 `json:"currentReplicas,omitempty"`
 
 	// readyReplicas is the number of pods targeted by this workload with a Ready Condition.
