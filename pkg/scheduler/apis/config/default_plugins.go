@@ -45,7 +45,11 @@ func getDefaultPlugins() *Plugins {
 				{Name: names.TaintToleration, Weight: 3},
 			},
 		},
-		PreAssign: PluginSet{},
+		PreAssign: PluginSet{
+			Enabled: []Plugin{
+				{Name: names.DynamicAssigner},
+			},
+		},
 		Assign: PluginSet{
 			Enabled: []Plugin{
 				{Name: names.StaticAssigner},

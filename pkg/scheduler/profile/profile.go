@@ -23,11 +23,12 @@ import (
 	"errors"
 	"fmt"
 
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/events"
+
 	"github.com/clusternet/clusternet/pkg/scheduler/apis/config"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/events"
 )
 
 // RecorderFactory builds an EventRecorder for a given scheduler name.

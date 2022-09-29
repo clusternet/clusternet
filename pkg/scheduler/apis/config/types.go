@@ -26,8 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // SchedulerConfiguration configures a scheduler
 type SchedulerConfiguration struct {
 	metav1.TypeMeta
