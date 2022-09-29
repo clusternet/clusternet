@@ -17,10 +17,10 @@ limitations under the License.
 package options
 
 import (
-	"encoding/json"
 	"io/ioutil"
 
 	"github.com/spf13/pflag"
+	"gopkg.in/yaml.v3"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/clusternet/clusternet/pkg/known"
@@ -98,7 +98,7 @@ func loadConfigFromFile(file string) (*config.SchedulerConfiguration, error) {
 	}
 
 	configObj := &config.SchedulerConfiguration{}
-	err = json.Unmarshal(data, configObj)
+	err = yaml.Unmarshal(data, configObj)
 	if err != nil {
 		return nil, err
 	}

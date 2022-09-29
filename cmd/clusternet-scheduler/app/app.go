@@ -26,6 +26,7 @@ import (
 
 	_ "github.com/clusternet/clusternet/pkg/features"
 	"github.com/clusternet/clusternet/pkg/scheduler"
+	"github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/scheduler/options"
 	"github.com/clusternet/clusternet/pkg/version"
 )
@@ -35,8 +36,11 @@ var (
 	cmdName = "clusternet-scheduler"
 )
 
+// Option configures a framework.Registry.
+type Option func(runtime.Registry) error
+
 // NewSchedulerCommand creates a *cobra.Command object with default parameters
-func NewSchedulerCommand(ctx context.Context) *cobra.Command {
+func NewSchedulerCommand(ctx context.Context, outOfTreeRegistryOptions ...Option) *cobra.Command {
 	opts, err := options.NewSchedulerOptions()
 	if err != nil {
 		klog.Fatalf("unable to initialize command options: %v", err)
@@ -63,6 +67,15 @@ func NewSchedulerCommand(ctx context.Context) *cobra.Command {
 
 			// TODO: start metrics server
 
+			outOfTreeRegistry := make(runtime.Registry)
+			for _, option := range outOfTreeRegistryOptions {
+				if err := option(outOfTreeRegistry); err != nil {
+					klog.Exit(err)
+				}
+			}
+
+			opts.FrameworkOutOfTreeRegistry = outOfTreeRegistry
+
 			sched, err := scheduler.NewScheduler(opts)
 			if err != nil {
 				klog.Exit(err)
@@ -79,4 +92,12 @@ func NewSchedulerCommand(ctx context.Context) *cobra.Command {
 	utilfeature.DefaultMutableFeatureGate.AddFlag(flags)
 
 	return cmd
+}
+
+// WithPlugin creates an Option based on plugin name and factory. Please don't remove this function: it is used to register out-of-tree plugins,
+// hence there are no references to it from the kubernetes scheduler code base.
+func WithPlugin(name string, factory runtime.PluginFactory) Option {
+	return func(registry runtime.Registry) error {
+		return registry.Register(name, factory)
+	}
 }
