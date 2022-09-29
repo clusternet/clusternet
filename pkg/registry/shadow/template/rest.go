@@ -65,6 +65,8 @@ const (
 
 	// DefaultDeleteCollectionWorkers defines the default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
+
+	crdKind = "CustomResourceDefinition"
 )
 
 // REST implements a RESTStorage for Shadow API
@@ -422,6 +424,13 @@ func (r *REST) NewList() runtime.Object {
 }
 
 func (r *REST) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
+	if r.group == apiextensionsv1.GroupName && r.kind == crdKind {
+		return rest.NewDefaultTableConvertor(schema.GroupResource{
+			Group:    apiextensionsv1.GroupName,
+			Resource: r.name,
+		}).ConvertToTable(ctx, object, tableOptions)
+	}
+
 	if r.CRD != nil {
 		storageVersion, _ := apiextensionshelpers.GetCRDStorageVersion(r.CRD)
 		columns, _ := util.GetColumnsForVersion(r.CRD, storageVersion)
@@ -606,7 +615,17 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 			return nil, err
 		}
 
-		// already exists
+		// already exists (only for CRD)
+		if r.group == apiextensionsv1.GroupName && r.kind == crdKind {
+			err = r.normalizeRequest(r.dryRunClient.Get().Resource(resource).Name(u.GetName()), dryRunNamespace).Do(ctx).Into(result)
+			if err == nil {
+				r.trimResult(result)
+			}
+			return result, err
+		}
+
+		// already exists, create a separate clean obj
+		// we don't want to expose sensitive data of original obj
 		uCopy := u.DeepCopy()
 		uCopy.SetName(fmt.Sprintf("%s%s", u.GetName(), utilrand.String(3)))
 		result, err = r.dryRunCreate(ctx, uCopy, nil, options)
@@ -636,6 +655,9 @@ func (r *REST) trimResult(result *unstructured.Unstructured) {
 	case schema.GroupKind{Kind: "Service", Group: corev1.GroupName}:
 		trimCoreService(result)
 	}
+
+	// trim status
+	trimStatus(result)
 }
 
 func (r *REST) convertListOptionsToLabels(ctx context.Context, options *internalversion.ListOptions) (labels.Selector, error) {
