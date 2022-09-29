@@ -17,16 +17,24 @@ limitations under the License.
 package options
 
 import (
+	"io/ioutil"
+
 	"github.com/spf13/pflag"
+	"gopkg.in/yaml.v3"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/scheduler/apis"
+	frameworkruntime "github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 // SchedulerOptions has all the params needed to run a Scheduler
 type SchedulerOptions struct {
 	*utils.ControllerOptions
+	FrameworkOutOfTreeRegistry frameworkruntime.Registry
+	SchedulerConfiguration     *apis.SchedulerConfiguration
+	ConfigFile                 string
 }
 
 // NewSchedulerOptions returns a new SchedulerOptions
@@ -50,6 +58,11 @@ func (o *SchedulerOptions) Validate() error {
 		errors = append(errors, err)
 	}
 
+	if o.SchedulerConfiguration != nil {
+		if err := apis.ValidateSchedulerConfiguration(o.SchedulerConfiguration); err != nil {
+			errors = append(errors, err)
+		}
+	}
 	return utilerrors.NewAggregate(errors)
 }
 
@@ -61,11 +74,34 @@ func (o *SchedulerOptions) Complete() error {
 	if err := o.ControllerOptions.Complete(); err != nil {
 		allErrs = append(allErrs, err)
 	}
-
+	if len(o.ConfigFile) > 0 {
+		schedulerConfiguration, err := loadConfigFromFile(o.ConfigFile)
+		if err != nil {
+			allErrs = append(allErrs, err)
+		} else {
+			o.SchedulerConfiguration = schedulerConfiguration
+		}
+	}
 	return utilerrors.NewAggregate(allErrs)
 }
 
 // AddFlags adds flags for SchedulerOptions.
 func (o *SchedulerOptions) AddFlags(fs *pflag.FlagSet) {
 	o.ControllerOptions.AddFlags(fs)
+	fs.StringVar(&o.ConfigFile, "config", o.ConfigFile, "The path to the configuration file.")
+}
+
+func loadConfigFromFile(file string) (*apis.SchedulerConfiguration, error) {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	configObj := &apis.SchedulerConfiguration{}
+	err = yaml.Unmarshal(data, configObj)
+	if err != nil {
+		return nil, err
+	}
+	apis.SetDefaultsSchedulerConfiguration(configObj)
+	return configObj, nil
 }
