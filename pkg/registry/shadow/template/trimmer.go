@@ -73,3 +73,7 @@ func trimBatchJob(result *unstructured.Unstructured) {
 	unstructured.RemoveNestedField(result.Object, "spec", "template", "metadata", "creationTimestamp")
 	unstructured.RemoveNestedField(result.Object, "spec", "template", "metadata", "labels", "controller-uid")
 }
+
+func trimStatus(result *unstructured.Unstructured) {
+	unstructured.RemoveNestedField(result.Object, "status")
+}
