@@ -29,9 +29,12 @@ kind: Service
 metadata:
   name: clusternet-hub
   namespace: clusternet-system
+  labels:
+    app: clusternet-hub
 spec:
   ports:
     - port: 443
+      name: https
       protocol: TCP
       targetPort: 443
   selector:
@@ -61,7 +64,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-hub
-          image: ghcr.io/clusternet/clusternet-hub:v0.11.0
+          image: ghcr.io/clusternet/clusternet-hub:v0.12.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
@@ -71,18 +74,12 @@ spec:
                   fieldPath: metadata.namespace
             - name: RESERVED_NAMESPACE
               value: clusternet-reserved
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: status.podIP
           ports:
             - name: peer
               containerPort: 8123
               protocol: TCP
           command:
             - /usr/local/bin/clusternet-hub
-            - --bind-address=$(POD_IP)
             - --secure-port=443
             - --feature-gates=SocketConnection=true,Deployer=true,ShadowAPI=true,FeedInUseProtection=true,FeedInventory=true
             - --anonymous-auth-supported=true

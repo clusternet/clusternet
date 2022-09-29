@@ -44,12 +44,13 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - managing any [Certified Kubernetes Distributions](https://www.cncf.io/certification/software-conformance/), such
       as [k3s](https://github.com/k3s-io/k3s)
     - managing Kubernetes clusters running at the edge
-    - auto discovering clusters created by [cluster-api](https://github.com/kubernetes-sigs/cluster-api)
+    - discovering clusters created by [cluster-api](https://github.com/kubernetes-sigs/cluster-api)
     - parent cluster can also register itself as a child cluster to run workloads
-    - managing Kubernetes version skewed from v1.17.x to v1.22.x (Learn more
+    - managing Kubernetes version skewed from v1.17.x to v1.23.x (Learn more
       about [Kubernetes Version Skew](https://clusternet.io/docs/introduction/#kubernetes-version-skew))
     - visiting any managed clusters with dynamic RBAC rules (Learn more
       from [this tuorial](https://clusternet.io/docs/tutorials/cluster-management/visiting-child-clusters-with-rbac/))
+    - cluster auto-labelling based on [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery)
 - Application Coordinations
     - Cross-Cluster Scheduling
         - replication scheduling
@@ -63,6 +64,8 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
         - two-stage priority based override strategies
         - easy to rollback
         - cross-cluster canary rollout
+    - Multi-Cluster Services
+        - multi-cluster services discovery with [mcs-api](https://github.com/kubernetes-sigs/mcs-api)
 - CLI
     - providing a kubectl plugin, which can be installed with `kubectl krew install clusternet`
     - consistent user experience with `kubectl`
