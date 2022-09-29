@@ -151,6 +151,7 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 		controllerOptions:      controllerOpts,
 		statusManager: NewStatusManager(
 			childKubeConfig.Host,
+			registrationOpts.ApiServerURLOutCls,
 			childKubeConfig.BearerToken,
 			registrationOpts,
 			childKubeClientSet,

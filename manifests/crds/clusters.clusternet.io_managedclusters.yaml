@@ -131,6 +131,10 @@ spec:
                 description: APIServerURL indicates the advertising url/address of
                   managed Kubernetes cluster
                 type: string
+              apiserverURLOutCls:
+                description: APIServerURLOutCls indicates the advertising url/address of
+                  managed Kubernetes cluster, out-cluster
+                type: string
               apiserverConfig:
                 description: apiserverConfig indicates the kube-config of
                   managed Kubernetes cluster

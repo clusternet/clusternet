@@ -54,8 +54,9 @@ type ClusterRegistrationOptions struct {
 	// ClusterStatusCollectFrequency is the frequency at which the agent updates current cluster's status
 	ClusterStatusCollectFrequency metav1.Duration
 
-	ParentURL      string
-	BootstrapToken string
+	ParentURL          string
+	ApiServerURLOutCls string
+	BootstrapToken     string
 
 	// No tunnel logging by default
 	TunnelLogging bool
@@ -93,6 +94,8 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	// flags for cluster registration
 	fs.StringVar(&opts.ParentURL, ClusterRegistrationURL, opts.ParentURL,
 		"The parent cluster url you want to register to")
+	fs.StringVar(&opts.ApiServerURLOutCls, ClusterServerURLOutCluster, opts.ApiServerURLOutCls,
+		"The cluster api server url")
 	fs.StringVar(&opts.BootstrapToken, ClusterRegistrationToken, opts.BootstrapToken,
 		"The boostrap token is used to temporarily authenticate with parent cluster while registering "+
 			"a unregistered child cluster. On success, parent cluster credentials will be stored to a secret "+
@@ -147,6 +150,13 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 		_, err := url.ParseRequestURI(opts.ParentURL)
 		if err != nil {
 			allErrs = append(allErrs, fmt.Errorf("invalid value for --%s: %v", ClusterRegistrationURL, err))
+		}
+	}
+
+	if len(opts.ApiServerURLOutCls) > 0 {
+		_, err := url.ParseRequestURI(opts.ApiServerURLOutCls)
+		if err != nil {
+			allErrs = append(allErrs, fmt.Errorf("invalid value for --%s: %v", ClusterServerURLOutCluster, err))
 		}
 	}
 

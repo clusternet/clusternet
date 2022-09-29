@@ -25,6 +25,9 @@ const (
 	// ClusterRegistrationURL flag denotes the url of parent cluster
 	ClusterRegistrationURL = "cluster-reg-parent-url"
 
+	// ClusterServerURLOutCluster flag denotes the url of cluster
+	ClusterServerURLOutCluster = "cluster-server-url-out-cls"
+
 	// ClusterRegistrationToken flag is the token used to temporarily authenticate with parent cluster
 	// while registering as a child cluster.
 	ClusterRegistrationToken = "cluster-reg-token"

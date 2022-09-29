@@ -51,6 +51,7 @@ type Controller struct {
 	collectingPeriod   metav1.Duration
 	heartbeatFrequency metav1.Duration
 	apiserverURL       string
+	apiserverURLOutCls string
 	apiserverConfig    string
 	appPusherEnabled   bool
 	useSocket          bool
@@ -67,6 +68,7 @@ type Controller struct {
 
 func NewController(
 	apiserverURL string,
+	apiserverURLOutCls string,
 	apiserverConfig string,
 	kubeClient kubernetes.Interface,
 	metricClient *metricsv.Clientset,
@@ -83,6 +85,7 @@ func NewController(
 		collectingPeriod:      collectingPeriod,
 		heartbeatFrequency:    heartbeatFrequency,
 		apiserverURL:          apiserverURL,
+		apiserverURLOutCls:    apiserverURLOutCls,
 		apiserverConfig:       apiserverConfig,
 		appPusherEnabled:      utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		useSocket:             utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
@@ -146,6 +149,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	}
 
 	status.APIServerURL = c.apiserverURL
+	status.APIServerURLOutCls = c.apiserverURLOutCls
 	status.APIServerConfig = c.apiserverConfig
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")

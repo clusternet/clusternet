@@ -155,7 +155,7 @@ func (r *REST) setCClsCliToCache(clusterID string, client dynamic.Interface) {
 func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (dynamic.Interface, error) {
 	// TODO: need add child clusters certificates for security
 	config := &clientgorest.Config{
-		Host:            cls.Status.APIServerURL,
+		Host:            cls.Status.APIServerURLOutCls,
 		TLSClientConfig: clientgorest.TLSClientConfig{Insecure: true},
 		BearerToken:     cls.Status.APIServerConfig,
 	}
