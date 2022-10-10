@@ -70,6 +70,8 @@ func getDefaultPlugins() *Plugins {
 
 // mergePlugins merges the custom set into the given default one, handling disabled sets.
 func mergePlugins(defaultPlugins, customPlugins *Plugins) *Plugins {
+	// Copied from "k8s.io/kubernetes/pkg/scheduler/apis/config/v1/default_plugins.go"
+
 	if customPlugins == nil {
 		return defaultPlugins
 	}
@@ -97,6 +99,8 @@ type pluginIndex struct {
 }
 
 func mergePluginSet(defaultPluginSet, customPluginSet PluginSet) PluginSet {
+	// Copied from "k8s.io/kubernetes/pkg/scheduler/apis/config/v1/default_plugins.go"
+
 	disabledPlugins := sets.NewString()
 	enabledCustomPlugins := make(map[string]pluginIndex)
 	// replacedPluginIndex is a set of index of plugins, which have replaced the default plugins.

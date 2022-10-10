@@ -95,8 +95,9 @@ func NewSchedulerCommand(ctx context.Context, outOfTreeRegistryOptions ...Option
 }
 
 // WithPlugin creates an Option based on plugin name and factory. Please don't remove this function: it is used to register out-of-tree plugins,
-// hence there are no references to it from the kubernetes scheduler code base.
 func WithPlugin(name string, factory runtime.PluginFactory) Option {
+	// Copied from "k8s.io/kubernetes/cmd/kube-scheduler/app/server.go"
+
 	return func(registry runtime.Registry) error {
 		return registry.Register(name, factory)
 	}
