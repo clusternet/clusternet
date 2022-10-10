@@ -402,6 +402,10 @@ func (sched *Scheduler) handleSchedulingFailure(sub *appsapi.Subscription, err e
 
 	// TODO: update subscription condition
 
+	// no need reschedule the subscription, when has no available cluster to schedule
+	if strings.Contains(err.Error(), "clusters are available") {
+		return
+	}
 	// re-added to the queue for re-processing
 	sched.SchedulingQueue.AddRateLimited(klog.KObj(sub).String())
 }
