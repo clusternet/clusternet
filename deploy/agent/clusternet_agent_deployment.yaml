@@ -18,6 +18,16 @@ metadata:
   namespace: clusternet-system
 
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: clusternet-app-deployer
+  namespace: clusternet-system
+  annotations:
+    kubernetes.io/service-account.name: clusternet-app-deployer
+type: kubernetes.io/service-account-token
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

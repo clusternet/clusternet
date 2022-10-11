@@ -632,26 +632,30 @@ func getStatusCause(err error) ([]metav1.StatusCause, bool) {
 	return apierr.Status().Details.Causes, true
 }
 
-func GetDeployerCredentials(ctx context.Context, childKubeClientSet kubernetes.Interface, systemNamespace string) *corev1.Secret {
+func GetDeployerCredentials(ctx context.Context, childKubeClientSet kubernetes.Interface, systemNamespace string, saTokenAutoGen bool) *corev1.Secret {
 	var secret *corev1.Secret
 	localCtx, cancel := context.WithCancel(ctx)
 
 	klog.V(4).Infof("get ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA)
 	wait.JitterUntilWithContext(localCtx, func(ctx context.Context) {
-		sa, err := childKubeClientSet.CoreV1().ServiceAccounts(systemNamespace).Get(ctx, known.ClusternetAppSA, metav1.GetOptions{})
-		if err != nil {
-			klog.ErrorDepth(5, fmt.Errorf("failed to get ServiceAccount %s/%s: %v", systemNamespace, known.ClusternetAppSA, err))
-			return
+		secretName := known.ClusternetAppSA
+		if saTokenAutoGen {
+			sa, err := childKubeClientSet.CoreV1().ServiceAccounts(systemNamespace).Get(ctx, known.ClusternetAppSA, metav1.GetOptions{})
+			if err != nil {
+				klog.ErrorDepth(5, fmt.Errorf("failed to get ServiceAccount %s/%s: %v", systemNamespace, known.ClusternetAppSA, err))
+				return
+			}
+			if len(sa.Secrets) == 0 {
+				klog.ErrorDepth(5, fmt.Errorf("no secrets found in ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA))
+				return
+			}
+			secretName = sa.Secrets[0].Name
 		}
 
-		if len(sa.Secrets) == 0 {
-			klog.ErrorDepth(5, fmt.Errorf("no secrets found in ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA))
-			return
-		}
-
-		secret, err = childKubeClientSet.CoreV1().Secrets(systemNamespace).Get(ctx, sa.Secrets[0].Name, metav1.GetOptions{})
+		var err error
+		secret, err = childKubeClientSet.CoreV1().Secrets(systemNamespace).Get(ctx, secretName, metav1.GetOptions{})
 		if err != nil {
-			klog.ErrorDepth(5, fmt.Errorf("failed to get Secret %s/%s: %v", systemNamespace, sa.Secrets[0].Name, err))
+			klog.ErrorDepth(5, fmt.Errorf("failed to get Secret %s/%s: %v", systemNamespace, secretName, err))
 			return
 		}
 
