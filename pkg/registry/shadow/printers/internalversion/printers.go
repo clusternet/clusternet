@@ -2103,7 +2103,7 @@ func printClusterRoleBinding(unstruct *unstructured.Unstructured, options printe
 
 // Prints the ClusterRoleBinding in a human-friendly format.
 func printClusterRoleBindingList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	list := rbacv1.ClusterRoleBindingList{}
+	list := &rbacv1.ClusterRoleBindingList{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructList.UnstructuredContent(), list); err != nil {
 		return nil, fmt.Errorf("unable to convert unstructured object to ClusterRoleBindingList %v", err)
 	}
