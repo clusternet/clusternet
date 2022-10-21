@@ -27,14 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -74,7 +72,7 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	appDeployerConfig *rest.Config, clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
-	childKubeClient, err := kubernetes.NewForConfig(appDeployerConfig)
+	mapper, err := apiutil.NewDynamicRESTMapper(appDeployerConfig, apiutil.WithLazyDiscovery)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +85,7 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 		syncMode:            syncMode,
 		appPusherEnabled:    appPusherEnabled,
 		dynamicClient:       dynamicClient,
-		discoveryRESTMapper: restmapper.NewDeferredDiscoveryRESTMapper(cacheddiscovery.NewMemCacheClient(childKubeClient.Discovery())),
+		discoveryRESTMapper: mapper,
 		clusternetClient:    clusternetClient,
 		descLister:          clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
 		descSynced:          clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
@@ -148,7 +146,12 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 	gvk := resource.GroupVersionKind()
 
 	if !deployer.ControllerHasStarted(gvk) {
-		restMapping, _ := deployer.discoveryRESTMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		restMapping, err := deployer.discoveryRESTMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		if err != nil {
+			klog.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
+			return err
+		}
+
 		//add informer
 		apiResource := &metav1.APIResource{
 			Group:      resource.GroupVersionKind().Group,
@@ -198,7 +201,7 @@ func (deployer *Deployer) handleResource(resAttrs *resourcecontroller.ResourceAt
 	if resAttrs.ObjectAction != resourcecontroller.ObjectDelete {
 		err = deployer.SyncDescriptionStatus(deployer.clusternetClient, deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
 		if err != nil {
-			klog.Errorf("filed SyncDescriptionStatus. %v", err)
+			klog.Errorf("Failed Sync Description Status. %v", err)
 			return err
 		}
 	}
