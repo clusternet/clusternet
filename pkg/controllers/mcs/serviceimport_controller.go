@@ -145,7 +145,7 @@ func (c *ServiceImportController) Handle(obj interface{}) (requeueAfter *time.Du
 	for index := range endpointSliceList {
 		wg.Add(1)
 		slice := endpointSliceList[index].DeepCopy()
-		newSlice := forkEndpointSlice(slice, namespace)
+		newSlice := forkEndpointSlice(slice, namespace, si)
 		go func(slice *discoveryv1.EndpointSlice) {
 			defer wg.Done()
 			if err = utils.ApplyEndPointSliceWithRetry(c.localk8sClient, slice); err != nil {
@@ -263,7 +263,7 @@ func (c *ServiceImportController) Run(ctx context.Context) {
 	controller.Run(ctx)
 }
 
-//recycleServiceImport recycle derived service and derived endpoint slices.
+// recycleServiceImport recycle derived service and derived endpoint slices.
 func (c *ServiceImportController) recycleServiceImport(ctx context.Context, si *v1alpha1.ServiceImport) error {
 	rawServiceName, _ := si.Labels[known.LabelServiceName]
 	rawServiceNamespace, _ := si.Labels[known.LabelServiceNameSpace]
@@ -310,12 +310,33 @@ func (c *ServiceImportController) getServiceImportFromEndpointSlice(obj interfac
 }
 
 // forkEndpointSlice construct a new endpoint slice from source slice.
-func forkEndpointSlice(slice *discoveryv1.EndpointSlice, namespace string) *discoveryv1.EndpointSlice {
+func forkEndpointSlice(slice *discoveryv1.EndpointSlice, namespace string, svcImport *v1alpha1.ServiceImport) *discoveryv1.EndpointSlice {
+
+	// guarantee the forked endpointslices' ports and services' ports are same
+	newPorts := make([]discoveryv1.EndpointPort,0)
+	siPortMap := make(map[string]string)
+	getPortKey := func(protocol string, appProtocol *string, port int32) string {
+		if appProtocol == nil {
+			return fmt.Sprintf("%s-%d", protocol, port)
+		}
+		return fmt.Sprintf("%s-%s-%d", protocol, *appProtocol, port)
+	}
+	for _, p := range svcImport.Spec.Ports {
+		siPortMap[getPortKey(string(p.Protocol), p.AppProtocol, p.Port)] = p.Name
+	}
+
+	for _, p := range slice.Ports {
+		if name, ok := siPortMap[getPortKey(string(*p.Protocol), p.AppProtocol, *p.Port)]; ok {
+			p.Name = &name
+			newPorts = append(newPorts, p)
+		}
+	}
+
 	// mutate slice fields before upload to parent cluster.
 	newSlice := &discoveryv1.EndpointSlice{
 		AddressType: slice.AddressType,
 		Endpoints:   slice.Endpoints,
-		Ports:       slice.Ports,
+		Ports:       newPorts,
 	}
 	delete(slice.Labels, known.ObjectCreatedByLabel)
 	newSlice.Labels = slice.Labels
