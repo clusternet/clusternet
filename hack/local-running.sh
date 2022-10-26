@@ -33,7 +33,7 @@ function create_cluster() {
 
   rm -f "${kubeconfig}"
   kind delete cluster --name="${cluster_name}" 2>&1
-  kind create cluster --name "${cluster_name}" --kubeconfig="${kubeconfig}" --image="${image}" 2>&1
+  kind create cluster --name "${cluster_name}" --config="${cluster_name}.yaml" --kubeconfig="${kubeconfig}" --image="${image}" 2>&1
 
   kubectl config rename-context "kind-${cluster_name}" "${cluster_name}" --kubeconfig="${kubeconfig}"
   kind_server="https://$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${cluster_name}-control-plane"):6443"
@@ -58,6 +58,47 @@ PARENT_CLUSTER_SERVER=${kind_server}
 create_cluster "${CHILD_1_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_1_CLUSTER_NAME}.config" "${KIND_IMAGE_VERSION}"
 create_cluster "${CHILD_2_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_2_CLUSTER_NAME}.config" "${KIND_IMAGE_VERSION}"
 create_cluster "${CHILD_3_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_3_CLUSTER_NAME}.config" "${KIND_IMAGE_VERSION}"
+
+function pod_cidrs() {
+  kubectl --kubeconfig "${1}" get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR}{"\n"}'
+}
+
+function waitfor() {
+  for i in {1..30}; do
+    if [ ! -z "$(${@})" ]; then
+      break
+    fi
+    sleep 1
+  done
+  if [ -z "$(${@})" ]; then
+    echo "No results for '${1}' after 30 attempts"
+  fi
+}
+
+function add_routes() {
+  unset IFS
+
+  routes=$(kubectl --kubeconfig ${2} get nodes -o jsonpath='{range .items[*]}ip route add {.spec.podCIDR} via {.status.addresses[?(.type=="InternalIP")].address}{"\n"}'| awk 'NR==1{print}')
+  echo "Connecting cluster ${1} to ${2}"
+
+  IFS=$'\n'
+  for n in $(kind get nodes --name "${1}"); do
+    for r in $routes; do
+      eval "docker exec $n $r"
+    done
+  done
+  unset IFS
+}
+waitfor pod_cidrs ${KUBECONFIG_DIR}/${CHILD_1_CLUSTER_NAME}.config
+waitfor pod_cidrs ${KUBECONFIG_DIR}/${CHILD_2_CLUSTER_NAME}.config
+waitfor pod_cidrs ${KUBECONFIG_DIR}/${CHILD_3_CLUSTER_NAME}.config
+
+echo "Connecting cluster networks..."
+add_routes "${PARENT_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_1_CLUSTER_NAME}.config"
+add_routes "${PARENT_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_2_CLUSTER_NAME}.config"
+add_routes "${PARENT_CLUSTER_NAME}" "${KUBECONFIG_DIR}/${CHILD_3_CLUSTER_NAME}.config"
+echo "Cluster networks connected"
+
 
 # for docker-desktop
 if docker version | grep -q "Server: Docker Desktop"; then
