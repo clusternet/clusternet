@@ -176,7 +176,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		klog.Warning("will not discovery clusters created by cluster-api providers due to empty kubeconfig path")
 	}
 
-	serviceImport := mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
+	serviceImport := mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1beta1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
 
 	hub := &Hub{
 		peerID:                    utilrand.String(5),
