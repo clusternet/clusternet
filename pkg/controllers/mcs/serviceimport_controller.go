@@ -25,16 +25,16 @@ import (
 
 	"github.com/dixudx/yacht"
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1"
+	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	discoveryinformerv1 "k8s.io/client-go/informers/discovery/v1"
+	discoveryinformerv1beta1 "k8s.io/client-go/informers/discovery/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	discoverylisterv1 "k8s.io/client-go/listers/discovery/v1"
+	discoverylisterv1beta1 "k8s.io/client-go/listers/discovery/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
@@ -56,13 +56,13 @@ type ServiceImportController struct {
 	mcsClientset          *mcsclientset.Clientset
 	localk8sClient        kubernetes.Interface
 	serviceImportLister   alpha1.ServiceImportLister
-	endpointSlicesLister  discoverylisterv1.EndpointSliceLister
+	endpointSlicesLister  discoverylisterv1beta1.EndpointSliceLister
 	serviceImportInformer mcsv1alpha1.ServiceImportInformer
-	endpointSliceInformer discoveryinformerv1.EndpointSliceInformer
+	endpointSliceInformer discoveryinformerv1beta1.EndpointSliceInformer
 	mcsInformerFactory    mcsInformers.SharedInformerFactory
 }
 
-func NewServiceImportController(kubeclient kubernetes.Interface, epsInformer discoveryinformerv1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
+func NewServiceImportController(kubeclient kubernetes.Interface, epsInformer discoveryinformerv1beta1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
 	mcsInformerFactory mcsInformers.SharedInformerFactory) *ServiceImportController {
 	siInformer := mcsInformerFactory.Multicluster().V1alpha1().ServiceImports()
 	si := &ServiceImportController{
@@ -146,7 +146,7 @@ func (c *ServiceImportController) Handle(obj interface{}) (requeueAfter *time.Du
 		wg.Add(1)
 		slice := endpointSliceList[index].DeepCopy()
 		newSlice := forkEndpointSlice(slice, namespace)
-		go func(slice *discoveryv1.EndpointSlice) {
+		go func(slice *discoveryv1beta1.EndpointSlice) {
 			defer wg.Done()
 			if err = utils.ApplyEndPointSliceWithRetry(c.localk8sClient, slice); err != nil {
 				errCh <- err
@@ -268,7 +268,7 @@ func (c *ServiceImportController) recycleServiceImport(ctx context.Context, si *
 	rawServiceName, _ := si.Labels[known.LabelServiceName]
 	rawServiceNamespace, _ := si.Labels[known.LabelServiceNameSpace]
 	// 1. recycle endpoint slices.
-	if err := c.localk8sClient.DiscoveryV1().EndpointSlices(si.Namespace).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
+	if err := c.localk8sClient.DiscoveryV1beta1().EndpointSlices(si.Namespace).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{
 			known.LabelServiceName:      rawServiceName,
 			known.LabelServiceNameSpace: rawServiceNamespace}).String(),
@@ -292,7 +292,7 @@ func (c *ServiceImportController) recycleServiceImport(ctx context.Context, si *
 
 // getServiceImportFromEndpointSlice get ServiceImport from endpointSlice labels, get the first if more than one.
 func (c *ServiceImportController) getServiceImportFromEndpointSlice(obj interface{}) (*v1alpha1.ServiceImport, error) {
-	slice := obj.(*discoveryv1.EndpointSlice)
+	slice := obj.(*discoveryv1beta1.EndpointSlice)
 	rawServiceName, serviceExist := slice.Labels[known.LabelServiceName]
 	rawServiceNamespace, serviceNamespaceExsit := slice.Labels[known.LabelServiceNameSpace]
 	subNamespace, subNamespaceExsit := slice.Labels[known.ConfigSubscriptionNamespaceLabel]
@@ -310,9 +310,9 @@ func (c *ServiceImportController) getServiceImportFromEndpointSlice(obj interfac
 }
 
 // forkEndpointSlice construct a new endpoint slice from source slice.
-func forkEndpointSlice(slice *discoveryv1.EndpointSlice, namespace string) *discoveryv1.EndpointSlice {
+func forkEndpointSlice(slice *discoveryv1beta1.EndpointSlice, namespace string) *discoveryv1beta1.EndpointSlice {
 	// mutate slice fields before upload to parent cluster.
-	newSlice := &discoveryv1.EndpointSlice{
+	newSlice := &discoveryv1beta1.EndpointSlice{
 		AddressType: slice.AddressType,
 		Endpoints:   slice.Endpoints,
 		Ports:       slice.Ports,

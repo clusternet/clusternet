@@ -23,16 +23,16 @@ import (
 	"time"
 
 	"github.com/dixudx/yacht"
-	discoveryv1 "k8s.io/api/discovery/v1"
+	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	discoveryinformerv1 "k8s.io/client-go/informers/discovery/v1"
+	discoveryinformerv1beta1 "k8s.io/client-go/informers/discovery/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	discoverylisterv1 "k8s.io/client-go/listers/discovery/v1"
+	discoverylisterv1beta1 "k8s.io/client-go/listers/discovery/v1beta1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -58,12 +58,12 @@ type SeController struct {
 	// child cluster dedicated namespace
 	dedicatedNamespace    string
 	serviceExportLister   alpha1.ServiceExportLister
-	endpointSlicesLister  discoverylisterv1.EndpointSliceLister
+	endpointSlicesLister  discoverylisterv1beta1.EndpointSliceLister
 	serviceExportInformer mcsv1alpha1.ServiceExportInformer
-	endpointSliceInformer discoveryinformerv1.EndpointSliceInformer
+	endpointSliceInformer discoveryinformerv1beta1.EndpointSliceInformer
 }
 
-func NewSeController(epsInformer discoveryinformerv1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
+func NewSeController(epsInformer discoveryinformerv1beta1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
 	mcsInformerFactory mcsInformers.SharedInformerFactory) *SeController {
 	seInformer := mcsInformerFactory.Multicluster().V1alpha1().ServiceExports()
 	c := &SeController{
@@ -109,8 +109,8 @@ func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err
 
 	// recycle corresponding endpoint slice in parent cluster.
 	if seTerminating {
-		if err = c.parentk8sClient.DiscoveryV1().EndpointSlices(c.dedicatedNamespace).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
-			LabelSelector: labels.SelectorFromSet(labels.Set{discoveryv1.LabelServiceName: utils.DerivedName(namespace, seName)}).String(),
+		if err = c.parentk8sClient.DiscoveryV1beta1().EndpointSlices(c.dedicatedNamespace).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
+			LabelSelector: labels.SelectorFromSet(labels.Set{discoveryv1beta1.LabelServiceName: utils.DerivedName(namespace, seName)}).String(),
 		}); err != nil {
 			// try next time, make sure we clear endpoint slice
 			d := time.Second
@@ -127,9 +127,9 @@ func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err
 		return nil, nil
 	}
 	// src endpoint slice with label of service export name is same to service name.
-	srcLabelMap := labels.Set{discoveryv1.LabelServiceName: se.Name}
+	srcLabelMap := labels.Set{discoveryv1beta1.LabelServiceName: se.Name}
 	// dst endpoint slice with label of derived service name combined with namespace and service export name
-	dstLabelMap := labels.Set{discoveryv1.LabelServiceName: utils.DerivedName(namespace, seName)}
+	dstLabelMap := labels.Set{discoveryv1beta1.LabelServiceName: utils.DerivedName(namespace, seName)}
 	endpointSliceList, err := utils.RemoveUnexistEndpointslice(c.endpointSlicesLister, namespace,
 		srcLabelMap, c.parentk8sClient, c.dedicatedNamespace, dstLabelMap)
 	if err != nil {
@@ -144,7 +144,7 @@ func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err
 		wg.Add(1)
 		slice := endpointSliceList[index].DeepCopy()
 		newSlice := constructEndpointSlice(slice, se, c.dedicatedNamespace)
-		go func(slice *discoveryv1.EndpointSlice) {
+		go func(slice *discoveryv1beta1.EndpointSlice) {
 			defer wg.Done()
 			if err = utils.ApplyEndPointSliceWithRetry(c.parentk8sClient, slice); err != nil {
 				errCh <- err
@@ -184,8 +184,8 @@ func (c *SeController) Run(ctx context.Context, parentDedicatedKubeConfig *rest.
 
 	c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
-			endpointSlice := obj.(*discoveryv1.EndpointSlice)
-			if serviceName, ok := endpointSlice.Labels[discoveryv1.LabelServiceName]; ok {
+			endpointSlice := obj.(*discoveryv1beta1.EndpointSlice)
+			if serviceName, ok := endpointSlice.Labels[discoveryv1beta1.LabelServiceName]; ok {
 				if _, err := c.serviceExportLister.ServiceExports(endpointSlice.Namespace).Get(serviceName); err == nil {
 					return true
 				}
@@ -217,8 +217,8 @@ func (c *SeController) Run(ctx context.Context, parentDedicatedKubeConfig *rest.
 }
 
 func (c *SeController) getServiceExportFromEndpointSlice(obj interface{}) (*v1alpha1.ServiceExport, error) {
-	slice := obj.(*discoveryv1.EndpointSlice)
-	if serviceName, ok := slice.Labels[discoveryv1.LabelServiceName]; ok {
+	slice := obj.(*discoveryv1beta1.EndpointSlice)
+	if serviceName, ok := slice.Labels[discoveryv1beta1.LabelServiceName]; ok {
 		if se, err := c.serviceExportLister.ServiceExports(slice.Namespace).Get(serviceName); err == nil {
 			return se, nil
 		}
@@ -227,9 +227,9 @@ func (c *SeController) getServiceExportFromEndpointSlice(obj interface{}) (*v1al
 }
 
 // constructEndpointSlice construct a new endpoint slice from local slice.
-func constructEndpointSlice(slice *discoveryv1.EndpointSlice, se *v1alpha1.ServiceExport, namespace string) *discoveryv1.EndpointSlice {
+func constructEndpointSlice(slice *discoveryv1beta1.EndpointSlice, se *v1alpha1.ServiceExport, namespace string) *discoveryv1beta1.EndpointSlice {
 	// mutate slice fields before upload to parent cluster.
-	newSlice := &discoveryv1.EndpointSlice{}
+	newSlice := &discoveryv1beta1.EndpointSlice{}
 	newSlice.AddressType = slice.AddressType
 	newSlice.Endpoints = slice.Endpoints
 	newSlice.Ports = slice.Ports
@@ -238,7 +238,7 @@ func constructEndpointSlice(slice *discoveryv1.EndpointSlice, se *v1alpha1.Servi
 	newSlice.Labels[known.LabelServiceName] = se.Name
 	newSlice.Labels[known.LabelServiceNameSpace] = se.Namespace
 	newSlice.Labels[known.ObjectCreatedByLabel] = known.ClusternetAgentName
-	newSlice.Labels[discoveryv1.LabelServiceName] = utils.DerivedName(se.Namespace, se.Name)
+	newSlice.Labels[discoveryv1beta1.LabelServiceName] = utils.DerivedName(se.Namespace, se.Name)
 
 	if subNamespace, exist := se.Labels[known.ConfigSubscriptionNamespaceLabel]; exist {
 		newSlice.Labels[known.ConfigSubscriptionNamespaceLabel] = subNamespace
