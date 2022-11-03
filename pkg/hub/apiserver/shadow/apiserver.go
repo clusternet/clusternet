@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+
 	autoscalingapiv1 "k8s.io/api/autoscaling/v1"
 	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	apiextensionsv1lister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
@@ -53,6 +55,7 @@ import (
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/registry/shadow/template"
 )
@@ -114,6 +117,8 @@ type ShadowAPIServer struct {
 
 	// namespace where Manifests are created
 	reservedNamespace string
+
+	mcLister clusterlisters.ManagedClusterLister
 }
 
 func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
@@ -122,7 +127,8 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 	kubeRESTClient restclient.Interface, clusternetclient *clusternet.Clientset,
 	manifestLister applisters.ManifestLister, apiserviceLister apiservicelisters.APIServiceLister,
 	crdInformerFactory crdinformers.SharedInformerFactory,
-	reservedNamespace string) *ShadowAPIServer {
+	reservedNamespace string,
+	clusternetInformerFactory informers.SharedInformerFactory) *ShadowAPIServer {
 
 	return &ShadowAPIServer{
 		GenericAPIServer:    apiserver,
@@ -137,9 +143,11 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 		crdHandler: NewCRDHandler(
 			kubeRESTClient, clusternetclient, manifestLister, apiserviceLister,
 			crdInformerFactory.Apiextensions().V1().CustomResourceDefinitions(),
-			minRequestTimeout, maxRequestBodyBytes, admissionControl, apiserver.Authorizer, apiserver.Serializer, reservedNamespace),
+			minRequestTimeout, maxRequestBodyBytes, admissionControl, apiserver.Authorizer, apiserver.Serializer,
+			reservedNamespace, clusternetInformerFactory),
 		apiserviceLister:  apiserviceLister,
 		reservedNamespace: reservedNamespace,
+		mcLister:          clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
 	}
 }
 
@@ -208,7 +216,8 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			)
 			metav1.AddToGroupVersion(Scheme, groupVersion)
 
-			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, runtime.NewParameterCodec(Scheme), ss.manifestLister, ss.reservedNamespace)
+			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient,
+				runtime.NewParameterCodec(Scheme), ss.manifestLister, ss.reservedNamespace, ss.mcLister)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)

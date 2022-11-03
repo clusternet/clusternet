@@ -23,6 +23,11 @@ import (
 	"strings"
 	"sync"
 
+	"k8s.io/client-go/dynamic"
+
+	"github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
@@ -57,17 +62,28 @@ import (
 	printersinternal "github.com/clusternet/clusternet/pkg/registry/shadow/printers/internalversion"
 	printerstorage "github.com/clusternet/clusternet/pkg/registry/shadow/printers/storage"
 	"github.com/clusternet/clusternet/pkg/registry/shadow/printers/util"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
 	CoreGroupPrefix  = "api"
 	NamedGroupPrefix = "apis"
+	ChildClusterID   = "child-cluster-id"
+
+	Pods   = "pods"
+	events = "events"
 
 	// DefaultDeleteCollectionWorkers defines the default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
 
 	crdKind = "CustomResourceDefinition"
 )
+
+// ChildClsClient for cls cache
+type ChildClsClient struct {
+	lock           *sync.RWMutex
+	childClsClient map[string]dynamic.Interface
+}
 
 // REST implements a RESTStorage for Shadow API
 type REST struct {
@@ -100,6 +116,82 @@ type REST struct {
 
 	// is this Rest for CRD resource.
 	CRD *apiextensionsv1.CustomResourceDefinition
+
+	mcLister            clusterlisters.ManagedClusterLister
+	childClsClientCache ChildClsClient
+}
+
+// resourceInCCls the resource need get from child cluster
+var resourceInCCls = []string{Pods, events}
+
+// resourceInCCls need to get resource from child cls
+func (r *REST) resourceInCCls() bool {
+	resource, _ := r.getResourceName()
+	for _, rk := range resourceInCCls {
+		if rk == strings.ToLower(resource) {
+			return true
+		}
+	}
+	return false
+}
+
+// getCClsCliFromCache get child cluster client from cache
+func (r *REST) getCClsCliFromCache(clusterID string) (dynamic.Interface, bool) {
+	r.childClsClientCache.lock.RLock()
+	defer r.childClsClientCache.lock.RUnlock()
+	client, ok := r.childClsClientCache.childClsClient[clusterID]
+	return client, ok
+}
+
+// setCClsCliToCache set child cluster client to cache
+func (r *REST) setCClsCliToCache(clusterID string, client dynamic.Interface) {
+	r.childClsClientCache.lock.Lock()
+	defer r.childClsClientCache.lock.Unlock()
+	r.childClsClientCache.childClsClient[clusterID] = client
+	return
+}
+
+// newCClsCLi create a new child cluster client
+func (r *REST) newCClsCLi(clusterID string, cls *v1beta1.ManagedCluster) (dynamic.Interface, error) {
+	// TODO: need add child clusters certificates for security
+	config := &clientgorest.Config{
+		Host:            cls.Status.APIServerURLOutCls,
+		TLSClientConfig: clientgorest.TLSClientConfig{Insecure: true},
+		BearerToken:     cls.Status.APIServerConfig,
+	}
+	//clientSet, err := kubernetes.NewForConfig(config)
+	clientSet, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	r.setCClsCliToCache(clusterID, clientSet)
+	return clientSet, nil
+}
+
+// getMCLs get all managed cluster
+func (r *REST) getMCLs() ([]*v1beta1.ManagedCluster, error) {
+	// TODO: use watch instead of list
+	mcls, err := r.mcLister.List(labels.SelectorFromSet(labels.Set{}))
+	if err != nil || mcls == nil {
+		return nil, err
+	}
+	return mcls, nil
+}
+
+// convertToListOptions convert internalversion ListOptions to metav1 ListOptions
+func (r *REST) convertToListOptions(options *internalversion.ListOptions) metav1.ListOptions {
+	listOptions := metav1.ListOptions{
+		LabelSelector:        options.LabelSelector.String(),
+		FieldSelector:        options.FieldSelector.String(),
+		Watch:                options.Watch,
+		AllowWatchBookmarks:  options.AllowWatchBookmarks,
+		ResourceVersion:      options.ResourceVersion,
+		ResourceVersionMatch: options.ResourceVersionMatch,
+		TimeoutSeconds:       options.TimeoutSeconds,
+		Limit:                0, // disable APIListChunking
+		Continue:             options.Continue,
+	}
+	return listOptions
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -142,6 +234,9 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 
 // Get retrieves the item from Manifest.
 func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
+	if r.resourceInCCls() {
+		return r.GetFromCCls(ctx, name, options)
+	}
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
@@ -158,6 +253,47 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	}
 
 	return transformManifest(manifest)
+}
+
+// GetFromCCls retrieves the item from child cls.
+func (r *REST) GetFromCCls(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
+	mcls, err := r.getMCLs()
+	if err != nil {
+		return nil, apierrors.NewServiceUnavailable(err.Error())
+	}
+	resource, _ := r.getResourceName()
+	return r.getResourceFromCCls(ctx, strings.ToLower(resource), name, options, mcls)
+}
+
+// getResourceFromCCls get resource From child cluster
+func (r *REST) getResourceFromCCls(ctx context.Context, resource string, name string, options *metav1.GetOptions,
+	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
+	var unstructObj *unstructured.Unstructured
+	var err error
+	for _, cls := range mcls {
+		clusterID := string(cls.Spec.ClusterID)
+		clientset, ok := r.getCClsCliFromCache(clusterID)
+		if !ok {
+			clientset, err = r.newCClsCLi(clusterID, cls)
+			if err != nil {
+				return nil, apierrors.NewServiceUnavailable(err.Error())
+			}
+		}
+		namespace := request.NamespaceValue(ctx)
+		gvr := schema.GroupVersionResource{Version: "v1", Resource: resource}
+		unstructObj, err = clientset.
+			Resource(gvr).
+			Namespace(namespace).
+			Get(ctx, name, *options)
+		if err != nil {
+			klog.Errorf("get %s %s failed from %s: %v", resource, name, cls.Spec.ClusterID, err)
+			continue
+		} else {
+			err = nil
+			break
+		}
+	}
+	return unstructObj, err
 }
 
 // Update performs an atomic update and set of the object. Returns the result of the update
@@ -373,6 +509,9 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 
 // List returns a list of items matching labels.
 func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
+	if r.resourceInCCls() {
+		return r.ListFromCCls(ctx, options)
+	}
 	label, err := r.convertListOptionsToLabels(ctx, options)
 	if err != nil {
 		return nil, err
@@ -412,6 +551,56 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		result.Items = append(result.Items, *obj)
 	}
 	return result, nil
+}
+
+// ListFromCCls retrieves the item from child cls.
+func (r *REST) ListFromCCls(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
+	mcls, err := r.getMCLs()
+	if err != nil {
+		return nil, apierrors.NewServiceUnavailable(err.Error())
+	}
+	resource, _ := r.getResourceName()
+	return r.listResourceFromCCls(ctx, strings.ToLower(resource), options, mcls)
+}
+
+// listResourceFromCCls list resource From child cluster
+func (r *REST) listResourceFromCCls(ctx context.Context, resource string, options *internalversion.ListOptions,
+	mcls []*v1beta1.ManagedCluster) (runtime.Object, error) {
+	var unstructObjList *unstructured.UnstructuredList
+	var err error
+	isSuc := false
+	listOptions := r.convertToListOptions(options)
+	namespace := request.NamespaceValue(ctx)
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: resource}
+	for _, cls := range mcls {
+		clusterID := string(cls.Spec.ClusterID)
+		clientset, ok := r.getCClsCliFromCache(clusterID)
+		if !ok {
+			clientset, err = r.newCClsCLi(clusterID, cls)
+			if err != nil {
+				return nil, apierrors.NewServiceUnavailable(err.Error())
+			}
+		}
+		listTmp, err := clientset.
+			Resource(gvr).
+			Namespace(namespace).
+			List(ctx, listOptions)
+		if err != nil {
+			klog.Errorf("list %s failed from %s: %v", resource, cls.Spec.ClusterID, err)
+			continue
+		}
+		if !isSuc {
+			unstructObjList = listTmp
+			isSuc = true
+		} else {
+			// merge resource list
+			unstructObjList.Items = append(unstructObjList.Items, listTmp.Items...)
+		}
+	}
+	if !isSuc {
+		return nil, err
+	}
+	return unstructObjList, err
 }
 
 func (r *REST) NewList() runtime.Object {
@@ -722,7 +911,8 @@ func (r *REST) getListKind() string {
 
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
-	manifestLister applisters.ManifestLister, reservedNamespace string) *REST {
+	manifestLister applisters.ManifestLister, reservedNamespace string,
+	mcLister clusterlisters.ManagedClusterLister) *REST {
 	return &REST{
 		dryRunClient:            dryRunClient,
 		clusternetClient:        clusternetclient,
@@ -730,6 +920,11 @@ func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.C
 		parameterCodec:          parameterCodec,
 		deleteCollectionWorkers: DefaultDeleteCollectionWorkers, // currently we only set a default value for deleteCollectionWorkers
 		reservedNamespace:       reservedNamespace,
+		mcLister:                mcLister,
+		childClsClientCache: ChildClsClient{
+			lock:           new(sync.RWMutex),
+			childClsClient: map[string]dynamic.Interface{},
+		},
 	}
 }
 
