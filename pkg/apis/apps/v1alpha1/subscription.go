@@ -48,6 +48,12 @@ type SubscriptionSpec struct {
 	// +kubebuilder:default=default
 	SchedulerName string `json:"schedulerName,omitempty"`
 
+	// If specified, the Subscription will be handled with SchedulingByGroup.
+	// Used together with SubgroupStrategy in every Subscriber.
+	//
+	// +optional
+	SchedulingByGroup *bool `json:"schedulingByGroup,omitempty"`
+
 	// If specified, the Subscription will be handled with specified SchedulingStrategy.
 	// Otherwise, with generic SchedulingStrategy.
 	//
@@ -226,6 +232,24 @@ type Subscriber struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	Weight int32 `json:"weight,omitempty"`
+
+	// GroupStrategy strategy of subscriber when dividing clusters into every group.
+	// Present for scheduling by group.
+	//
+	// +optional
+	GroupStrategy *GroupStrategy `json:"groupStrategy,omitempty"`
+}
+
+// GroupStrategy defines the group strategy
+type GroupStrategy struct {
+	// PickClustersNum number of clusters from every group.
+	// Replicas distribution is the same as spread dynamic divided.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	PickClustersNum int32 `json:"pickClustersNum,omitempty"`
+
+	// TODO: other Replicas distribution schedule strategy in every group dynamic divided
 }
 
 // Feed defines the resource to be selected.

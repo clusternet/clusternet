@@ -21,6 +21,8 @@ package algorithm
 import (
 	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -101,7 +103,13 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 		return result, err
 	}
 
-	clusters, err := g.selectClusters(ctx, state, priorityList, fwk, sub, finv)
+	// Step 4: Subgroup clusters.
+	subgroupList, err := g.subgroupClusters(ctx, sub, priorityList)
+	if err != nil {
+		return result, err
+	}
+
+	clusters, err := g.selectClusters(ctx, state, subgroupList, fwk, sub, finv)
 	trace.Step("Prioritizing done")
 
 	return ScheduleResult{
@@ -390,6 +398,51 @@ func prioritizeClusters(ctx context.Context, fwk framework.Framework, state *fra
 			klog.V(10).InfoS("Calculated cluster's final score for subscription", "subscription", klog.KObj(sub), "cluster", result[i].NamespacedName, "score", result[i].Score)
 		}
 	}
+	return result, nil
+}
+
+// subgroupClusters grouping the clusters by
+func (g *genericScheduler) subgroupClusters(ctx context.Context, sub *appsapi.Subscription, clusterScoreList framework.ClusterScoreList) (framework.ClusterScoreList, error) {
+
+	grouping := sub.Spec.SchedulingByGroup != nil && *sub.Spec.SchedulingByGroup
+
+	if !grouping {
+		return clusterScoreList, nil
+	}
+
+	subgroup := make([]framework.ClusterScoreList, len(sub.Spec.Subscribers))
+	result := make(framework.ClusterScoreList, 0)
+
+	for i, subscriber := range sub.Spec.Subscribers {
+		selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
+		if err != nil {
+			continue
+		}
+		for _, clusterScore := range clusterScoreList {
+			cluster, err := g.cache.Get(clusterScore.NamespacedName)
+			if err != nil {
+				return nil, err
+			}
+			if !selector.Matches(labels.Set(cluster.Labels)) {
+				continue
+			}
+			subgroup[i] = append(subgroup[i], clusterScore)
+		}
+
+		if subscriber.GroupStrategy == nil {
+			return nil, fmt.Errorf("groupStrategy filed can not be Empty")
+		}
+		pickClusterNum := subscriber.GroupStrategy.PickClustersNum
+
+		subgroupLen := int32(len(subgroup[i]))
+		if pickClusterNum > subgroupLen {
+			pickClusterNum = subgroupLen
+		}
+		subgroup[i] = subgroup[i][:pickClusterNum]
+
+		result = append(result, subgroup[i]...)
+	}
+
 	return result, nil
 }
 
