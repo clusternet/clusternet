@@ -18,9 +18,13 @@ package generic
 
 import (
 	"context"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	kubeinformers "k8s.io/client-go/informers"
@@ -42,8 +46,6 @@ import (
 )
 
 type Deployer struct {
-	ctx context.Context
-
 	clusterLister clusterlisters.ManagedClusterLister
 	clusterSynced cache.InformerSynced
 	secretLister  corev1lister.SecretLister
@@ -54,26 +56,39 @@ type Deployer struct {
 	descController *description.Controller
 
 	recorder record.EventRecorder
+
+	// apiserver url of parent cluster
+	apiserverURL string
+
+	// systemNamespace specifies the default namespace to look up objects, like credentials
+	// default to be "clusternet-system"
+	systemNamespace string
+
+	// If enabled, then the deployers in Clusternet will use anonymous when proxying requests to child clusters.
+	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
+	anonymousAuthSupported bool
 }
 
-func NewDeployer(ctx context.Context, clusternetClient *clusternetclientset.Clientset,
+func NewDeployer(apiserverURL, systemNamespace string, clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
-	recorder record.EventRecorder) (*Deployer, error) {
+	recorder record.EventRecorder, anonymousAuthSupported bool) (*Deployer, error) {
 
 	deployer := &Deployer{
-		ctx:              ctx,
-		clusterLister:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
-		clusterSynced:    clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
-		secretLister:     kubeInformerFactory.Core().V1().Secrets().Lister(),
-		secretSynced:     kubeInformerFactory.Core().V1().Secrets().Informer().HasSynced,
-		clusternetClient: clusternetClient,
-		recorder:         recorder,
+		apiserverURL:           apiserverURL,
+		systemNamespace:        systemNamespace,
+		clusterLister:          clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		clusterSynced:          clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
+		secretLister:           kubeInformerFactory.Core().V1().Secrets().Lister(),
+		secretSynced:           kubeInformerFactory.Core().V1().Secrets().Informer().HasSynced,
+		clusternetClient:       clusternetClient,
+		recorder:               recorder,
+		anonymousAuthSupported: anonymousAuthSupported,
 	}
 
-	descController, err := description.NewController(ctx,
-		clusternetClient,
+	descController, err := description.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
+		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		deployer.recorder,
 		deployer.handleDescription)
 	if err != nil {
@@ -84,21 +99,21 @@ func NewDeployer(ctx context.Context, clusternetClient *clusternetclientset.Clie
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int) {
+func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Info("starting generic deployer...")
 	defer klog.Info("shutting generic deployer")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(deployer.ctx.Done(),
+	if !cache.WaitForNamedCacheSync("generic-deployer",
+		stopCh,
 		deployer.clusterSynced,
 		deployer.secretSynced) {
 		return
 	}
 
-	go deployer.descController.Run(workers, deployer.ctx.Done())
+	go deployer.descController.Run(workers, stopCh)
 
-	<-deployer.ctx.Done()
+	<-stopCh
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
@@ -118,22 +133,34 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 		return nil
 	}
 
+	if desc.DeletionTimestamp != nil {
+		// if the cluster got lost
+		if utils.IsClusterLost(desc.Labels[known.ClusterIDLabel], desc.Namespace, deployer.clusterLister) {
+			descCopy := desc.DeepCopy()
+			descCopy.Finalizers = utils.RemoveString(descCopy.Finalizers, known.AppFinalizer)
+			_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(descCopy.Namespace).Update(context.TODO(), descCopy, metav1.UpdateOptions{})
+			return err
+		}
+	}
+
 	dynamicClient, discoveryRESTMapper, err := deployer.getDynamicClient(desc)
 	if err != nil {
 		return err
 	}
 
 	if desc.DeletionTimestamp != nil {
-		return utils.OffloadDescription(deployer.ctx, deployer.clusternetClient, dynamicClient,
+		return utils.OffloadDescription(context.TODO(), deployer.clusternetClient, dynamicClient,
 			discoveryRESTMapper, desc, deployer.recorder)
 	}
 
-	return utils.ApplyDescription(deployer.ctx, deployer.clusternetClient, dynamicClient,
-		discoveryRESTMapper, desc, deployer.recorder)
+	return utils.ApplyDescription(context.TODO(), deployer.clusternetClient, dynamicClient,
+		discoveryRESTMapper, desc, deployer.recorder, false, nil, false)
 }
 
 func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.Interface, meta.RESTMapper, error) {
-	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister, desc.Namespace, desc.Labels[known.ClusterIDLabel])
+	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister,
+		desc.Namespace, desc.Labels[known.ClusterIDLabel], deployer.apiserverURL, deployer.systemNamespace,
+		deployer.anonymousAuthSupported)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -160,4 +187,65 @@ func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.I
 
 	return dynamicClient, discoveryRESTMapper, nil
 
+}
+
+func (deployer *Deployer) PruneFeedsInDescription(ctx context.Context, current, desired *appsapi.Description) error {
+	// for helm deployer, redundant HelmReleases will be deleted after re-calculating.
+	// Here we only need to focus on generic deployer.
+	if desired.Spec.Deployer == appsapi.DescriptionHelmDeployer {
+		return nil
+	}
+
+	dynamicClient, discoveryRESTMapper, err := deployer.getDynamicClient(desired)
+	if err != nil {
+		return err
+	}
+
+	resourceNameFunc := func(resource *unstructured.Unstructured) string {
+		return fmt.Sprintf("%s/%s/%s", resource.GetKind(), resource.GetNamespace(), resource.GetName())
+	}
+
+	var allErrs []error
+	var resourcesToBeDeleted []*unstructured.Unstructured
+	var desiredResources []string
+	for idx, object := range desired.Spec.Raw {
+		resource := &unstructured.Unstructured{}
+		err = resource.UnmarshalJSON(object)
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to unmarshal object at index %d from desired Description %s: %v", idx, klog.KObj(desired), err))
+			allErrs = append(allErrs, err)
+			continue
+		}
+		desiredResources = append(desiredResources, resourceNameFunc(resource))
+	}
+	for idx, object := range current.Spec.Raw {
+		resource := &unstructured.Unstructured{}
+		err = resource.UnmarshalJSON(object)
+		if err != nil {
+			klog.ErrorDepth(5, fmt.Sprintf("failed to unmarshal object at index %d from current Description %s: %v", idx, klog.KObj(current), err))
+			allErrs = append(allErrs, err)
+			continue
+		}
+		if !utils.ContainsString(desiredResources, resourceNameFunc(resource)) {
+			resourcesToBeDeleted = append(resourcesToBeDeleted, resource)
+		}
+	}
+
+	// prune unused feeds
+	for _, resource := range resourcesToBeDeleted {
+		err = utils.DeleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("Failed to prune %s %s: %v", resource.GetKind(), klog.KObj(resource), err)
+			klog.ErrorDepth(5, msg)
+			deployer.recorder.Event(current, corev1.EventTypeWarning, "UnsuccessfullyPruningFeed", msg)
+			continue
+		}
+
+		msg := fmt.Sprintf("Successfully pruning %s %s", resource.GetKind(), klog.KObj(resource))
+		klog.V(5).Info(msg)
+		deployer.recorder.Event(current, corev1.EventTypeNormal, "SuccessfullyPruningFeed", msg)
+	}
+
+	return utilerrors.NewAggregate(allErrs)
 }

@@ -53,13 +53,20 @@ type Deployer struct {
 	appPusherEnabled bool
 
 	childAPIServerURL string
+	// systemNamespace specifies the default namespace to look up credentials
+	// default to be "clusternet-system"
+	systemNamespace string
+
+	saTokenAutoGen bool
 }
 
-func NewDeployer(syncMode, childAPIServerURL string) *Deployer {
+func NewDeployer(syncMode, childAPIServerURL, systemNamespace string, saTokenAutoGen bool) *Deployer {
 	return &Deployer{
 		syncMode:          clusterapi.ClusterSyncMode(syncMode),
 		appPusherEnabled:  utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		childAPIServerURL: childAPIServerURL,
+		systemNamespace:   systemNamespace,
+		saTokenAutoGen:    saTokenAutoGen,
 	}
 }
 
@@ -79,62 +86,56 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	}
 
 	// make sure deployer gets initialized before we go next
-	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet)
+	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet, d.systemNamespace, d.saTokenAutoGen)
 	if d.appPusherEnabled && d.syncMode != clusterapi.Pull {
 		klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
 		createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
 	}
 
-	if d.syncMode == clusterapi.Pull || (d.syncMode == clusterapi.Dual && !d.appPusherEnabled) {
-		appDeployerConfig, err := utils.GenerateKubeConfigFromToken(d.childAPIServerURL,
-			string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-			appDeployerSecret.Data[corev1.ServiceAccountRootCAKey], 1)
-		if err != nil {
-			return err
-		}
-		childKubeClient, err := kubernetes.NewForConfig(appDeployerConfig)
-		if err != nil {
-			return err
-		}
-
-		deployCtx, err := utils.NewDeployContext(utils.CreateKubeConfigWithToken(d.childAPIServerURL,
-			string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-			appDeployerSecret.Data[corev1.ServiceAccountRootCAKey]))
-		if err != nil {
-			return err
-		}
-
-		// setup broadcaster and event recorder in parent cluster
-		broadcaster := record.NewBroadcaster()
-		klog.Infof("sending events to parent apiserver")
-		broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
-			Interface: kubernetes.NewForConfigOrDie(parentDedicatedKubeConfig).CoreV1().Events(""),
-		})
-		utilruntime.Must(appsapi.AddToScheme(scheme.Scheme))
-		parentRecorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-agent"})
-
-		// create clientset and informerFactory
-		clusternetclient := clusternet.NewForConfigOrDie(parentDedicatedKubeConfig)
-		clusternetInformerFactory := informers.NewSharedInformerFactoryWithOptions(clusternetclient,
-			known.DefaultResync, informers.WithNamespace(*dedicatedNamespace))
-		// add informers for HelmReleases and Descriptions
-		clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
-		clusternetInformerFactory.Start(ctx.Done())
-
-		genericDeployer, err := generic.NewDeployer(ctx, d.syncMode, d.appPusherEnabled, appDeployerConfig,
-			clusternetclient, clusternetInformerFactory, parentRecorder)
-		if err != nil {
-			return err
-		}
-		helmDeployer, err := helm.NewDeployer(ctx, d.syncMode, d.appPusherEnabled, childKubeClient,
-			clusternetclient, deployCtx, clusternetInformerFactory, parentRecorder)
-		if err != nil {
-			return err
-		}
-		go genericDeployer.Run(workers)
-		go helmDeployer.Run(workers)
+	appDeployerConfig, err := utils.GenerateKubeConfigFromToken(d.childAPIServerURL,
+		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey], 1)
+	if err != nil {
+		return err
 	}
+	childKubeClient, err := kubernetes.NewForConfig(appDeployerConfig)
+	if err != nil {
+		return err
+	}
+
+	// setup broadcaster and event recorder in parent cluster
+	broadcaster := record.NewBroadcaster()
+	klog.Infof("sending events to parent apiserver")
+	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
+		Interface: kubernetes.NewForConfigOrDie(parentDedicatedKubeConfig).CoreV1().Events(""),
+	})
+	utilruntime.Must(appsapi.AddToScheme(scheme.Scheme))
+	parentRecorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-agent"})
+
+	// create clientset and informerFactory
+	clusternetclient := clusternet.NewForConfigOrDie(parentDedicatedKubeConfig)
+	clusternetInformerFactory := informers.NewSharedInformerFactoryWithOptions(clusternetclient,
+		known.DefaultResync, informers.WithNamespace(*dedicatedNamespace))
+	// add informers for HelmReleases and Descriptions
+	clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
+	clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
+	clusternetInformerFactory.Start(ctx.Done())
+
+	genericDeployer, err := generic.NewDeployer(d.syncMode, d.appPusherEnabled, appDeployerConfig,
+		clusternetclient, clusternetInformerFactory, parentRecorder)
+	if err != nil {
+		return err
+	}
+	deployConfig := utils.CreateKubeConfigWithToken(d.childAPIServerURL,
+		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey])
+	helmDeployer, err := helm.NewDeployer(d.syncMode, d.appPusherEnabled, parentClientSet, childKubeClient,
+		clusternetclient, deployConfig, clusternetInformerFactory, parentRecorder)
+	if err != nil {
+		return err
+	}
+	go genericDeployer.Run(workers, ctx.Done())
+	go helmDeployer.Run(workers, ctx.Done())
 
 	<-ctx.Done()
 	return nil

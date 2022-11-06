@@ -21,6 +21,8 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
@@ -34,19 +36,19 @@ import (
 )
 
 type Deployer struct {
-	ctx context.Context
-
 	// syncMode indicates current sync mode
 	syncMode clusterapi.ClusterSyncMode
 	// whether AppPusher feature gate is enabled
 	appPusherEnabled bool
 
+	// kube client to parent cluster
+	parentKubeClient *kubernetes.Clientset
 	// kube client to current child cluster (with credentials in ServiceAccount "clusternet-app-deployer")
 	childKubeClient *kubernetes.Clientset
 	// clusternet client to parent cluster
 	clusternetClient *clusternetclientset.Clientset
 
-	deployCtx *utils.DeployContext
+	deployConfig *clientcmdapi.Config
 
 	hrLister   applisters.HelmReleaseLister
 	hrSynced   cache.InformerSynced
@@ -58,17 +60,17 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
-	childKubeClient *kubernetes.Clientset, clusternetClient *clusternetclientset.Clientset, deployCtx *utils.DeployContext,
+func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool, parentKubeClient *kubernetes.Clientset,
+	childKubeClient *kubernetes.Clientset, clusternetClient *clusternetclientset.Clientset, deployConfig *clientcmdapi.Config,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory, recorder record.EventRecorder) (*Deployer, error) {
 
 	deployer := &Deployer{
-		ctx:              ctx,
 		syncMode:         syncMode,
 		appPusherEnabled: appPusherEnabled,
+		parentKubeClient: parentKubeClient,
 		childKubeClient:  childKubeClient,
 		clusternetClient: clusternetClient,
-		deployCtx:        deployCtx,
+		deployConfig:     deployConfig,
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
 		hrSynced:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer().HasSynced,
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
@@ -76,9 +78,7 @@ func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPu
 		recorder:         recorder,
 	}
 
-	hrController, err := helmrelease.NewController(ctx,
-		clusternetClient,
-		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
+	hrController, err := helmrelease.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().HelmReleases(),
 		deployer.recorder,
 		deployer.handleHelmRelease)
@@ -90,22 +90,18 @@ func NewDeployer(ctx context.Context, syncMode clusterapi.ClusterSyncMode, appPu
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int) {
+func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(deployer.ctx.Done(),
-		deployer.descSynced,
-		deployer.hrSynced,
-	) {
+	if !cache.WaitForNamedCacheSync("helm-deployer", stopCh, deployer.descSynced, deployer.hrSynced) {
 		return
 	}
 
-	go deployer.helmReleaseController.Run(workers, deployer.ctx.Done())
+	go deployer.helmReleaseController.Run(workers, stopCh)
 
-	<-deployer.ctx.Done()
+	<-stopCh
 }
 
 func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
@@ -116,6 +112,13 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	return utils.ReconcileHelmRelease(deployer.ctx, deployer.deployCtx, deployer.clusternetClient,
+	deployCtx, err := utils.NewDeployContext(deployer.deployConfig, &clientcmd.ConfigOverrides{Context: clientcmdapi.Context{
+		Namespace: hr.Spec.TargetNamespace,
+	}})
+	if err != nil {
+		return err
+	}
+
+	return utils.ReconcileHelmRelease(context.TODO(), deployCtx, deployer.parentKubeClient, deployer.clusternetClient,
 		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
 }

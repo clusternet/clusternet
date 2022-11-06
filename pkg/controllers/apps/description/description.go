@@ -25,6 +25,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -48,8 +50,6 @@ type SyncHandlerFunc func(description *appsapi.Description) error
 
 // Controller is a controller that handle Description
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetClientSet.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -68,15 +68,16 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetClientSet.Interface,
-	descInformer appInformers.DescriptionInformer, hrInformer appInformers.HelmReleaseInformer,
+func NewController(clusternetClient clusternetClientSet.Interface,
+	descInformer appInformers.DescriptionInformer,
+	hrInformer appInformers.HelmReleaseInformer,
+	helmChartInformer appInformers.HelmChartInformer,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "description"),
 		descLister:       descInformer.Lister(),
@@ -97,6 +98,9 @@ func NewController(ctx context.Context, clusternetClient clusternetClientSet.Int
 		DeleteFunc: c.deleteHelmRelease,
 	})
 
+	helmChartInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.updateHelmChart,
+	})
 	return c, nil
 }
 
@@ -112,8 +116,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down description controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.descSynced, c.hrSynced) {
+	if !cache.WaitForNamedCacheSync("description-controller", stopCh, c.descSynced, c.hrSynced) {
 		return
 	}
 
@@ -195,6 +198,43 @@ func (c *Controller) deleteHelmRelease(obj interface{}) {
 	}
 	klog.V(4).Infof("deleting HelmRelease %q", klog.KObj(hr))
 	c.enqueue(desc)
+}
+
+func (c *Controller) updateHelmChart(old, cur interface{}) {
+	oldChart := old.(*appsapi.HelmChart)
+	newChart := cur.(*appsapi.HelmChart)
+
+	// Decide whether discovery has reported a spec change.
+	if reflect.DeepEqual(oldChart.Spec, newChart.Spec) {
+		return
+	}
+
+	baseUIDs := []string{}
+	for k, v := range newChart.GetLabels() {
+		if v == "Base" {
+			baseUIDs = append(baseUIDs, k)
+		}
+	}
+	if len(baseUIDs) == 0 {
+		return
+	}
+
+	klog.V(5).Infof("HelmChart %s/%s has bases: %s", newChart.Namespace, newChart.Name, baseUIDs)
+	requirement, err := labels.NewRequirement(known.ConfigUIDLabel, selection.In, baseUIDs)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to create label requirement: %v", err))
+		return
+	}
+	selector := labels.NewSelector().Add(*requirement)
+	descs, err := c.descLister.Descriptions("").List(selector)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list descriptions: %v", err))
+		return
+	}
+	for _, desc := range descs {
+		klog.V(4).Infof("updating Description %q", klog.KObj(desc))
+		c.workqueue.Add(klog.KObj(desc).String())
+	}
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
@@ -325,7 +365,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	desc.Kind = controllerKind.Kind
-	desc.APIVersion = controllerKind.Version
+	desc.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(desc)
 	if err != nil {
 		c.recorder.Event(desc, corev1.EventTypeWarning, "FailedSynced", err.Error())
@@ -344,7 +384,7 @@ func (c *Controller) UpdateDescriptionStatus(desc *appsapi.Description, status *
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		desc.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(c.ctx, desc, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil

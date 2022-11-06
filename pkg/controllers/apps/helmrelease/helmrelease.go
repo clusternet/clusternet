@@ -47,8 +47,6 @@ type SyncHandlerFunc func(helmrelease *appsapi.HelmRelease) error
 
 // Controller is a controller that handle HelmRelease
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -58,28 +56,22 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	descLister applisters.DescriptionLister
-	descSynced cache.InformerSynced
-	hrLister   applisters.HelmReleaseLister
-	hrSynced   cache.InformerSynced
+	hrLister applisters.HelmReleaseLister
+	hrSynced cache.InformerSynced
 
 	recorder        record.EventRecorder
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
-	descInformer appinformers.DescriptionInformer, hrInformer appinformers.HelmReleaseInformer,
+func NewController(clusternetClient clusternetclientset.Interface, hrInformer appinformers.HelmReleaseInformer,
 	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmRelease"),
-		descLister:       descInformer.Lister(),
-		descSynced:       descInformer.Informer().HasSynced,
 		hrLister:         hrInformer.Lister(),
 		hrSynced:         hrInformer.Informer().HasSynced,
 		recorder:         recorder,
@@ -108,8 +100,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down helmRelease controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.hrSynced, c.descSynced) {
+	if !cache.WaitForNamedCacheSync("helmrelease-controller", stopCh, c.hrSynced) {
 		return
 	}
 
@@ -274,7 +265,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	hr.Kind = controllerKind.Kind
-	hr.APIVersion = controllerKind.Version
+	hr.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(hr)
 	if err != nil {
 		c.recorder.Event(hr, corev1.EventTypeWarning, "FailedSynced", err.Error())

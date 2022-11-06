@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -28,8 +29,9 @@ type ClusterType string
 
 // These are the valid values for ClusterType
 const (
-	// edge cluster
 	EdgeCluster ClusterType = "EdgeCluster"
+
+	StandardCluster ClusterType = "StandardCluster"
 
 	// todo: add more types
 )
@@ -47,6 +49,11 @@ const (
 
 	// Dual combines both Push and Pull mode.
 	Dual ClusterSyncMode = "Dual"
+)
+
+const (
+	// ClusterReady means cluster is ready.
+	ClusterReady = "Ready"
 )
 
 // ClusterRegistrationRequestSpec defines the desired state of ClusterRegistrationRequest
@@ -76,6 +83,20 @@ type ClusterRegistrationRequestSpec struct {
 	// +kubebuilder:validation:MaxLength=30
 	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	ClusterName string `json:"clusterName,omitempty"`
+
+	// ClusterNamespace is the dedicated namespace of the cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+	ClusterNamespace string `json:"clusterNamespace,omitempty"`
+
+	// ClusterLabels is the labels of the child cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=object
+	ClusterLabels map[string]string `json:"clusterLabels,omitempty"`
 
 	// SyncMode decides how to sync resources from parent cluster to child cluster.
 	//
@@ -185,6 +206,10 @@ type ManagedClusterSpec struct {
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Enum=Push;Pull;Dual
 	SyncMode ClusterSyncMode `json:"syncMode"`
+
+	// Taints has the "effect" on any resource that does not tolerate the Taint.
+	// +optional
+	Taints []corev1.Taint `json:"taints,omitempty"`
 }
 
 // ManagedClusterStatus defines the observed state of ManagedCluster
@@ -210,30 +235,25 @@ type ManagedClusterStatus struct {
 	// which is deprecated since Kubernetes v1.16. Please use Livez and Readyz instead.
 	// Leave it here only for compatibility.
 	// +optional
-	Healthz bool `json:"healthz,omitempty"`
+	Healthz bool `json:"healthz"`
 
 	// Livez indicates the livez status of the cluster
 	// +optional
-	Livez bool `json:"livez,omitempty"`
+	Livez bool `json:"livez"`
 
 	// Readyz indicates the readyz status of the cluster
 	// +optional
-	Readyz bool `json:"readyz,omitempty"`
+	Readyz bool `json:"readyz"`
 
 	// AppPusher indicates whether to allow parent cluster deploying applications in Push or Dual Mode.
 	// Mainly for security concerns.
 	// +optional
-	AppPusher bool `json:"appPusher,omitempty"`
+	AppPusher *bool `json:"appPusher,omitempty"`
 
 	// UseSocket indicates whether to use socket proxy when connecting to child cluster.
 	//
 	// +optional
 	UseSocket bool `json:"useSocket,omitempty"`
-
-	// ParentAPIServerURL is the advertising url/address of managed Kubernetes cluster registering to
-	//
-	// +optional
-	ParentAPIServerURL string `json:"parentAPIServerURL,omitempty"`
 
 	// Allocatable is the sum of allocatable resources for nodes in the cluster
 	// +optional
@@ -254,6 +274,33 @@ type ManagedClusterStatus struct {
 	// NodeStatistics is the info summary of nodes in the cluster
 	// +optional
 	NodeStatistics NodeStatistics `json:"nodeStatistics,omitempty"`
+
+	// PodStatistics is the info summary of pods in the cluster
+	// +optional
+	PodStatistics *PodStatistics `json:"podStatistics,omitempty"`
+
+	// ResourceUsage is the cpu(m) and memory(Mi) already used in the cluster
+	// +optional
+	ResourceUsage *ResourceUsage `json:"resourceUsage,omitempty"`
+
+	// Conditions is an array of current cluster conditions.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// heartbeatFrequencySeconds is the frequency at which the agent reports current cluster status
+	// +optional
+	HeartbeatFrequencySeconds *int64 `json:"heartbeatFrequencySeconds,omitempty"`
+
+	// PredictorEnabled indicates whether predictor is enabled.
+	// +optional
+	PredictorEnabled bool `json:"predictorEnabled,omitempty"`
+
+	// PredictorAddress shows the predictor address
+	// +optional
+	PredictorAddress string `json:"predictorAddress,omitempty"`
+
+	// PredictorDirectAccess indicates whether the predictor can be accessed directly by clusternet-scheduler
+	PredictorDirectAccess bool `json:"predictorDirectAccess,omitempty"`
 }
 
 // +genclient
@@ -264,7 +311,7 @@ type ManagedClusterStatus struct {
 // +kubebuilder:printcolumn:name="CLUSTER TYPE",type=string,JSONPath=`.spec.clusterType`,description="The type of the cluster",priority=100
 // +kubebuilder:printcolumn:name="SYNC MODE",type=string,JSONPath=`.spec.syncMode`,description="The cluster sync mode"
 // +kubebuilder:printcolumn:name="KUBERNETES",type=string,JSONPath=".status.k8sVersion"
-// +kubebuilder:printcolumn:name="READYZ",type=string,JSONPath=".status.readyz"
+// +kubebuilder:printcolumn:name="STATUS",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ManagedCluster is the Schema for the managedclusters API
@@ -302,4 +349,24 @@ type NodeStatistics struct {
 	// LostNodes is the number of states lost nodes in the cluster
 	// +optional
 	LostNodes int32 `json:"lostNodes,omitempty"`
+}
+
+type PodStatistics struct {
+	// RunningPods is the number of running pods in the cluster
+	// +optional
+	RunningPods int32 `json:"runningPods,omitempty"`
+
+	// TotalPods is the number of all pods in the cluster
+	// +optional
+	TotalPods int32 `json:"totalPods,omitempty"`
+}
+
+type ResourceUsage struct {
+	// CpuUsage is the total cpu(m) already used in the whole cluster, k8s reserved not include
+	// +optional
+	CpuUsage resource.Quantity `json:"cpuUsage,omitempty"`
+
+	// MemoryUsage is the total memory(Mi) already used in the whole cluster, k8s reserved not include
+	// +optional
+	MemoryUsage resource.Quantity `json:"memoryUsage,omitempty"`
 }

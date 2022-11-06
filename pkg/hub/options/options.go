@@ -38,12 +38,15 @@ import (
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/version"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	clusternetopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
 	"github.com/clusternet/clusternet/pkg/hub/apiserver"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -55,21 +58,59 @@ type HubServerOptions struct {
 	// No tunnel logging by default
 	TunnelLogging bool
 
+	// Whether the anonymous access is allowed by the kube-apiserver,
+	// i.e. flag "--anonymous-auth=true" is set to kube-apiserver.
+	// If enabled, then the deployers in Clusternet will use anonymous when proxying requests to child clusters.
+	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
+	AnonymousAuthSupported bool
+
+	// default namespace to create Manifest in
+	// default to be "clusternet-reserved"
+	ReservedNamespace string
+
+	// threadiness of controller workers
+	// default to be 10
+	Threadiness int
+
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	LoopbackSharedInformerFactory informers.SharedInformerFactory
+
+	*utils.ControllerOptions
+
+	// advertise address to other peers
+	PeerAdvertiseAddress net.IP
+	// secure port used for communicating with peers
+	PeerPort int
+
+	// token used for authentication with peers
+	PeerToken string
+
+	ClusterAPIKubeconfig string
 }
 
 // NewHubServerOptions returns a new HubServerOptions
-func NewHubServerOptions() *HubServerOptions {
-	o := &HubServerOptions{
-		RecommendedOptions: genericoptions.NewRecommendedOptions("fake", nil),
+func NewHubServerOptions() (*HubServerOptions, error) {
+	controllerOpts, err := utils.NewControllerOptions("clusternet-hub", known.ClusternetSystemNamespace)
+	if err != nil {
+		return nil, err
 	}
-	return o
+	controllerOpts.ClientConnection.QPS = rest.DefaultQPS * float32(10)
+	controllerOpts.ClientConnection.Burst = int32(rest.DefaultBurst * 10)
+
+	return &HubServerOptions{
+		RecommendedOptions:     genericoptions.NewRecommendedOptions("fake", nil),
+		AnonymousAuthSupported: true,
+		ReservedNamespace:      known.ClusternetReservedNamespace,
+		Threadiness:            known.DefaultThreadiness,
+		ControllerOptions:      controllerOpts,
+		PeerPort:               8123,
+		PeerToken:              "Cheugy",
+	}, nil
 }
 
 // Validate validates HubServerOptions
-func (o *HubServerOptions) Validate(args []string) error {
+func (o *HubServerOptions) Validate() error {
 	errors := []error{}
 	errors = append(errors, o.validateRecommendedOptions()...)
 	return utilerrors.NewAggregate(errors)
@@ -77,7 +118,16 @@ func (o *HubServerOptions) Validate(args []string) error {
 
 // Complete fills in fields required to have valid data
 func (o *HubServerOptions) Complete() error {
-	// TODO
+	o.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath = o.ClientConnection.Kubeconfig
+
+	if o.PeerAdvertiseAddress == nil || o.PeerAdvertiseAddress.IsUnspecified() {
+		hostIP, err := o.RecommendedOptions.SecureServing.DefaultExternalAddress()
+		if err != nil {
+			return fmt.Errorf("unable to find suitable network address: '%v'. "+
+				"Try to set the PeerAdvertiseAddress directly or provide a valid BindAddress to fix this", err)
+		}
+		o.PeerAdvertiseAddress = hostIP
+	}
 
 	return nil
 }
@@ -133,6 +183,20 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 
 func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
 	o.addRecommendedOptionsFlags(fs)
+	o.ControllerOptions.AddFlags(fs)
+
+	fs.IPVar(&o.PeerAdvertiseAddress, "peer-advertise-address", o.PeerAdvertiseAddress, ""+
+		"The IP address on which to advertise the clusternet-hub to other peers in the cluster. This "+
+		"address must be reachable by the rest of the peers. If blank, the --bind-address "+
+		"will be used. If --bind-address is unspecified, the host's default interface will "+
+		"be used.")
+	fs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
+	fs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
+	fs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
+	fs.IntVar(&o.Threadiness, "threadiness", o.Threadiness, "The number of threads to use for controller workers")
+	fs.IntVar(&o.PeerPort, "peer-port", o.PeerPort, "The port on which to serve HTTPS for communicating with peers.")
+	fs.StringVar(&o.PeerToken, "peer-token", o.PeerToken, "The token for authentication with peers with peers.")
+	fs.StringVar(&o.ClusterAPIKubeconfig, "cluster-api-kubeconfig", o.ClusterAPIKubeconfig, "Path to a kubeconfig file pointing at the management cluster for cluster-api.")
 }
 
 func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
@@ -144,7 +208,8 @@ func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
 	o.RecommendedOptions.Authorization.AddFlags(fs)
 	o.RecommendedOptions.Audit.LogOptions.AddFlags(fs)
 	o.RecommendedOptions.Features.AddFlags(fs)
-	o.RecommendedOptions.CoreAPI.AddFlags(fs)
+	// flag "kubeconfig" has been declared in o.ControllerOptions
+	//o.RecommendedOptions.CoreAPI.AddFlags(fs) // --kubeconfig flag
 }
 
 func (o *HubServerOptions) validateRecommendedOptions() []error {
@@ -192,7 +257,7 @@ func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.Re
 		if config.ClientConfig != nil {
 			config.FlowControl = utilflowcontrol.New(
 				config.SharedInformerFactory,
-				kubernetes.NewForConfigOrDie(config.ClientConfig).FlowcontrolV1beta1(),
+				kubernetes.NewForConfigOrDie(config.ClientConfig).FlowcontrolV1beta2(),
 				config.MaxRequestsInFlight+config.MaxMutatingRequestsInFlight,
 				config.RequestTimeout/4,
 			)

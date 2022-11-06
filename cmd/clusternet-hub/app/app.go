@@ -37,20 +37,23 @@ var (
 
 // NewClusternetHubCmd creates a *cobra.Command object with default parameters
 func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
-	opts := options.NewHubServerOptions()
+	opts, err := options.NewHubServerOptions()
+	if err != nil {
+		klog.Fatalf("unable to initialize command options: %v", err)
+	}
 
 	cmd := &cobra.Command{
 		Use:  cmdName,
 		Long: `Running in parent cluster, responsible for multiple cluster managements`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := version.PrintAndExitIfRequested(cmdName); err != nil {
+			if err = version.PrintAndExitIfRequested(cmdName); err != nil {
 				klog.Exit(err)
 			}
 
-			if err := opts.Complete(); err != nil {
+			if err = opts.Complete(); err != nil {
 				klog.Exit(err)
 			}
-			if err := opts.Validate(args); err != nil {
+			if err = opts.Validate(); err != nil {
 				klog.Exit(err)
 			}
 
@@ -58,11 +61,11 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 				klog.V(1).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
 			})
 
-			hub, err := hub.NewHub(ctx, opts)
-			if err != nil {
-				klog.Exit(err)
+			hub, err2 := hub.NewHub(opts)
+			if err2 != nil {
+				klog.Exit(err2)
 			}
-			if err := hub.Run(); err != nil {
+			if err = hub.Run(ctx); err != nil {
 				klog.Exit(err)
 			}
 
@@ -70,9 +73,8 @@ func NewClusternetHubCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 
+	// bind flags
 	flags := cmd.Flags()
-	flags.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
-
 	version.AddVersionFlag(flags)
 	opts.AddFlags(flags)
 	utilfeature.DefaultMutableFeatureGate.AddFlag(flags)

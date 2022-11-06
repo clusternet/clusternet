@@ -34,7 +34,7 @@ rules:
       - "proxies.clusternet.io"
     resources:
       - "sockets/proxy"
-    verbs: ["*"]
+    verbs: [ "*" ]
   - apiGroups:
       - ""
     resources:
@@ -71,3 +71,6 @@ subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
     name: system:anonymous
+  - kind: ServiceAccount
+    name: clusternet-hub-proxy
+    namespace: clusternet-system

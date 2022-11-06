@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -48,8 +49,6 @@ type SyncHandlerFunc func(chart *appsapi.HelmChart) error
 
 // Controller is a controller that handle HelmChart
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -61,6 +60,8 @@ type Controller struct {
 
 	helmChartLister applisters.HelmChartLister
 	helmChartSynced cache.InformerSynced
+	baseLister      applisters.BaseLister
+	baseSynced      cache.InformerSynced
 
 	feedInUseProtection bool
 
@@ -68,19 +69,20 @@ type Controller struct {
 	syncHandlerFunc SyncHandlerFunc
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
-	helmChartInformer appinformers.HelmChartInformer, feedInUseProtection bool,
-	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+func NewController(clusternetClient clusternetclientset.Interface,
+	helmChartInformer appinformers.HelmChartInformer, baseInformer appinformers.BaseInformer,
+	feedInUseProtection bool, recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:                 ctx,
 		clusternetClient:    clusternetClient,
 		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmChart"),
 		helmChartLister:     helmChartInformer.Lister(),
 		helmChartSynced:     helmChartInformer.Informer().HasSynced,
+		baseLister:          baseInformer.Lister(),
+		baseSynced:          baseInformer.Informer().HasSynced,
 		feedInUseProtection: feedInUseProtection,
 		recorder:            recorder,
 		syncHandlerFunc:     syncHandlerFunc,
@@ -91,6 +93,10 @@ func NewController(ctx context.Context, clusternetClient clusternetclientset.Int
 		AddFunc:    c.addHelmChart,
 		UpdateFunc: c.updateHelmChart,
 		DeleteFunc: c.deleteHelmChart,
+	})
+
+	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: c.updateBase,
 	})
 
 	return c, nil
@@ -108,8 +114,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down helmchart controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.helmChartSynced) {
+	if !cache.WaitForNamedCacheSync("helmchart-controller", stopCh, c.helmChartSynced, c.baseSynced) {
 		return
 	}
 
@@ -163,6 +168,30 @@ func (c *Controller) deleteHelmChart(obj interface{}) {
 	}
 	klog.V(4).Infof("deleting HelmChart %q", klog.KObj(chart))
 	c.enqueue(chart)
+}
+
+func (c *Controller) updateBase(old, cur interface{}) {
+	oldBase := old.(*appsapi.Base)
+	newBase := cur.(*appsapi.Base)
+
+	if newBase.DeletionTimestamp != nil {
+		// labels pruning had already been done when a Base got deleted.
+		return
+	}
+
+	// Decide whether discovery has reported a spec change.
+	if reflect.DeepEqual(oldBase.Spec.Feeds, newBase.Spec.Feeds) {
+		return
+	}
+
+	for _, feed := range utils.FindObsoletedFeeds(oldBase.Spec.Feeds, newBase.Spec.Feeds) {
+		if feed.Kind != "HelmChart" {
+			continue
+		}
+		namespacedKey := feed.Namespace + "/" + feed.Name
+		klog.V(6).Infof("pruning labels of HelmChart %q", namespacedKey)
+		c.workqueue.Add(namespacedKey)
+	}
 }
 
 // runWorker is a long-running function that will continually call the
@@ -276,6 +305,9 @@ func (c *Controller) syncHandler(key string) error {
 		updatedChart.Labels[known.ConfigNameLabel] = chart.Name
 		updatedChart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
 
+		// prune redundant labels
+		pruneLabels(updatedChart, c.baseLister)
+
 		// only update on changed
 		if !reflect.DeepEqual(chart, updatedChart) {
 			if chart, err = c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(),
@@ -292,7 +324,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	chart.Kind = controllerKind.Kind
-	chart.APIVersion = controllerKind.Version
+	chart.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(chart)
 	if err != nil {
 		c.recorder.Event(chart, corev1.EventTypeWarning, "FailedSynced", err.Error())
@@ -311,7 +343,7 @@ func (c *Controller) UpdateChartStatus(chart *appsapi.HelmChart, status *appsapi
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		chart.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).UpdateStatus(c.ctx, chart, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).UpdateStatus(context.TODO(), chart, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
@@ -337,4 +369,31 @@ func (c *Controller) enqueue(chart *appsapi.HelmChart) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+func pruneLabels(chart *appsapi.HelmChart, baseLister applisters.BaseLister) {
+	// find all Bases
+	baseUIDs := []string{}
+	for key, val := range chart.Labels {
+		// normally the length of a uuid is 36
+		if len(key) != 36 || strings.Contains(key, "/") || val != "Base" {
+			continue
+		}
+		baseUIDs = append(baseUIDs, key)
+	}
+
+	for _, base := range utils.FindBasesFromUIDs(baseLister, baseUIDs) {
+		if utils.HasFeed(appsapi.Feed{
+			Kind:      controllerKind.Kind,
+			Namespace: chart.Namespace,
+			Name:      chart.Name,
+		}, base.Spec.Feeds) {
+			continue
+		}
+
+		// prune labels
+		// since Base is not referring this HelmChart anymore
+		delete(chart.Labels, string(base.UID))
+		delete(chart.Labels, base.Labels[known.ConfigUIDLabel]) // Subscription
+	}
 }

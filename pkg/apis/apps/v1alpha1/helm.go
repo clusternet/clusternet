@@ -77,13 +77,19 @@ const (
 
 type HelmOptions struct {
 	// a Helm Repository to be used.
-	// such as, https://charts.bitnami.com/bitnami
+	// OCI-based registries are also supported.
+	// For example, https://charts.bitnami.com/bitnami or oci://localhost:5000/helm-charts
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Pattern=`^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&\(\)\*\+,;=.]+$`
+	// +kubebuilder:validation:Pattern=`^(http|https|oci)?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+$`
 	Repository string `json:"repo"`
+
+	// ChartPullSecret is the name of the secret that contains the auth information for the chart repository.
+	//
+	// +optional
+	ChartPullSecret ChartPullSecret `json:"chartPullSecret,omitempty"`
 
 	// Chart is the name of a Helm Chart in the Repository.
 	//
@@ -97,6 +103,69 @@ type HelmOptions struct {
 	//
 	// +optional
 	ChartVersion string `json:"version,omitempty"`
+
+	// CreateNamespace create namespace when install helm release
+	//
+	// +optional
+	// +kubebuilder:default=true
+	CreateNamespace *bool `json:"createNamespace,omitempty"`
+
+	// TimeoutSeconds is the timeout of the chart to be install/upgrade/rollback/uninstall
+	//
+	// +optional
+	// +kubebuilder:validation:Type=integer
+	// +kubebuilder:default=300
+	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
+
+	// Wait determines whether the wait operation should be performed after the upgrade is requested.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Wait *bool `json:"wait,omitempty"`
+
+	// WaitForJobs determines whether the wait operation for the Jobs should be performed after the upgrade is requested.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	WaitForJob *bool `json:"waitForJob,omitempty"`
+
+	// Replace will re-use the given name, only if that name is a deleted release that remains in the history.
+	// This is unsafe in production.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Replace *bool `json:"replace,omitempty"`
+
+	// Atomic, if true, for install case, will uninstall failed release, for upgrade case, will roll back on failure.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Atomic *bool `json:"atomic,omitempty"`
+
+	// SkipCRDs skips installing CRDs when install flag is enabled during upgrade
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	SkipCRDs *bool `json:"skipCRDs,omitempty"`
+
+	// DisableHooks disables hook processing if set to true.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	DisableHooks *bool `json:"disableHooks,omitempty"`
+
+	// Force will, if set to `true`, ignore certain warnings and perform the upgrade anyway.
+	// This should be used with caution.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	Force *bool `json:"force,omitempty"`
+}
+
+// ChartPullSecret is the name of the secret that contains the auth information for the chart repository.
+type ChartPullSecret struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -132,12 +201,24 @@ type HelmRelease struct {
 type HelmReleaseSpec struct {
 	HelmOptions `json:",inline"`
 
+	// ReleaseName specifies the desired release name in child cluster.
+	// If nil, the default release name will be in the format of "{Description Name}-{HelmChart Namespace}-{HelmChart Name}"
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	ReleaseName *string `json:"releaseName,omitempty"`
+
 	// TargetNamespace specifies the namespace to install the chart
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
 	TargetNamespace string `json:"targetNamespace"`
+
+	// Overrides specifies the override values for this release.
+	//
+	// +optional
+	Overrides []byte `json:"overrides,omitempty"`
 }
 
 // HelmReleaseStatus defines the observed state of HelmRelease

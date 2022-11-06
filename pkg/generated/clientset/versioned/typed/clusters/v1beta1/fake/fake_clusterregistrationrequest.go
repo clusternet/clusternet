@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ func (c *FakeClusterRegistrationRequests) UpdateStatus(ctx context.Context, clus
 // Delete takes name of the clusterRegistrationRequest and deletes it. Returns an error if one occurs.
 func (c *FakeClusterRegistrationRequests) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(clusterregistrationrequestsResource, name), &v1beta1.ClusterRegistrationRequest{})
+		Invokes(testing.NewRootDeleteActionWithOptions(clusterregistrationrequestsResource, name, opts), &v1beta1.ClusterRegistrationRequest{})
 	return err
 }
 

@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // Important: Run "make generated" to regenerate code after modifying this file
@@ -58,18 +59,40 @@ type DescriptionSpec struct {
 	//
 	// +optional
 	Raw [][]byte `json:"raw,omitempty"`
+
+	// ChartRaw is the underlying serialization of all helm chart objects.
+	//
+	// +optional
+	ChartRaw [][]byte `json:"chartRaw,omitempty"`
 }
 
 // DescriptionStatus defines the observed state of Description
 type DescriptionStatus struct {
 	// Phase denotes the phase of Description
 	// +optional
-	// +kubebuilder:validation:Enum=Pending;Success;Failure
+	// +kubebuilder:validation:Enum=Pending;Success;Failure;Installing;Upgrading;Uninstalling;Superseded;Unknown
 	Phase DescriptionPhase `json:"phase,omitempty"`
 
 	// Reason indicates the reason of DescriptionPhase
 	// +optional
 	Reason string `json:"reason,omitempty"`
+
+	// ManifestStatuses contains a list of running statuses of manifests in DescriptionSpec.
+	//
+	// +optional
+	ManifestStatuses []ManifestStatus `json:"manifestStatuses,omitempty"`
+}
+
+// ManifestStatus contains details for the current status of this feed.
+type ManifestStatus struct {
+	// Feed holds references to the resource.
+	Feed `json:",inline"`
+
+	// ObservedStatus reflects observed status of current feed.
+	//
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ObservedStatus runtime.RawExtension `json:"observedStatus,omitempty"`
 }
 
 type DescriptionDeployer string
@@ -84,6 +107,18 @@ type DescriptionPhase string
 const (
 	DescriptionPhaseSuccess DescriptionPhase = "Success"
 	DescriptionPhaseFailure DescriptionPhase = "Failure"
+
+	// The following is the helm-specific status
+	// DescriptionPhaseInstalling indicates that an install operation is underway.
+	DescriptionPhaseInstalling DescriptionPhase = "Installing"
+	// DescriptionPhaseUpgrading indicates that an upgrade operation is underway.
+	DescriptionPhaseUpgrading DescriptionPhase = "Upgrading"
+	// DescriptionPhaseUninstalling indicates that a uninstall operation is underway.
+	DescriptionPhaseUninstalling DescriptionPhase = "Uninstalling"
+	// DescriptionPhaseSuperseded indicates that this release object is outdated and a newer one exists.
+	DescriptionPhaseSuperseded DescriptionPhase = "Superseded"
+	// DescriptionPhaseUnknown indicates that a release is in an uncertain state.
+	DescriptionPhaseUnknown DescriptionPhase = "Unknown"
 )
 
 // +kubebuilder:object:root=true

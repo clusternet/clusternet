@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -77,12 +78,9 @@ func CreateKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcm
 }
 
 // CreateKubeConfigForSocketProxyWithToken creates a KubeConfig object with access to the API server with a token
-func CreateKubeConfigForSocketProxyWithToken(serverURL, token string) *clientcmdapi.Config {
-	userName := "clusternet"
-	clusterName := "clusternet-cluster"
-	config := createBasicKubeConfig(serverURL, clusterName, userName, nil)
-	config.AuthInfos[userName] = &clientcmdapi.AuthInfo{
-		Username:    user.Anonymous,
+func CreateKubeConfigForSocketProxyWithToken(secretLister corev1lister.SecretLister,
+	systemNamespace, serverURL, token string, AnonymousAuthSupported bool) (*clientcmdapi.Config, error) {
+	authInfo := &clientcmdapi.AuthInfo{
 		Impersonate: "clusternet",
 		ImpersonateUserExtra: map[string][]string{
 			"clusternet-token": {
@@ -90,25 +88,69 @@ func CreateKubeConfigForSocketProxyWithToken(serverURL, token string) *clientcmd
 			},
 		},
 	}
-	return config
+
+	if AnonymousAuthSupported {
+		authInfo.Username = user.Anonymous
+	} else {
+		secrets, err := secretLister.Secrets(systemNamespace).List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		var found bool
+		for _, secret := range secrets {
+			if secret.Annotations != nil && secret.Annotations[corev1.ServiceAccountNameKey] == known.ClusternetHubProxyServiceAccount {
+				found = true
+				authInfo.Token = string(secret.Data[corev1.ServiceAccountTokenKey])
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("failed to find corresponding secret of serviceAccount %s/%s",
+				systemNamespace, known.ClusternetHubProxyServiceAccount)
+		}
+	}
+
+	userName := "clusternet"
+	clusterName := "clusternet-cluster"
+	config := createBasicKubeConfig(serverURL, clusterName, userName, nil)
+	config.AuthInfos[userName] = authInfo
+	return config, nil
 }
 
 // LoadsKubeConfig tries to load kubeconfig from specified kubeconfig file or in-cluster config
-func LoadsKubeConfig(kubeConfigPath string, flowRate int) (*rest.Config, error) {
-	if len(kubeConfigPath) == 0 {
-		// use in-cluster config
-		return rest.InClusterConfig()
+func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionConfiguration) (*rest.Config, error) {
+	if clientConnectionCfg == nil {
+		return nil, errors.New("nil ClientConnectionConfiguration")
 	}
 
-	clientConfig, err := clientcmd.LoadFromFile(kubeConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", kubeConfigPath, err)
+	var cfg *rest.Config
+	var err error
+
+	switch clientConnectionCfg.Kubeconfig {
+	case "":
+		// use in-cluster config
+		cfg, err = rest.InClusterConfig()
+	default:
+		cfg, err = LoadsKubeConfigFromFile(clientConnectionCfg.Kubeconfig)
 	}
-	config, err := clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+
 	if err != nil {
-		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
+		return nil, err
 	}
-	return applyDefaultRateLimiter(config, flowRate), nil
+
+	// apply qps and burst settings
+	cfg.QPS = clientConnectionCfg.QPS
+	cfg.Burst = int(clientConnectionCfg.Burst)
+	return cfg, nil
+}
+
+// LoadsKubeConfigFromFile tries to load kubeconfig from specified kubeconfig file
+func LoadsKubeConfigFromFile(fileName string) (*rest.Config, error) {
+	clientConfig, err := clientcmd.LoadFromFile(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", fileName, err)
+	}
+	return clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 }
 
 // GenerateKubeConfigFromToken composes a kubeconfig from token
@@ -119,10 +161,6 @@ func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRat
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
 
-	return applyDefaultRateLimiter(config, flowRate), nil
-}
-
-func applyDefaultRateLimiter(config *rest.Config, flowRate int) *rest.Config {
 	if flowRate < 0 {
 		flowRate = 1
 	}
@@ -131,10 +169,11 @@ func applyDefaultRateLimiter(config *rest.Config, flowRate int) *rest.Config {
 	config.QPS = rest.DefaultQPS * float32(flowRate)
 	config.Burst = rest.DefaultBurst * flowRate
 
-	return config
+	return config, nil
 }
 
-func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister, namespace string, clusterID string) (*clientcmdapi.Config, error) {
+func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister,
+	namespace, clusterID, parentAPIServerURL, systemNamespace string, proxyingWithAnonymous bool) (*clientcmdapi.Config, error) {
 	childClusterSecret, err := secretLister.Secrets(namespace).Get(known.ChildClusterSecretName)
 	if err != nil {
 		return nil, err
@@ -159,13 +198,17 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 		klog.Warningf("found multiple ManagedCluster declarations in namespace %s", namespace)
 	}
 	if mcls[0].Status.UseSocket {
-		childClusterAPIServer, err := getChildAPIServerProxyURL(mcls[0])
+		var childClusterAPIServer string
+		childClusterAPIServer, err = getChildAPIServerProxyURL(parentAPIServerURL, mcls[0])
 		if err != nil {
 			return nil, err
 		}
-		config = CreateKubeConfigForSocketProxyWithToken(
+		config, err = CreateKubeConfigForSocketProxyWithToken(
+			secretLister,
+			systemNamespace,
 			childClusterAPIServer,
 			string(childClusterSecret.Data[corev1.ServiceAccountTokenKey]),
+			proxyingWithAnonymous,
 		)
 	} else {
 		config = CreateKubeConfigWithToken(
@@ -174,16 +217,20 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 			childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
 		)
 	}
-	return config, nil
+	return config, err
 }
 
-func getChildAPIServerProxyURL(mcls *clusterapi.ManagedCluster) (string, error) {
+func getChildAPIServerProxyURL(parentAPIServerURL string, mcls *clusterapi.ManagedCluster) (string, error) {
 	if mcls == nil {
 		return "", errors.New("unable to generate child cluster apiserver proxy url from nil ManagedCluster object")
 	}
 
+	if len(parentAPIServerURL) == 0 {
+		return "", errors.New("got empty parent apiserver url")
+	}
+
 	return strings.Join([]string{
-		strings.TrimRight(mcls.Status.ParentAPIServerURL, "/"),
+		strings.TrimRight(parentAPIServerURL, "/"),
 		"apis", proxiesapi.SchemeGroupVersion.String(), "sockets", string(mcls.Spec.ClusterID),
 		"proxy/direct"}, "/"), nil
 }

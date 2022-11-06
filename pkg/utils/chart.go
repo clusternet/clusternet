@@ -17,18 +17,23 @@ limitations under the License.
 package utils
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/kubernetes"
@@ -41,15 +46,67 @@ import (
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
+const (
+	// UsernameKey is the key for username in the helm repo auth secret
+	UsernameKey = "username"
+	// PasswordKey is the key for password in the helm repo auth secret
+	PasswordKey = "password"
+)
+
 var (
 	Settings = cli.New()
 )
 
-// LocateHelmChart will looks for a chart from repository and load it.
-func LocateHelmChart(chartRepo, chartName, chartVersion string) (*chart.Chart, error) {
-	client := action.NewInstall(nil)
+// FindOCIChart will looks for an OCI-based helm chart from repository.
+func FindOCIChart(chartRepo, chartName, chartVersion string) (bool, error) {
+	// TODO: auth
+	registryClient, err := registry.NewClient(
+		registry.ClientOptDebug(Settings.Debug),
+		registry.ClientOptWriter(os.Stdout),
+		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
+	)
+	if err != nil {
+		return false, err
+	}
+	err = registryClient.WithResolver(true, false)
+	if err != nil {
+		return false, err
+	}
+
+	// Retrieve list of tags for repository
+	ref := fmt.Sprintf("%s/%s", strings.TrimPrefix(chartRepo, fmt.Sprintf("%s://", registry.OCIScheme)), chartName)
+	tags, err := registryClient.Tags(ref)
+	if err != nil {
+		return false, err
+	}
+
+	for _, tag := range tags {
+		if tag == chartVersion {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// LocateAuthHelmChart will looks for a chart from auth repository and load it.
+func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, password, chartName, chartVersion string) (*chart.Chart, error) {
+	client := action.NewInstall(cfg)
 	client.ChartPathOptions.RepoURL = chartRepo
 	client.ChartPathOptions.Version = chartVersion
+	client.ChartPathOptions.Username = username
+	client.ChartPathOptions.Password = password
+	client.ChartPathOptions.InsecureSkipTLSverify = true
+	// TODO: plainHTTP
+
+	if registry.IsOCI(chartRepo) {
+		/*oci based registries don't support to download index.yaml
+		set RepoURL as an empty string to avoid downloading index.yaml
+		in LocateChart() bellow
+		*/
+		client.ChartPathOptions.RepoURL = ""
+		chartName = fmt.Sprintf("%s/%s", chartRepo, chartName)
+		klog.V(5).Infof("oci based chart, full chart path is %s", chartName)
+	}
 
 	cp, err := client.ChartPathOptions.LocateChart(chartName, Settings)
 	if err != nil {
@@ -84,24 +141,64 @@ func CheckIfInstallable(chart *chart.Chart) error {
 func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 	client := action.NewInstall(cfg)
-	client.ReleaseName = hr.Name
-	client.CreateNamespace = true
+	client.ReleaseName = getReleaseName(hr)
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	client.Namespace = hr.Spec.TargetNamespace
-
+	if hr.Spec.CreateNamespace != nil {
+		client.CreateNamespace = *hr.Spec.CreateNamespace
+	}
+	if hr.Spec.Atomic != nil {
+		client.Atomic = *hr.Spec.Atomic
+	}
+	if hr.Spec.Replace != nil {
+		client.Replace = *hr.Spec.Replace
+	}
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
+	if hr.Spec.WaitForJob != nil {
+		client.WaitForJobs = *hr.Spec.WaitForJob
+	}
+	if hr.Spec.SkipCRDs != nil {
+		client.SkipCRDs = *hr.Spec.SkipCRDs
+	}
+	if hr.Spec.DisableHooks != nil {
+		client.DisableHooks = *hr.Spec.DisableHooks
+	}
 	return client.Run(chart, vals)
 }
 
 func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
-	klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
 	client := action.NewUpgrade(cfg)
+	client.MaxHistory = cfg.Releases.MaxHistory // need to rewire it here
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	client.Namespace = hr.Spec.TargetNamespace
-	return client.Run(hr.Name, chart, vals)
+	if hr.Spec.Atomic != nil {
+		client.Atomic = *hr.Spec.Atomic
+	}
+	if hr.Spec.Force != nil {
+		client.Force = *hr.Spec.Force
+	}
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
+	if hr.Spec.WaitForJob != nil {
+		client.WaitForJobs = *hr.Spec.WaitForJob
+	}
+	if hr.Spec.SkipCRDs != nil {
+		client.SkipCRDs = *hr.Spec.SkipCRDs
+	}
+	if hr.Spec.DisableHooks != nil {
+		client.DisableHooks = *hr.Spec.DisableHooks
+	}
+	return client.Run(getReleaseName(hr), chart, vals)
 }
 
 func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {
 	client := action.NewUninstall(cfg)
-	_, err := client.Run(hr.Name)
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
+	_, err := client.Run(getReleaseName(hr))
 	if err != nil {
 		if strings.Contains(err.Error(), "Release not loaded") {
 			return nil
@@ -112,7 +209,7 @@ func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error 
 }
 
 func ReleaseNeedsUpgrade(rel *release.Release, hr *appsapi.HelmRelease, chart *chart.Chart, vals map[string]interface{}) bool {
-	if rel.Name != hr.Name {
+	if rel.Name != getReleaseName(hr) {
 		return true
 	}
 	if rel.Namespace != hr.Spec.TargetNamespace {
@@ -145,7 +242,7 @@ func UpdateRepo(repoURL string) error {
 		return err
 	}
 
-	if _, err := cr.DownloadIndexFile(); err != nil {
+	if _, err = cr.DownloadIndexFile(); err != nil {
 		return err
 	}
 
@@ -160,8 +257,8 @@ type DeployContext struct {
 	restMapper               meta.RESTMapper
 }
 
-func NewDeployContext(config *clientcmdapi.Config) (*DeployContext, error) {
-	clientConfig := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{})
+func NewDeployContext(config *clientcmdapi.Config, overrides *clientcmd.ConfigOverrides) (*DeployContext, error) {
+	clientConfig := clientcmd.NewDefaultClientConfig(*config, overrides)
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error while creating DeployContext: %v", err)
@@ -201,4 +298,33 @@ func (dctx *DeployContext) ToDiscoveryClient() (discovery.CachedDiscoveryInterfa
 
 func (dctx *DeployContext) ToRESTMapper() (meta.RESTMapper, error) {
 	return dctx.restMapper, nil
+}
+
+// GetHelmRepoCredentials get helm repo credentials from the given secret
+func GetHelmRepoCredentials(kubeclient *kubernetes.Clientset, secretName, namespace string) (string, string, error) {
+	secret, err := kubeclient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", "", err
+	}
+
+	username, ok := secret.Data[UsernameKey]
+	if !ok {
+		return "", "", fmt.Errorf("secret %s/%s does not contain username", namespace, secretName)
+	}
+
+	password, ok := secret.Data[PasswordKey]
+	if !ok {
+		return "", "", fmt.Errorf("secret %s/%s does not contain password", namespace, secretName)
+	}
+
+	return string(username), string(password), nil
+}
+
+// getReleaseName gets the release name from HelmRelease
+func getReleaseName(hr *appsapi.HelmRelease) string {
+	releaseName := hr.Name
+	if hr.Spec.ReleaseName != nil {
+		releaseName = *hr.Spec.ReleaseName
+	}
+	return releaseName
 }

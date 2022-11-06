@@ -28,8 +28,12 @@ Temporary Items
 # Jetbrains
 .idea
 
+# Vscode files
+.vscode
+
 # Builds
 _output
+dist
 
 # go vendor
 vendor

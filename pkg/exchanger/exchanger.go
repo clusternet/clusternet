@@ -36,12 +36,10 @@ import (
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
-	clusterInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
-	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 )
 
@@ -54,26 +52,22 @@ type Exchanger struct {
 	// dialerServer is used for serving websocket connection
 	dialerServer *remotedialer.Server
 
-	mcLister clusterListers.ManagedClusterLister
-	mcSynced cache.InformerSynced
+	mcLister clusterlisters.ManagedClusterLister
 }
 
 var (
 	urlPrefix = fmt.Sprintf("/apis/%s/sockets/", proxies.SchemeGroupVersion.String())
 )
 
-const (
-	TokenHeaderKey       = "Clusternet-Token"
-	CertificateHeaderKey = "Clusternet-Certificate"
-	PrivateKeyHeaderKey  = "Clusternet-PrivateKey"
-)
-
 func authorizer(req *http.Request) (string, bool, error) {
-	clusterID := strings.TrimPrefix(strings.TrimRight(req.URL.Path, "/"), urlPrefix)
-	return clusterID, clusterID != "", nil
+	if strings.Contains(req.URL.Path, urlPrefix) {
+		clusterID := strings.TrimPrefix(strings.TrimRight(req.URL.Path, "/"), urlPrefix)
+		return clusterID, clusterID != "", nil
+	}
+	return "", false, fmt.Errorf("illegal request %s", req.URL.Path)
 }
 
-func NewExchanger(tunnelLogging bool, mclsInformer clusterInformers.ManagedClusterInformer) *Exchanger {
+func NewExchanger(peerID, peerToken string, tunnelLogging bool, mcLister clusterlisters.ManagedClusterLister) *Exchanger {
 	if tunnelLogging {
 		logrus.SetLevel(logrus.DebugLevel)
 		remotedialer.PrintTunnelData = true
@@ -82,9 +76,10 @@ func NewExchanger(tunnelLogging bool, mclsInformer clusterInformers.ManagedClust
 	e := &Exchanger{
 		cachedTransports: map[string]*http.Transport{},
 		dialerServer:     remotedialer.New(authorizer, remotedialer.DefaultErrorWriter),
-		mcLister:         mclsInformer.Lister(),
-		mcSynced:         mclsInformer.Informer().HasSynced,
+		mcLister:         mcLister,
 	}
+	e.dialerServer.PeerID = peerID
+	e.dialerServer.PeerToken = peerToken
 	return e
 }
 
@@ -116,18 +111,15 @@ func (e *Exchanger) getClonedTransport(clusterID string) *http.Transport {
 }
 
 func (e *Exchanger) Connect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder) (http.Handler, error) {
-	return e.dialerServer, nil
+	return e.GetDialerHandler(), nil
+}
+
+func (e *Exchanger) GetDialerHandler() *remotedialer.Server {
+	return e.dialerServer
 }
 
 func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.Socket, responder rest.Responder, extraHeaderPrefixes []string) (http.Handler, error) {
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForCacheSync(ctx.Done(), e.mcSynced) {
-		err := apierrors.NewServiceUnavailable("cache for ManagedCluster is not ready yet, please retry later")
-		responder.Error(err)
-		return nil, err
-	}
-
-	location, transport, err := e.ClusterLocation(id, opts)
+	location, _, err := e.ClusterLocation(id, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -140,45 +132,57 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 		klog.V(4).Infof("Request to %q will be redialed from cluster %q", location.String(), id)
 
 		extra := getExtraFromHeaders(request.Header, extraHeaderPrefixes)
+		for key, vals := range extra {
+			if !strings.HasPrefix(key, known.HeaderPrefixKey) {
+				continue
+			}
 
-		if token, ok := extra[strings.ToLower(TokenHeaderKey)]; ok && len(token) > 0 {
+			switch key {
+			case known.TokenHeaderKey, known.CertificateHeaderKey, known.PrivateKeyHeaderKey:
+				continue
+			default:
+				for _, val := range vals {
+					request.Header.Add(strings.TrimPrefix(key, known.HeaderPrefixKey), val)
+				}
+			}
+		}
+
+		if token, ok := extra[strings.ToLower(known.TokenHeaderKey)]; ok && len(token) > 0 {
 			request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token[0]))
 		}
 
-		publicCertificate := extra[strings.ToLower(CertificateHeaderKey)]
-		privateKey := extra[strings.ToLower(PrivateKeyHeaderKey)]
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+			DialContext: e.dialerServer.Dialer(id),
+			// apply default settings from http.DefaultTransport
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+
+		publicCertificate := extra[strings.ToLower(known.CertificateHeaderKey)]
+		privateKey := extra[strings.ToLower(known.PrivateKeyHeaderKey)]
 		if len(publicCertificate) > 0 && len(privateKey) > 0 {
-			certPEMBlock, err := base64.StdEncoding.DecodeString(publicCertificate[0])
-			if err != nil {
-				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid certificate in header %s: %v", CertificateHeaderKey, err)))
+			certPEMBlock, err2 := base64.StdEncoding.DecodeString(publicCertificate[0])
+			if err2 != nil {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid certificate in header %s: %v", known.CertificateHeaderKey, err2)))
 				return
 			}
-			keyPEMBlock, err := base64.StdEncoding.DecodeString(privateKey[0])
-			if err != nil {
-				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid private key in header %s: %v", PrivateKeyHeaderKey, err)))
+			keyPEMBlock, err2 := base64.StdEncoding.DecodeString(privateKey[0])
+			if err2 != nil {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid private key in header %s: %v", known.PrivateKeyHeaderKey, err2)))
 				return
 			}
-			cert, err := tls.X509KeyPair(certPEMBlock, keyPEMBlock)
-			if err != nil {
-				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid key pair in header: %v", err)))
+			cert, err2 := tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+			if err2 != nil {
+				responder.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid key pair in header: %v", err2)))
 				return
 			}
 
-			dialer := e.dialerServer.Dialer(id)
-			transport = &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-					Certificates: []tls.Certificate{
-						cert,
-					},
-				},
-				DialContext: dialer,
-				// apply default settings from http.DefaultTransport
-				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
-			}
+			transport.TLSClientConfig.Certificates = []tls.Certificate{cert}
 		}
 
 		for k := range extra {

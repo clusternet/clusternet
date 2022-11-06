@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ func (c *FakeGlobalizations) Update(ctx context.Context, globalization *v1alpha1
 // Delete takes name of the globalization and deletes it. Returns an error if one occurs.
 func (c *FakeGlobalizations) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(globalizationsResource, name), &v1alpha1.Globalization{})
+		Invokes(testing.NewRootDeleteActionWithOptions(globalizationsResource, name, opts), &v1alpha1.Globalization{})
 	return err
 }
 

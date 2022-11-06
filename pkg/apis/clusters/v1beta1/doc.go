@@ -18,4 +18,4 @@ limitations under the License.
 // +groupName=clusters.clusternet.io
 
 // Package v1beta1 is the v1beta1 version of the API.
-package v1beta1 // import "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+package v1beta1

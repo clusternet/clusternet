@@ -18,6 +18,16 @@ metadata:
   namespace: clusternet-system
 
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: clusternet-app-deployer
+  namespace: clusternet-system
+  annotations:
+    kubernetes.io/service-account.name: clusternet-app-deployer
+type: kubernetes.io/service-account-token
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,7 +51,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-agent
-          image: ghcr.io/clusternet/clusternet-agent:v0.4.0
+          image: ghcr.io/clusternet/clusternet-agent:v0.12.0
           imagePullPolicy: IfNotPresent
           env:
             - name: PARENT_URL
@@ -54,10 +64,23 @@ spec:
                 secretKeyRef:
                   name: clusternet-agent-cluster-registration
                   key: regToken
+            - name: AGENT_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Set the CLUSTER_CIDR and SERVICE_CIDR when deploy agent with k8s control-plane not running as static pod
+            # for example，k3s and rke  
+            # - name: CLUSTER_CIDR
+            #   value: 10.233.12.0/18
+            # - name: SERVICE_CIDR
+            #   value: 10.235.12.0/18
           command:
             - /usr/local/bin/clusternet-agent
             - --cluster-reg-token=$(REG_TOKEN)
             - --cluster-reg-parent-url=$(PARENT_URL)
             - --cluster-sync-mode=Dual
-            - --feature-gates=SocketConnection=true,AppPusher=true
-            - -v=4
+            - --use-metrics-server=false
+            - --feature-gates=SocketConnection=true,AppPusher=true,Recovery=true,Predictor=true
+            - --leader-elect-resource-namespace=$(AGENT_NAMESPACE)
+            - --predictor-direct-access=false
+            - --predictor-port=8080

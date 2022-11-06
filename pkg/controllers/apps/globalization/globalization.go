@@ -52,8 +52,6 @@ type SyncHandlerFunc func(glob *appsapi.Globalization) error
 
 // Controller is a controller that handle Globalization
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -75,28 +73,31 @@ type Controller struct {
 	recorder record.EventRecorder
 
 	syncHandlerFunc SyncHandlerFunc
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	globInformer appinformers.GlobalizationInformer,
 	chartInformer appinformers.HelmChartInformer, manifestInformer appinformers.ManifestInformer,
-	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc, reservedNamespace string) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
-		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "globalization"),
-		globLister:       globInformer.Lister(),
-		globSynced:       globInformer.Informer().HasSynced,
-		chartLister:      chartInformer.Lister(),
-		chartSynced:      chartInformer.Informer().HasSynced,
-		manifestLister:   manifestInformer.Lister(),
-		manifestSynced:   manifestInformer.Informer().HasSynced,
-		recorder:         recorder,
-		syncHandlerFunc:  syncHandlerFunc,
+		clusternetClient:  clusternetClient,
+		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "globalization"),
+		globLister:        globInformer.Lister(),
+		globSynced:        globInformer.Informer().HasSynced,
+		chartLister:       chartInformer.Lister(),
+		chartSynced:       chartInformer.Informer().HasSynced,
+		manifestLister:    manifestInformer.Lister(),
+		manifestSynced:    manifestInformer.Informer().HasSynced,
+		recorder:          recorder,
+		syncHandlerFunc:   syncHandlerFunc,
+		reservedNamespace: reservedNamespace,
 	}
 
 	// Manage the addition/update of Globalization
@@ -121,8 +122,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down Globalization controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.globSynced, c.chartSynced, c.manifestSynced) {
+	if !cache.WaitForNamedCacheSync("globalization-controller", stopCh, c.globSynced, c.chartSynced, c.manifestSynced) {
 		return
 	}
 
@@ -298,7 +298,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	glob.Kind = controllerKind.Kind
-	glob.APIVersion = controllerKind.Version
+	glob.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(glob)
 	if err != nil {
 		c.recorder.Event(glob, corev1.EventTypeWarning, "FailedSynced", err.Error())
@@ -336,7 +336,7 @@ func (c *Controller) getLabelsForPatching(glob *appsapi.Globalization) (map[stri
 			labelsToPatch[string(chart.UID)] = &chartKind.Kind
 		}
 	default:
-		manifests, err := utils.ListManifestsBySelector(c.manifestLister, glob.Spec.Feed)
+		manifests, err := utils.ListManifestsBySelector(c.reservedNamespace, c.manifestLister, glob.Spec.Feed)
 		if err != nil {
 			return nil, err
 		}

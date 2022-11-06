@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ func (c *FakeDescriptions) UpdateStatus(ctx context.Context, description *v1alph
 // Delete takes name of the description and deletes it. Returns an error if one occurs.
 func (c *FakeDescriptions) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(descriptionsResource, c.ns, name), &v1alpha1.Description{})
+		Invokes(testing.NewDeleteActionWithOptions(descriptionsResource, c.ns, name, opts), &v1alpha1.Description{})
 
 	return err
 }

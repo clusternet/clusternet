@@ -32,11 +32,22 @@ const (
 	// ClusterAPIServerURLKey denotes the apiserver address
 	ClusterAPIServerURLKey = "apiserver-advertise-url"
 
-	// ClusternetSystemNamespace is the system namespace where we place system components.
+	// ClusternetSystemNamespace is the default system namespace where we place system components.
+	// This could be re-configured with flag "--leader-elect-resource-namespace"
 	ClusternetSystemNamespace = "clusternet-system"
+
+	// ClusternetReservedNamespace is the default namespace to store Manifest into
+	ClusternetReservedNamespace = "clusternet-reserved"
 
 	// ClusternetAppSA is the service account where we store credentials to deploy resources
 	ClusternetAppSA = "clusternet-app-deployer"
+
+	// ClusternetHubProxyServiceAccount is the service account that can be used for proxying requests to child clusters.
+	// This will be also used by deployer in clusternet-hub when flag "--anonymous-auth-supported" is set to false.
+	ClusternetHubProxyServiceAccount = "clusternet-hub-proxy"
+
+	// nvidia gpu name
+	NVIDIAGPUResourceName = "nvidia.com/gpu"
 )
 
 // These are internal finalizer values to Clusternet, must be qualified name.
@@ -46,9 +57,37 @@ const (
 )
 
 const (
-	// default resync time
+	// DefaultResync means the default resync time
 	DefaultResync = time.Hour * 12
 
-	// default retry period
+	// DefaultRetryPeriod means the default retry period
 	DefaultRetryPeriod = 5 * time.Second
+
+	// NoResyncPeriod indicates that informer resync should be delayed as long as possible
+	NoResyncPeriod = 0 * time.Second
+
+	// DefaultThreadiness defines default number of threads
+	DefaultThreadiness = 10
+)
+
+// fields should be ignored when compared
+const (
+	MetaGeneration      = "/metadata/generation"
+	CreationTimestamp   = "/metadata/creationTimestamp"
+	ManagedFields       = "/metadata/managedFields"
+	MetaUID             = "/metadata/uid"
+	MetaSelflink        = "/metadata/selfLink"
+	MetaResourceVersion = "/metadata/resourceVersion"
+
+	SectionStatus = "/status"
+)
+
+const (
+	Category = "clusternet.shadow"
+)
+
+const (
+	// NoteLengthLimit denotes the maximum note length.
+	// copied from k8s.io/kubernetes/pkg/apis/core/validation/events.go
+	NoteLengthLimit = 1024
 )

@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ package v1alpha1
 type BaseExpansion interface{}
 
 type DescriptionExpansion interface{}
+
+type FeedInventoryExpansion interface{}
 
 type GlobalizationExpansion interface{}
 

@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -31,6 +32,7 @@ import (
 )
 
 var validateClusterNameRegex = regexp.MustCompile(nameFmt)
+var validateClusterNamespaceRegex = regexp.MustCompile(namespaceFmt)
 
 // ClusterRegistrationOptions holds the command-line options about cluster registration
 type ClusterRegistrationOptions struct {
@@ -38,12 +40,16 @@ type ClusterRegistrationOptions struct {
 	ClusterName string
 	// ClusterNamePrefix specifies the cluster name prefix for registration
 	ClusterNamePrefix string
+	// ClusterNamespace denotes the cluster namespace you want to register/display in parent cluster
+	ClusterNamespace string
 	// ClusterType denotes the cluster type
 	ClusterType string
 	// ClusterSyncMode specifies the sync mode between parent cluster and child cluster
 	ClusterSyncMode string
+	// ClusterLabels specifies the labels for the cluster
+	ClusterLabels string
 
-	// ClusterStatusReportFrequency is the frequency at which the agent updates current cluster's status
+	// ClusterStatusReportFrequency is the frequency at which the agent reports current cluster's status
 	ClusterStatusReportFrequency metav1.Duration
 	// ClusterStatusCollectFrequency is the frequency at which the agent updates current cluster's status
 	ClusterStatusCollectFrequency metav1.Duration
@@ -54,6 +60,18 @@ type ClusterRegistrationOptions struct {
 	// No tunnel logging by default
 	TunnelLogging bool
 
+	// PredictorAddress specifies the address of predictor
+	PredictorAddress string
+	// PredictorDirectAccess indicates whether the predictor can be accessed directly by clusternet-scheduler
+	PredictorDirectAccess bool
+	// PredictorPort specifies the port on which to serve built-in predictor
+	PredictorPort int
+	// serveInternalPredictor indicates whether to serve built-in predictor. It is not a flag.
+	serveInternalPredictor bool
+
+	// UseMetricsServer specifies whether to collect metrics from metrics server
+	UseMetricsServer bool
+
 	// TODO: check ca hash
 }
 
@@ -61,10 +79,12 @@ type ClusterRegistrationOptions struct {
 func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	return &ClusterRegistrationOptions{
 		ClusterNamePrefix:             RegistrationNamePrefix,
-		ClusterType:                   string(clusterapi.EdgeCluster),
+		ClusterType:                   string(clusterapi.StandardCluster),
 		ClusterSyncMode:               string(clusterapi.Pull),
 		ClusterStatusReportFrequency:  metav1.Duration{Duration: DefaultClusterStatusReportFrequency},
 		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
+		PredictorPort:                 8080,
+		PredictorDirectAccess:         false,
 	}
 }
 
@@ -82,15 +102,26 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&opts.ClusterNamePrefix, ClusterRegistrationNamePrefix, opts.ClusterNamePrefix,
 		fmt.Sprintf("Specify a random cluster name with this prefix for registration if --%s is not specified",
 			ClusterRegistrationName))
+	fs.StringVar(&opts.ClusterNamespace, ClusterRegistrationNamespace, opts.ClusterNamespace,
+		"Specify the cluster registration namespace")
 	fs.StringVar(&opts.ClusterType, ClusterRegistrationType, opts.ClusterType,
 		"Specify the cluster type")
 	fs.StringVar(&opts.ClusterSyncMode, ClusterSyncMode, opts.ClusterSyncMode,
 		"Specify the sync mode 'Pull', 'Push' and 'Dual' between parent cluster and child cluster")
+	fs.StringVar(&opts.ClusterLabels, ClusterLabels, opts.ClusterLabels,
+		"Specify the labels for the child cluster, split by `,`")
 	fs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
 		"Specifies how often the agent posts current child cluster status to parent cluster")
 	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
 		"Specifies how often the agent collects current child cluster status")
 	fs.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
+	fs.BoolVar(&opts.UseMetricsServer, UseMetricsServer, opts.UseMetricsServer, "Use metrics server")
+	fs.StringVar(&opts.PredictorAddress, PredictorAddress, opts.PredictorAddress,
+		"Set address of external predictor, such as https://abc.com:8080. If not set, built-in predictor will be used when feature gate 'Predictor' is enabled.")
+	fs.BoolVar(&opts.PredictorDirectAccess, PredictorDirectAccess, opts.PredictorDirectAccess,
+		"Whether the predictor be accessed directly by clusternet-scheduler")
+	fs.IntVar(&opts.PredictorPort, PredictorPort, opts.PredictorPort,
+		"Set port on which to serve built-in predictor server. It is only used when feature gate 'Predictor' is enabled and '--predictor-addr' is not set.")
 }
 
 // Complete completes all the required options.
@@ -99,6 +130,11 @@ func (opts *ClusterRegistrationOptions) Complete() []error {
 
 	opts.ClusterName = strings.TrimSpace(opts.ClusterName)
 	opts.ClusterNamePrefix = strings.TrimSpace(opts.ClusterNamePrefix)
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.Predictor) && opts.PredictorAddress == "" {
+		opts.PredictorAddress = fmt.Sprintf("http://localhost:%d", opts.PredictorPort)
+		opts.serveInternalPredictor = true
+	}
 
 	return allErrs
 }
@@ -125,11 +161,21 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 		}
 	}
 
-	// TODO (dixudx): uncomment to enable checking ClusterType
-	//if len(opts.ClusterType) > 0 && !supportedClusterTypes.Has(opts.ClusterType) {
-	//	allErrs = append(allErrs, fmt.Errorf("invalid cluster type %q, please specify one from %s",
-	//		opts.ClusterType, supportedClusterTypes.List()))
-	//}
+	if len(opts.ClusterNamespace) > 0 {
+		if len(opts.ClusterNamespace) > ClusterNamespaceMaxLength {
+			allErrs = append(allErrs, fmt.Errorf("cluster namespace %s is longer than %d", opts.ClusterNamespace, ClusterNamespaceMaxLength))
+		}
+
+		if !validateClusterNamespaceRegex.MatchString(opts.ClusterNamespace) {
+			allErrs = append(allErrs,
+				fmt.Errorf("invalid namespace for --%s, regex used for validation is %q", ClusterRegistrationNamespace, namespaceFmt))
+		}
+	}
+
+	if len(opts.ClusterType) > 0 && !supportedClusterTypes.Has(opts.ClusterType) {
+		allErrs = append(allErrs, fmt.Errorf("invalid cluster type %q, please specify one from %s",
+			opts.ClusterType, supportedClusterTypes.List()))
+	}
 
 	if len(opts.ClusterNamePrefix) > ClusterNameMaxLength-DefaultRandomUIDLength-1 {
 		allErrs = append(allErrs, fmt.Errorf("cluster name prefix %s is longer than %d",
@@ -153,7 +199,7 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 	return allErrs
 }
 
-//var supportedClusterTypes = sets.NewString(
-//	string(clusterapi.EdgeCluster),
-//	// todo: add more types
-//)
+var supportedClusterTypes = sets.NewString(
+	string(clusterapi.StandardCluster),
+	string(clusterapi.EdgeCluster),
+)

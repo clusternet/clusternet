@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/rancher/remotedialer"
@@ -34,6 +33,7 @@ import (
 	"k8s.io/klog/v2"
 
 	proxiesapi "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
 // Controller is a controller that helps setup/maintain websocket connection
@@ -97,10 +97,10 @@ func (c *Controller) Run(ctx context.Context, clusterID *types.UID) {
 	wsURL := fmt.Sprintf("%s/%s", c.baseURL, string(*clusterID))
 	klog.V(4).Infof("setting up websocket connection to %s", wsURL)
 
-	wait.UntilWithContext(ctx, func(ctx context.Context) {
+	wait.JitterUntilWithContext(ctx, func(ctx context.Context) {
 		err := remotedialer.ClientConnect(ctx, wsURL, c.headers, c.dialer, func(string, string) bool { return true }, nil)
 		if err != nil {
 			klog.Errorf("websocket connection error: %v", err)
 		}
-	}, time.Duration(0))
+	}, known.DefaultRetryPeriod, 0.3, true)
 }

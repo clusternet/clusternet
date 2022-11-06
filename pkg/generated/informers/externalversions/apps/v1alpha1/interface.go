@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ type Interface interface {
 	Bases() BaseInformer
 	// Descriptions returns a DescriptionInformer.
 	Descriptions() DescriptionInformer
+	// FeedInventories returns a FeedInventoryInformer.
+	FeedInventories() FeedInventoryInformer
 	// Globalizations returns a GlobalizationInformer.
 	Globalizations() GlobalizationInformer
 	// HelmCharts returns a HelmChartInformer.
@@ -60,6 +62,11 @@ func (v *version) Bases() BaseInformer {
 // Descriptions returns a DescriptionInformer.
 func (v *version) Descriptions() DescriptionInformer {
 	return &descriptionInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// FeedInventories returns a FeedInventoryInformer.
+func (v *version) FeedInventories() FeedInventoryInformer {
+	return &feedInventoryInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Globalizations returns a GlobalizationInformer.

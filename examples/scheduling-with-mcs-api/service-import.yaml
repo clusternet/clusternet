@@ -1,0 +1,16 @@
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceImport
+metadata:
+  name: my-svc
+  namespace: default
+  labels:
+    services.clusternet.io/multi-cluster-service-name: my-nginx-svc
+    services.clusternet.io/multi-cluster-service-namespace: baz
+spec:
+  ips:
+    - 42.42.42.42 # can be used to access this derived service from outside this cluster.
+  type: "ClusterSetIP"
+  ports:
+    - protocol: TCP # the ports' name field must be the same as the service on the child cluster
+      port: 80
+  sessionAffinity: None

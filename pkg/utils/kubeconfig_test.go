@@ -35,9 +35,6 @@ func TestGetChildAPIServerProxyURL(t *testing.T) {
 				Spec: clusterapi.ManagedClusterSpec{
 					ClusterID: "a-valid-uid",
 				},
-				Status: clusterapi.ManagedClusterStatus{
-					ParentAPIServerURL: "https://10.0.0.10:6443",
-				},
 			},
 			want: "https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/a-valid-uid/proxy/direct",
 		},
@@ -46,9 +43,6 @@ func TestGetChildAPIServerProxyURL(t *testing.T) {
 			mcls: &clusterapi.ManagedCluster{
 				Spec: clusterapi.ManagedClusterSpec{
 					ClusterID: "a-valid-uid",
-				},
-				Status: clusterapi.ManagedClusterStatus{
-					ParentAPIServerURL: "https://10.0.0.10:6443/",
 				},
 			},
 			want: "https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/a-valid-uid/proxy/direct",
@@ -59,16 +53,13 @@ func TestGetChildAPIServerProxyURL(t *testing.T) {
 				Spec: clusterapi.ManagedClusterSpec{
 					ClusterID: "a-valid-uid",
 				},
-				Status: clusterapi.ManagedClusterStatus{
-					ParentAPIServerURL: "https://10.0.0.10:6443////",
-				},
 			},
 			want: "https://10.0.0.10:6443/apis/proxies.clusternet.io/v1alpha1/sockets/a-valid-uid/proxy/direct",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getChildAPIServerProxyURL(tt.mcls)
+			got, err := getChildAPIServerProxyURL("https://10.0.0.10:6443/", tt.mcls)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getChildAPIServerProxyURL() error = %v, wantErr %v", err, tt.wantErr)
 				return

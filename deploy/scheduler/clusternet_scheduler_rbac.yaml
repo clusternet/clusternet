@@ -1,0 +1,51 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clusternet:scheduler
+rules:
+  - apiGroups: [ "apps.clusternet.io" ]
+    resources: [ "subscriptions", "feedinventories" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "apps.clusternet.io" ]
+    resources: [ "subscriptions/status" ]
+    verbs: [ "update", "patch" ]
+  - apiGroups: [ "clusters.clusternet.io" ]
+    resources: [ "managedclusters" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "*" ]
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "*" ]
+  - nonResourceURLs: [ "*" ]
+    verbs: [ "get" ]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clusternet:scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clusternet:scheduler
+subjects:
+  - kind: ServiceAccount
+    name: clusternet-scheduler
+    namespace: clusternet-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clusternet:scheduler:predictor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clusternet:system:socketsproxy
+subjects:
+  - kind: ServiceAccount
+    name: clusternet-scheduler
+    namespace: clusternet-system

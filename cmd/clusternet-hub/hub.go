@@ -24,17 +24,16 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-	"k8s.io/component-base/logs"
+	"k8s.io/klog/v2"
 
 	"github.com/clusternet/clusternet/cmd/clusternet-hub/app"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 func main() {
+	klog.InitFlags(nil)
+	defer klog.Flush()
 	rand.Seed(time.Now().UTC().UnixNano())
-
-	logs.InitLogs()
-	defer logs.FlushLogs()
 
 	ctx := utils.GracefulStopWithContext()
 	command := app.NewClusternetHubCmd(ctx)

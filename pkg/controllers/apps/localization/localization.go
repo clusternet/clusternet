@@ -52,8 +52,6 @@ type SyncHandlerFunc func(loc *appsapi.Localization) error
 
 // Controller is a controller that handle Localization
 type Controller struct {
-	ctx context.Context
-
 	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -75,28 +73,31 @@ type Controller struct {
 	recorder record.EventRecorder
 
 	syncHandlerFunc SyncHandlerFunc
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
-func NewController(ctx context.Context, clusternetClient clusternetclientset.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	locInformer appinformers.LocalizationInformer,
 	chartInformer appinformers.HelmChartInformer, manifestInformer appinformers.ManifestInformer,
-	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder, syncHandlerFunc SyncHandlerFunc, reservedNamespace string) (*Controller, error) {
 	if syncHandlerFunc == nil {
 		return nil, fmt.Errorf("syncHandlerFunc must be set")
 	}
 
 	c := &Controller{
-		ctx:              ctx,
-		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "localization"),
-		locLister:        locInformer.Lister(),
-		locSynced:        locInformer.Informer().HasSynced,
-		chartLister:      chartInformer.Lister(),
-		chartSynced:      chartInformer.Informer().HasSynced,
-		manifestLister:   manifestInformer.Lister(),
-		manifestSynced:   manifestInformer.Informer().HasSynced,
-		recorder:         recorder,
-		syncHandlerFunc:  syncHandlerFunc,
+		clusternetClient:  clusternetClient,
+		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "localization"),
+		locLister:         locInformer.Lister(),
+		locSynced:         locInformer.Informer().HasSynced,
+		chartLister:       chartInformer.Lister(),
+		chartSynced:       chartInformer.Informer().HasSynced,
+		manifestLister:    manifestInformer.Lister(),
+		manifestSynced:    manifestInformer.Informer().HasSynced,
+		recorder:          recorder,
+		syncHandlerFunc:   syncHandlerFunc,
+		reservedNamespace: reservedNamespace,
 	}
 
 	// Manage the addition/update of Localization
@@ -121,8 +122,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer klog.Info("shutting down localization controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(stopCh, c.locSynced, c.chartSynced, c.manifestSynced) {
+	if !cache.WaitForNamedCacheSync("localization-controller", stopCh, c.locSynced, c.chartSynced, c.manifestSynced) {
 		return
 	}
 
@@ -298,7 +298,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	loc.Kind = controllerKind.Kind
-	loc.APIVersion = controllerKind.Version
+	loc.APIVersion = controllerKind.GroupVersion().String()
 	err = c.syncHandlerFunc(loc)
 	if err != nil {
 		c.recorder.Event(loc, corev1.EventTypeWarning, "FailedSynced", err.Error())
@@ -336,7 +336,7 @@ func (c *Controller) getLabelsForPatching(loc *appsapi.Localization) (map[string
 			labelsToPatch[string(chart.UID)] = &chartKind.Kind
 		}
 	default:
-		manifests, err := utils.ListManifestsBySelector(c.manifestLister, loc.Spec.Feed)
+		manifests, err := utils.ListManifestsBySelector(c.reservedNamespace, c.manifestLister, loc.Spec.Feed)
 		if err != nil {
 			return nil, err
 		}

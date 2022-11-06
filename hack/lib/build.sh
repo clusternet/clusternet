@@ -18,10 +18,11 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+readonly CLUSTERNET_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
+
+WHAT=${WHAT:-$(cd "${CLUSTERNET_ROOT}"/cmd; ls -d * | paste -s -d, -)}
 PLATFORMS=${PLATFORMS:-linux/amd64}
 CGO_ENABLED=${CGO_ENABLED:-0}
-
-readonly CLUSTERNET_ROOT=$(dirname "${BASH_SOURCE[0]}")/../..
 
 source "${CLUSTERNET_ROOT}/hack/lib/version.sh"
 
@@ -139,71 +140,21 @@ clusternet::docker::image() {
   # Create a sub-shell so that we don't pollute the outer environment
   (
     local platform=$1
-    clusternet::golang::setup_platform "${platform}"
-
-    local CGO_ENABLED=0
-    local CC=""
-    local LDFLAGS="$(clusternet::version::ldflags)"
-    local CCPKG=""
-
-    # Do not set CC when building natively on a platform, only if cross-compiling
-    if [[ $(clusternet::docker::host_platform) != "$platform" ]]; then
-      # Dynamic CGO linking for other server architectures than host architecture goes here
-      # If you want to include support for more server platforms than these, add arch-specific gcc names here
-      LDFLAGS+="-linkmode=external -w -extldflags=-static"
-      case "${platform}" in
-        "linux/amd64")
-          CGO_ENABLED=1
-          CC=x86_64-linux-gnu-gcc
-          CCPKG=gcc-x86-64-linux-gnu
-          ;;
-        "linux/arm")
-          CGO_ENABLED=1
-          CC=arm-linux-gnueabihf-gcc
-          CCPKG=gcc-arm-linux-gnueabihf
-          ;;
-        "linux/arm64")
-          CGO_ENABLED=1
-          CC=aarch64-linux-gnu-gcc
-          CCPKG=gcc-aarch64-linux-gnu
-          ;;
-        "linux/ppc64le")
-          CGO_ENABLED=1
-          CC=powerpc64le-linux-gnu-gcc
-          CCPKG=gcc-powerpc64le-linux-gnu
-          ;;
-        "linux/s390x")
-          CGO_ENABLED=1
-          CC=s390x-linux-gnu-gcc
-          CCPKG=gcc-s390x-linux-gnu
-          ;;
-        "linux/386")
-          CGO_ENABLED=1
-          CC=i686-linux-gnu-gcc
-          CCPKG=gcc-i686-linux-gnu
-          ;;
-        *)
-          echo "Unsupported platforms. Must be in linux/amd64, linux/arm, linux/arm64, linux/ppc64le, linux/s390x, linux/386"
-          exit 1
-          ;;
-      esac
-    fi
-
     local target=$2
+
+    local LDFLAGS="$(clusternet::version::ldflags)"
+
+    clusternet::golang::setup_platform "${platform}"
     tag=$(git describe --tags --always)
     echo "Building docker image ${REGISTRY}/clusternet/${target}-${GOARCH}:${tag} ..."
 
     docker buildx build \
       --load \
-      -t ${REGISTRY}/clusternet/"${target}"-${GOARCH}:"${tag}" \
+      --platform="$1" \
+      -t "${REGISTRY}/clusternet/$2-${GOARCH}:${tag}" \
       --build-arg BASEIMAGE="${BASEIMAGE}" \
       --build-arg GOVERSION="${GOVERSION}" \
-      --build-arg GOARCH="${GOARCH}" \
-      --build-arg CGO_ENABLED="${CGO_ENABLED}" \
-      --build-arg CC="${CC}" \
-      --build-arg CCPKG=${CCPKG} \
       --build-arg LDFLAGS="${LDFLAGS}" \
-      --build-arg PKGNAME="${target}" \
-      --build-arg PLATFORM="${platform}" .
+      --build-arg PKGNAME="${target}" .
   )
 }

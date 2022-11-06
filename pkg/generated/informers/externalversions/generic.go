@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Bases().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("descriptions"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Descriptions().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("feedinventories"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().FeedInventories().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("globalizations"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Apps().V1alpha1().Globalizations().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("helmcharts"):

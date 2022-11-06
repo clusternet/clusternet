@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.5.0
+    controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
   name: localizations.apps.clusternet.io
 spec:
@@ -31,10 +31,14 @@ spec:
         description: Localization represents the override config for a group of resources.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -42,13 +46,16 @@ spec:
             description: LocalizationSpec defines the desired state of Localization
             properties:
               feed:
-                description: Feed holds references to the objects the Localization applies to.
+                description: Feed holds references to the objects the Localization
+                  applies to.
                 properties:
                   apiVersion:
-                    description: APIVersion defines the versioned schema of this representation of an object.
+                    description: APIVersion defines the versioned schema of this representation
+                      of an object.
                     type: string
                   kind:
-                    description: Kind is a string value representing the REST resource this object represents. In CamelCase.
+                    description: Kind is a string value representing the REST resource
+                      this object represents. In CamelCase.
                     type: string
                   name:
                     description: Name of the target resource.
@@ -63,16 +70,25 @@ spec:
                 type: object
               overridePolicy:
                 default: ApplyLater
-                description: OverridePolicy specifies the override policy for this Localization.
+                description: OverridePolicy specifies the override policy for this
+                  Localization.
+                enum:
+                - ApplyNow
+                - ApplyLater
                 type: string
               overrides:
                 description: Overrides holds all the OverrideConfig.
                 items:
-                  description: OverrideConfig holds information that describes a override config.
+                  description: OverrideConfig holds information that describes a override
+                    config.
                   properties:
                     name:
                       description: Name indicate the OverrideConfig name.
                       type: string
+                    overrideChart:
+                      description: OverrideChart indicates whether the override value
+                        for the HelmChart CR.
+                      type: boolean
                     type:
                       description: Type specifies the override type for override value.
                       enum:
@@ -90,7 +106,11 @@ spec:
                 type: array
               priority:
                 default: 500
-                description: Priority is an integer defining the relative importance of this Localization compared to others. Lower numbers are considered lower priority. And these Localization(s) will be applied by order from lower priority to higher. That means override values in lower Localization will be overridden by those in higher Localization.
+                description: Priority is an integer defining the relative importance
+                  of this Localization compared to others. Lower numbers are considered
+                  lower priority. And these Localization(s) will be applied by order
+                  from lower priority to higher. That means override values in lower
+                  Localization will be overridden by those in higher Localization.
                 format: int32
                 maximum: 1000
                 minimum: 0

@@ -1,0 +1,112 @@
+project_name: clusternet
+builds:
+  - id: clusternet-hub
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - "386"
+      - ppc64le
+      - s390x
+    # Set the modified timestamp on the output binary, typically
+    # you would do this to ensure a build was reproducible. Pass
+    # empty string to skip modifying the output.
+    # Default is empty string.
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    gobinary: "go"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+      - GITSTATUS=clean
+    main: ./cmd/clusternet-hub
+    binary: ./clusternet-hub
+    ldflags:
+      - -X k8s.io/client-go/pkg/version.buildDate={{.Date}}
+      - -X k8s.io/component-base/version.buildDate={{.Date}}
+      - -X k8s.io/client-go/pkg/version.gitCommit={{.FullCommit}}
+      - -X k8s.io/component-base/version.gitCommit={{.FullCommit}}
+      - -X k8s.io/client-go/pkg/version.gitTreeState={{.Env.GITSTATUS}}
+      - -X k8s.io/component-base/version.gitTreeState={{.Env.GITSTATUS}}
+      - -X k8s.io/client-go/pkg/version.gitVersion=v{{.Version}}
+      - -X k8s.io/component-base/version.gitVersion=v{{.Version}}
+      - -X k8s.io/client-go/pkg/version.gitMajor={{.Major}}
+      - -X k8s.io/component-base/version.gitMajor={{.Major}}
+      - -X k8s.io/client-go/pkg/version.gitMinor={{.Minor}}
+      - -X k8s.io/component-base/version.gitMinor={{.Minor}}
+  - id: clusternet-agent
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - "386"
+      - ppc64le
+      - s390x
+    # Set the modified timestamp on the output binary, typically
+    # you would do this to ensure a build was reproducible. Pass
+    # empty string to skip modifying the output.
+    # Default is empty string.
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    gobinary: "go"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    main: ./cmd/clusternet-agent
+    binary: ./clusternet-agent
+    ldflags:
+      - -X k8s.io/client-go/pkg/version.buildDate={{.Date}}
+      - -X k8s.io/component-base/version.buildDate={{.Date}}
+      - -X k8s.io/client-go/pkg/version.gitCommit={{.FullCommit}}
+      - -X k8s.io/component-base/version.gitCommit={{.FullCommit}}
+      - -X k8s.io/client-go/pkg/version.gitTreeState=clean
+      - -X k8s.io/component-base/version.gitTreeState=clean
+      - -X k8s.io/client-go/pkg/version.gitVersion=v{{.Version}}
+      - -X k8s.io/component-base/version.gitVersion=v{{.Version}}
+      - -X k8s.io/client-go/pkg/version.gitMajor={{.Major}}
+      - -X k8s.io/component-base/version.gitMajor={{.Major}}
+      - -X k8s.io/client-go/pkg/version.gitMinor={{.Minor}}
+      - -X k8s.io/component-base/version.gitMinor={{.Minor}}
+  - id: clusternet-scheduler
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - "386"
+      - ppc64le
+      - s390x
+    # Set the modified timestamp on the output binary, typically
+    # you would do this to ensure a build was reproducible. Pass
+    # empty string to skip modifying the output.
+    # Default is empty string.
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    gobinary: "go"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    main: ./cmd/clusternet-scheduler
+    binary: ./clusternet-scheduler
+    ldflags:
+      - -X k8s.io/client-go/pkg/version.buildDate={{.Date}}
+      - -X k8s.io/component-base/version.buildDate={{.Date}}
+      - -X k8s.io/client-go/pkg/version.gitCommit={{.FullCommit}}
+      - -X k8s.io/component-base/version.gitCommit={{.FullCommit}}
+      - -X k8s.io/client-go/pkg/version.gitTreeState=clean
+      - -X k8s.io/component-base/version.gitTreeState=clean
+      - -X k8s.io/client-go/pkg/version.gitVersion=v{{.Version}}
+      - -X k8s.io/component-base/version.gitVersion=v{{.Version}}
+      - -X k8s.io/client-go/pkg/version.gitMajor={{.Major}}
+      - -X k8s.io/component-base/version.gitMajor={{.Major}}
+      - -X k8s.io/client-go/pkg/version.gitMinor={{.Minor}}
+      - -X k8s.io/component-base/version.gitMinor={{.Minor}}
+archives:
+  - id: clusternet
+    builds:
+      - clusternet-hub
+      - clusternet-agent
+      - clusternet-scheduler
+    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}{{ end }}'

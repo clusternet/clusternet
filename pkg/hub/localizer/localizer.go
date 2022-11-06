@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"sort"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,18 +40,51 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 var (
 	chartKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
+
+	// cannot override chart name and targetNamespace, remove them from the override
+	defaultChartOverrideConfigs = []appsapi.OverrideConfig{
+		{
+			Name:  "skip-overriding-chart-name",
+			Value: `[{"path":"/spec/chart","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "skip-overriding-targetNamespace",
+			Value: `[{"path":"/spec/targetNamespace","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+	}
+
+	// removing ignored fields from serialized bytes, which can help reduce the size of Description objects and improve
+	// decoding performance
+	defaultOverrideConfigs = []appsapi.OverrideConfig{
+		{
+			Name:  "ignore-metadata-managedFields",
+			Value: `[{"path":"/metadata/managedFields","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "ignore-metadata-uid",
+			Value: `[{"path":"/metadata/uid","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+		{
+			Name:  "ignore-status",
+			Value: `[{"path":"/status","op":"remove"}]`,
+			Type:  appsapi.JSONPatchType,
+		},
+	}
 )
 
 // Localizer defines configuration for the application localization
 type Localizer struct {
-	ctx context.Context
-
 	clusternetClient *clusternetclientset.Clientset
 
 	locLister      applisters.LocalizationLister
@@ -61,50 +95,63 @@ type Localizer struct {
 	chartSynced    cache.InformerSynced
 	manifestLister applisters.ManifestLister
 	manifestSynced cache.InformerSynced
+	mclsLister     clusterListers.ManagedClusterLister
+	mclsSynced     cache.InformerSynced
 
 	locController  *localization.Controller
 	globController *globalization.Controller
 
+	chartCallback    func(*appsapi.HelmChart) error
+	manifestCallback func(*appsapi.Manifest) error
+
 	recorder record.EventRecorder
+
+	// namespace where Manifests are created
+	reservedNamespace string
 }
 
-func NewLocalizer(ctx context.Context,
-	clusternetClient *clusternetclientset.Clientset,
+func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
-	recorder record.EventRecorder) (*Localizer, error) {
+	chartCallback func(*appsapi.HelmChart) error, manifestCallback func(*appsapi.Manifest) error,
+	recorder record.EventRecorder, reservedNamespace string) (*Localizer, error) {
 
 	localizer := &Localizer{
-		ctx:              ctx,
-		clusternetClient: clusternetClient,
-		locLister:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Lister(),
-		locSynced:        clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer().HasSynced,
-		globLister:       clusternetInformerFactory.Apps().V1alpha1().Globalizations().Lister(),
-		globSynced:       clusternetInformerFactory.Apps().V1alpha1().Globalizations().Informer().HasSynced,
-		chartLister:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
-		chartSynced:      clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
-		manifestLister:   clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
-		manifestSynced:   clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
-		recorder:         recorder,
+		clusternetClient:  clusternetClient,
+		locLister:         clusternetInformerFactory.Apps().V1alpha1().Localizations().Lister(),
+		locSynced:         clusternetInformerFactory.Apps().V1alpha1().Localizations().Informer().HasSynced,
+		globLister:        clusternetInformerFactory.Apps().V1alpha1().Globalizations().Lister(),
+		globSynced:        clusternetInformerFactory.Apps().V1alpha1().Globalizations().Informer().HasSynced,
+		chartLister:       clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Lister(),
+		chartSynced:       clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer().HasSynced,
+		manifestLister:    clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
+		manifestSynced:    clusternetInformerFactory.Apps().V1alpha1().Manifests().Informer().HasSynced,
+		mclsLister:        clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister(),
+		mclsSynced:        clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().HasSynced,
+		chartCallback:     chartCallback,
+		manifestCallback:  manifestCallback,
+		recorder:          recorder,
+		reservedNamespace: reservedNamespace,
 	}
 
-	locController, err := localization.NewController(ctx, clusternetClient,
+	locController, err := localization.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Localizations(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
 		recorder,
-		localizer.handleLocalization)
+		localizer.handleLocalization,
+		reservedNamespace)
 	if err != nil {
 		return nil, err
 	}
 	localizer.locController = locController
 
-	globController, err := globalization.NewController(ctx,
-		clusternetClient,
+	globController, err := globalization.NewController(clusternetClient,
 		clusternetInformerFactory.Apps().V1alpha1().Globalizations(),
 		clusternetInformerFactory.Apps().V1alpha1().HelmCharts(),
 		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
 		recorder,
-		localizer.handleGlobalization)
+		localizer.handleGlobalization,
+		reservedNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -113,64 +160,146 @@ func NewLocalizer(ctx context.Context,
 	return localizer, nil
 }
 
-func (l *Localizer) Run(workers int) {
+func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
 	klog.Info("starting Clusternet localizer ...")
 
 	// Wait for the caches to be synced before starting workers
-	klog.V(5).Info("waiting for informer caches to sync")
-	if !cache.WaitForCacheSync(l.ctx.Done(),
+	if !cache.WaitForNamedCacheSync("localizer-controller",
+		stopCh,
 		l.locSynced,
 		l.globSynced,
 		l.chartSynced,
 		l.manifestSynced,
+		l.mclsSynced,
 	) {
 		return
 	}
 
-	go l.locController.Run(workers, l.ctx.Done())
-	go l.globController.Run(workers, l.ctx.Done())
+	go l.locController.Run(workers, stopCh)
+	go l.globController.Run(workers, stopCh)
 
-	<-l.ctx.Done()
+	<-stopCh
 }
 
 func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
-	if loc.DeletionTimestamp != nil {
-		// remove finalizer
-		loc.Finalizers = utils.RemoveString(loc.Finalizers, known.AppFinalizer)
-		_, err := l.clusternetClient.AppsV1alpha1().Localizations(loc.Namespace).Update(context.TODO(), loc, metav1.UpdateOptions{})
-		if err != nil {
-			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(loc), err))
+	switch loc.Spec.OverridePolicy {
+	case appsapi.ApplyNow:
+		klog.V(5).Infof("apply Localization %s now", klog.KObj(loc))
+		if loc.Spec.Kind == chartKind.Kind {
+			chart, err := l.chartLister.HelmCharts(loc.Spec.Namespace).Get(loc.Spec.Name)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
+					break
+				}
+				return err
+			}
+
+			err = l.chartCallback(chart)
+			if err != nil {
+				return err
+			}
+			break
 		}
-		return err
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, loc.Spec.Feed)
+		if err != nil {
+			return err
+		}
+		if manifests == nil {
+			klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
+			break
+		}
+		err = l.manifestCallback(manifests[0])
+		if err != nil {
+			return err
+		}
+	case appsapi.ApplyLater:
+	default:
+		msg := fmt.Sprintf("unsupported OverridePolicy %s", loc.Spec.OverridePolicy)
+		l.recorder.Event(loc, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
+		klog.ErrorDepth(2, msg)
+		// will not sync such invalid objects again
+		return nil
 	}
 
+	// remove finalizer
+	if loc.DeletionTimestamp != nil {
+		// remove finalizer
+		locCopy := loc.DeepCopy()
+		locCopy.Finalizers = utils.RemoveString(locCopy.Finalizers, known.AppFinalizer)
+		_, err := l.clusternetClient.AppsV1alpha1().Localizations(locCopy.Namespace).Update(context.TODO(), locCopy, metav1.UpdateOptions{})
+		if err != nil {
+			klog.WarningDepth(4,
+				fmt.Sprintf("failed to remove finalizer %s from Localization %s: %v", known.AppFinalizer, klog.KObj(locCopy), err))
+			return err
+		}
+	}
 	return nil
 }
 
 func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
+	switch glob.Spec.OverridePolicy {
+	case appsapi.ApplyNow:
+		klog.V(5).Infof("apply Globalization %s now", klog.KObj(glob), appsapi.ApplyNow)
+		if glob.Spec.Kind == chartKind.Kind {
+			chart, err := l.chartLister.HelmCharts(glob.Spec.Namespace).Get(glob.Spec.Name)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(glob), utils.FormatFeed(glob.Spec.Feed))
+					break
+				}
+				return err
+			}
+
+			err = l.chartCallback(chart)
+			if err != nil {
+				return err
+			}
+			break
+		}
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, glob.Spec.Feed)
+		if err != nil {
+			return err
+		}
+		if manifests == nil {
+			klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(glob), utils.FormatFeed(glob.Spec.Feed))
+			break
+		}
+		err = l.manifestCallback(manifests[0])
+		if err != nil {
+			return err
+		}
+	case appsapi.ApplyLater:
+	default:
+		msg := fmt.Sprintf("unsupported OverridePolicy %s", glob.Spec.OverridePolicy)
+		l.recorder.Event(glob, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
+		klog.ErrorDepth(2, msg)
+		// will not sync such invalid objects again until the spec gets changed
+		return nil
+	}
+
 	if glob.DeletionTimestamp != nil {
 		// remove finalizer
-		glob.Finalizers = utils.RemoveString(glob.Finalizers, known.AppFinalizer)
-		_, err := l.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(), glob, metav1.UpdateOptions{})
+		globCopy := glob.DeepCopy()
+		globCopy.Finalizers = utils.RemoveString(globCopy.Finalizers, known.AppFinalizer)
+		_, err := l.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(), globCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Globalization %s: %v", known.AppFinalizer, klog.KObj(glob), err))
+				fmt.Sprintf("failed to remove finalizer %s from Globalization %s: %v", known.AppFinalizer, klog.KObj(globCopy), err))
 		}
 		return err
 	}
-
 	return nil
 }
 
 func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error {
 	var allErrs []error
-	descCopy := desc.DeepCopy()
-	switch descCopy.Spec.Deployer {
+	switch desc.Spec.Deployer {
 	case appsapi.DescriptionHelmDeployer:
-		desc.Spec.Raw = make([][]byte, len(descCopy.Spec.Charts))
-		for idx, chartRef := range descCopy.Spec.Charts {
-			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+		desc.Spec.Raw = make([][]byte, len(desc.Spec.Charts))
+
+		for idx, chartRef := range desc.Spec.Charts {
+			overrides, err := l.getOverrides(desc.Namespace, appsapi.Feed{
 				Kind:       chartKind.Kind,
 				APIVersion: chartKind.Version,
 				Namespace:  chartRef.Namespace,
@@ -182,23 +311,43 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 			}
 
 			// use a whitespace explicitly
-			result, err := applyOverrides([]byte(" "), overrides)
+			genericResult, chartOverrideResult, err := applyOverrides([]byte(" "), []byte(" "), overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
-			desc.Spec.Raw[idx] = result
+			desc.Spec.Raw[idx] = genericResult
+
+			// apply default overrides for helm charts
+			chartOverrideResult, _, err = applyOverrides(chartOverrideResult, []byte(" "), defaultChartOverrideConfigs)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+
+			chartResult, _, err := applyOverrides(desc.Spec.ChartRaw[idx], []byte(" "), []appsapi.OverrideConfig{
+				{
+					Name:  "merge-chartRaw-with-overrides",
+					Value: string(chartOverrideResult),
+					Type:  appsapi.MergePatchType,
+				},
+			})
+			if err != nil {
+				allErrs = append(allErrs, err)
+				continue
+			}
+			desc.Spec.ChartRaw[idx] = chartResult
 		}
 		return utilerrors.NewAggregate(allErrs)
 	case appsapi.DescriptionGenericDeployer:
-		for idx, rawObject := range descCopy.Spec.Raw {
+		for idx, rawObject := range desc.Spec.Raw {
 			obj := &unstructured.Unstructured{}
 			if err := json.Unmarshal(rawObject, obj); err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
 
-			overrides, err := l.getOverrides(descCopy.Namespace, appsapi.Feed{
+			overrides, err := l.getOverrides(desc.Namespace, appsapi.Feed{
 				Kind:       obj.GetKind(),
 				APIVersion: obj.GetAPIVersion(),
 				Namespace:  obj.GetNamespace(),
@@ -209,7 +358,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 				continue
 			}
 
-			result, err := applyOverrides(rawObject, overrides)
+			result, _, err := applyOverrides(rawObject, nil, overrides)
 			if err != nil {
 				allErrs = append(allErrs, err)
 				continue
@@ -218,7 +367,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 		}
 		return utilerrors.NewAggregate(allErrs)
 	default:
-		return fmt.Errorf("unsupported deployer %s", descCopy.Spec.Deployer)
+		return fmt.Errorf("unsupported deployer %s", desc.Spec.Deployer)
 	}
 }
 
@@ -232,7 +381,7 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 		}
 		uid = chart.UID
 	default:
-		manifests, err := utils.ListManifestsBySelector(l.manifestLister, feed)
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, feed)
 		if err != nil {
 			return nil, err
 		}
@@ -242,12 +391,32 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 		uid = manifests[0].UID
 	}
 
-	globs, err := l.globLister.List(labels.SelectorFromSet(labels.Set{
+	feedGlobs, err := l.globLister.List(labels.SelectorFromSet(labels.Set{
 		string(uid): feed.Kind,
 	}))
 	if err != nil {
 		return nil, err
 	}
+
+	globs := make([]*appsapi.Globalization, 0)
+	for _, glob := range feedGlobs {
+		if glob.Spec.ClusterAffinity != nil {
+			selector, err := metav1.LabelSelectorAsSelector(glob.Spec.ClusterAffinity)
+			if err != nil {
+				return nil, err
+			}
+			clusters, listErr := l.mclsLister.ManagedClusters(namespace).List(selector)
+			if listErr != nil {
+				return nil, listErr
+			}
+			if len(clusters) == 0 {
+				klog.V(5).Infof("skipping apply Globalization %s for feed %s in namespace", glob.Name, feed.Name, namespace)
+				continue
+			}
+		}
+		globs = append(globs, glob)
+	}
+
 	sort.SliceStable(globs, func(i, j int) bool {
 		if globs[i].Spec.Priority == globs[j].Spec.Priority {
 			return globs[i].CreationTimestamp.Second() < globs[j].CreationTimestamp.Second()

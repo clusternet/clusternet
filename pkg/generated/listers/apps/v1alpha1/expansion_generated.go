@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,14 @@ type DescriptionListerExpansion interface{}
 // DescriptionNamespaceListerExpansion allows custom methods to be added to
 // DescriptionNamespaceLister.
 type DescriptionNamespaceListerExpansion interface{}
+
+// FeedInventoryListerExpansion allows custom methods to be added to
+// FeedInventoryLister.
+type FeedInventoryListerExpansion interface{}
+
+// FeedInventoryNamespaceListerExpansion allows custom methods to be added to
+// FeedInventoryNamespaceLister.
+type FeedInventoryNamespaceListerExpansion interface{}
 
 // GlobalizationListerExpansion allows custom methods to be added to
 // GlobalizationLister.

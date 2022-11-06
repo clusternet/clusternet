@@ -35,33 +35,55 @@ const (
 	// ClusterRegistrationNamePrefix is a prefix for cluster registration name
 	ClusterRegistrationNamePrefix = "cluster-reg-name-prefix"
 
+	// ClusterRegistrationNamespace flag specifies the cluster registration namespace
+	ClusterRegistrationNamespace = "cluster-reg-namespace"
+
 	// ClusterRegistrationType flag specifies the cluster type
 	ClusterRegistrationType = "cluster-reg-type"
 
 	// ClusterSyncMode flag specifies the sync mode between parent cluster and child cluster
 	ClusterSyncMode = "cluster-sync-mode"
 
+	// ClusterLabels flag specifies the labels for the cluster
+	ClusterLabels = "cluster-labels"
+
 	// ClusterStatusReportFrequency flag specifies the child cluster status updating frequency
 	ClusterStatusReportFrequency = "cluster-status-update-frequency"
 
 	// ClusterStatusCollectFrequency flag specifies the cluster status collecting frequency
 	ClusterStatusCollectFrequency = "cluster-status-collect-frequency"
+
+	// UseMetricsServer flag specifies whether to collect metrics from metrics server running in the cluster
+	UseMetricsServer = "use-metrics-server"
+
+	// PredictorAddress flag specifies the address of external predictor
+	PredictorAddress = "predictor-addr"
+
+	// PredictorDirectAccess flag indicates whether the predictor can be accessed directly by clusternet-scheduler
+	PredictorDirectAccess = "predictor-direct-access"
+
+	// PredictorPort flag specifies the port on which to serve built-in predictor
+	PredictorPort = "predictor-port"
 )
 
 // default values
 const (
-	SelfClusterLeaseName    = "self-cluster"
 	ParentClusterSecretName = "parent-cluster"
 
 	// RegistrationNamePrefix is a prefix name for cluster registration
 	RegistrationNamePrefix = "clusternet-cluster"
 
-	// max length for clustername
-	ClusterNameMaxLength = 30
-	// default length for random uid
+	// ClusterNameMaxLength is the max length for clustername
+	ClusterNameMaxLength = 60
+
+	// ClusterNamespaceMaxLength is the max length for clusternamespace
+	ClusterNamespaceMaxLength = 63
+
+	// DefaultRandomUIDLength is the default length for random uid
 	DefaultRandomUIDLength = 5
 
-	nameFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
+	nameFmt      = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
+	namespaceFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
 
 	DefaultClusterStatusCollectFrequency = 20 * time.Second
 	DefaultClusterStatusReportFrequency  = 3 * time.Minute

@@ -23,37 +23,70 @@ import (
 )
 
 const (
+	// SocketConnection setups and serves a WebSocket connection.
+	//
 	// owner: @dixudx
 	// alpha: v0.1.0
-	//
-	// Setup/Serve a WebSocket connection.
+	// Setting on hub and agent side.
 	SocketConnection featuregate.Feature = "SocketConnection"
 
+	// AppPusher allows deploying applications directly from parent cluster.
+	// In case of security concerns for a child cluster, this feature gate could be disabled on agent side.
+	// When disabled, clusternet-agent (works in Dual or Pull mode) is responsible to deploy resources
+	// to current self cluster.
+	//
 	// owner: @dixudx
 	// alpha: v0.2.0
-	//
-	// Allow to deploy applications from parent cluster.
-	// Mainly for security concerns of every child cluster.
-	// If a child cluster has disabled AppPusher, the parent cluster won't deploy applications with Push or Dual mode.
+	// Setting on agent side.
 	AppPusher featuregate.Feature = "AppPusher"
 
+	// Deployer indicates whether clusternet-hub works for application managements.
+	// The scheduling parts are handled by clusternet-scheduler.
+	//
 	// owner: @dixudx
 	// alpha: v0.2.0
-	//
-	// Works as a deployer that help distribute kinds of resources to a group of clusters
+	// Setting on hub side.
 	Deployer featuregate.Feature = "Deployer"
 
+	// ShadowAPI provides an apiserver to shadow all the Kubernetes objects, including CRDs.
+	//
 	// owner: @dixudx
 	// alpha: v0.3.0
-	//
-	// Shadow all the Kubernetes objects, including CRDs.
+	// Setting on hub side.
 	ShadowAPI featuregate.Feature = "ShadowAPI"
 
+	// FeedInUseProtection postpones deletion of an object that is being referred as a feed in Subscriptions.
+	//
 	// owner: @dixudx
 	// alpha: v0.4.0
-	//
-	// Postpone deletion of an object that is being referred as a feed in several Subscriptions.
+	// Setting on hub side.
 	FeedInUseProtection featuregate.Feature = "FeedInUseProtection"
+
+	// Recovery ensures the resources deployed by Clusternet exist persistently in a child cluster.
+	// This helps rollback unexpected operations (like deleting, updating) that occurred solely inside a child cluster,
+	// unless those are made explicitly from parent cluster.
+	//
+	// owner: @dixudx
+	// alpha: v0.8.0
+	// Setting on agent side.
+	Recovery featuregate.Feature = "Recovery"
+
+	// FeedInventory runs default in-tree registry to parse the schema of a resource, such as Deployment,
+	// Statefulset, etc.
+	// This feature gate should be closed when external FeedInventory controller is used.
+	//
+	// owner: @dixudx
+	// alpha: v0.9.0
+	// Setting on hub side.
+	FeedInventory featuregate.Feature = "FeedInventory"
+
+	// Predictor will predictor child cluster resource before scheduling.
+	// This feature gate needs a running predictor, either build-in or external.
+	//
+	// owner: @yinsenyan
+	// alpha: v0.10.0
+	// Setting on agent side
+	Predictor featuregate.Feature = "Predictor"
 )
 
 func init() {
@@ -69,4 +102,7 @@ var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	Deployer:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	ShadowAPI:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	FeedInUseProtection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Recovery:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FeedInventory:       {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Predictor:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }

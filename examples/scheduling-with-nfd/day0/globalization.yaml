@@ -1,0 +1,23 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Globalization
+metadata:
+  name: nfd-global-overrides
+spec:
+  # Priority is an integer defining the relative importance of this Globalization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Globalization will be overridden by those in higher Globalization.
+  # (Optional) Default priority is 500.
+  priority: 600
+  feed:
+    apiVersion: apps.clusternet.io/v1alpha1
+    kind: HelmChart
+    name: node-feature-discovery
+    namespace: default
+  overrides: # defines all the overrides to be processed with
+    - name: add-nfd-new-namespace
+      type: Helm # This can only be "Helm" for HelmRelease Values.
+      # Value is a YAML/JSON format patch that overrides values to current Helm chart defined by feed.
+      # And the value here is exactly the same as file "values.yaml".
+      # This override disables using PersistentVolumeClaim on MySQL primary replicas.
+      # The value here can also be in json format.
+      value: '{"master":{"extraLabelNs":["node.clusternet.io"]}}'

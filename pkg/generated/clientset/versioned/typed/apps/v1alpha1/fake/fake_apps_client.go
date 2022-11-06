@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Clusternet Authors.
+Copyright The Clusternet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,10 @@ func (c *FakeAppsV1alpha1) Bases(namespace string) v1alpha1.BaseInterface {
 
 func (c *FakeAppsV1alpha1) Descriptions(namespace string) v1alpha1.DescriptionInterface {
 	return &FakeDescriptions{c, namespace}
+}
+
+func (c *FakeAppsV1alpha1) FeedInventories(namespace string) v1alpha1.FeedInventoryInterface {
+	return &FakeFeedInventories{c, namespace}
 }
 
 func (c *FakeAppsV1alpha1) Globalizations() v1alpha1.GlobalizationInterface {

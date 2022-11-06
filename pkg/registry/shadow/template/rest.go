@@ -23,8 +23,14 @@ import (
 	"strings"
 	"sync"
 
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
 	"k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -32,28 +38,35 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
-	"k8s.io/client-go/kubernetes"
 	clientgorest "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/registry/shadow/printers"
+	printersinternal "github.com/clusternet/clusternet/pkg/registry/shadow/printers/internalversion"
+	printerstorage "github.com/clusternet/clusternet/pkg/registry/shadow/printers/storage"
+	"github.com/clusternet/clusternet/pkg/registry/shadow/printers/util"
 )
 
 const (
-	category         = "clusternet.shadow"
 	CoreGroupPrefix  = "api"
 	NamedGroupPrefix = "apis"
 
-	// default value for deleteCollectionWorkers
+	// DefaultDeleteCollectionWorkers defines the default value for deleteCollectionWorkers
 	DefaultDeleteCollectionWorkers = 2
+
+	crdKind = "CustomResourceDefinition"
 )
 
 // REST implements a RESTStorage for Shadow API
@@ -73,14 +86,20 @@ type REST struct {
 
 	parameterCodec runtime.ParameterCodec
 
-	dryRunClient              *kubernetes.Clientset
-	clusternetClient          *clusternet.Clientset
-	clusternetInformerFactory informers.SharedInformerFactory
+	dryRunClient     clientgorest.Interface
+	clusternetClient *clusternet.Clientset
+	manifestLister   applisters.ManifestLister
 
 	// deleteCollectionWorkers is the maximum number of workers in a single
 	// DeleteCollection call. Delete requests for the items in a collection
 	// are issued in parallel.
 	deleteCollectionWorkers int
+
+	// namespace where Manifests are created
+	reservedNamespace string
+
+	// is this Rest for CRD resource.
+	CRD *apiextensionsv1.CustomResourceDefinition
 }
 
 // Create inserts a new item into Manifest according to the unique key from the object.
@@ -94,8 +113,8 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 	// next we create manifest to store the result
 	manifest := &appsapi.Manifest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.generateNameForManifest(result.GetNamespace(), result.GetName()),
-			Namespace: appsapi.ReservedNamespace,
+			Name:      r.getNormalizedManifestName(result.GetNamespace(), result.GetName()),
+			Namespace: r.reservedNamespace,
 			Labels:    result.GetLabels(), // reuse labels from original object, which is useful for label selector
 		},
 		Template: runtime.RawExtension{
@@ -126,11 +145,10 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 	var manifest *appsapi.Manifest
 	var err error
 	if len(options.ResourceVersion) == 0 {
-		manifest, err = r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).
-			Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
+		manifest, err = r.manifestLister.Manifests(r.reservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
 	} else {
-		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
-			Get(ctx, r.generateNameForManifest(request.NamespaceValue(ctx), name), *options)
+		manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).
+			Get(ctx, r.getNormalizedManifestName(request.NamespaceValue(ctx), name), *options)
 	}
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -148,6 +166,8 @@ func (r *REST) Get(ctx context.Context, name string, options *metav1.GetOptions)
 func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo,
 	createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc,
 	forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
+	// We are explicitly taking forceAllowCreate as false.
+	// TODO: forceAllowCreate could be true
 	resource, subresource := r.getResourceName()
 	if len(subresource) > 0 && !supportedSubresources.Has(subresource) {
 		// all these shadow apis are considered as templates, updating subresources, such as 'status' makes no sense.
@@ -157,8 +177,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, err
 	}
 
-	manifest, err := r.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister().Manifests(appsapi.ReservedNamespace).
-		Get(r.generateNameForManifest(request.NamespaceValue(ctx), name))
+	manifest, err := r.manifestLister.Manifests(r.reservedNamespace).Get(r.getNormalizedManifestName(request.NamespaceValue(ctx), name))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, false, errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -171,46 +190,51 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 		return nil, false, errors.NewInternalError(err)
 	}
 
-	// TODO: validate update
 	newObj, err := objInfo.UpdatedObject(ctx, oldObj)
 	if err != nil {
 		return nil, false, err
 	}
-
-	// dry-run
-	result, err := r.dryRunCreate(ctx, newObj, createValidation, &metav1.CreateOptions{})
-	if err != nil {
-		return nil, false, err
+	// Now we've got a fully formed object. Validators that apiserver handling chain wants to enforce can be called.
+	if updateValidation != nil {
+		if err := updateValidation(ctx, newObj.DeepCopyObject(), oldObj.DeepCopyObject()); err != nil {
+			return nil, false, err
+		}
 	}
+	result := newObj.(*unstructured.Unstructured)
+	r.trimResult(result)
 
-	manifest.Template.Reset()
 	// in case labels get changed
-	if manifest.Labels == nil {
-		manifest.Labels = map[string]string{}
+	manifestCopy := manifest.DeepCopy()
+	if manifestCopy.Labels == nil {
+		manifestCopy.Labels = map[string]string{}
 	}
 	for k, v := range result.GetLabels() {
-		manifest.Labels[k] = v
+		manifestCopy.Labels[k] = v
 	}
-	manifest.Labels[known.ConfigGroupLabel] = r.group
-	manifest.Labels[known.ConfigVersionLabel] = r.version
-	manifest.Labels[known.ConfigKindLabel] = r.kind
-	manifest.Labels[known.ConfigNameLabel] = result.GetName()
-	manifest.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
-	manifest.Template.Object = result
-	manifest, err = r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Update(ctx, manifest, *options)
+	manifestCopy.Labels[known.ConfigGroupLabel] = r.group
+	manifestCopy.Labels[known.ConfigVersionLabel] = r.version
+	if r.kind != "Scale" {
+		manifestCopy.Labels[known.ConfigKindLabel] = r.kind
+	}
+	manifestCopy.Labels[known.ConfigNameLabel] = result.GetName()
+	manifestCopy.Labels[known.ConfigNamespaceLabel] = result.GetNamespace()
+	manifestCopy.Template.Reset()
+	manifestCopy.Template.Object = result
+	// save the updates
+	manifestCopy, err = r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).Update(ctx, manifestCopy, *options)
 	if err != nil {
 		return nil, false, err
 	}
 
-	result, err = transformManifest(manifest)
+	result, err = transformManifest(manifestCopy)
 	return result, err != nil, err
 }
 
 // Delete removes the item from storage.
 // options can be mutated by rest.BeforeDelete due to a graceful deletion strategy.
 func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions) (runtime.Object, bool, error) {
-	err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).
-		Delete(ctx, r.generateNameForManifest(request.NamespaceValue(ctx), name), *options)
+	err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).
+		Delete(ctx, r.getNormalizedManifestName(request.NamespaceValue(ctx), name), *options)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = errors.NewNotFound(schema.GroupResource{Group: r.group, Resource: r.name}, name)
@@ -313,8 +337,7 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		return nil, err
 	}
 
-	klog.V(5).Infof("%v", label)
-	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).Watch(ctx, metav1.ListOptions{
+	watcher, err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).Watch(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
 		Watch:                options.Watch,
@@ -332,9 +355,9 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		}
 
 		if manifest, ok := object.(*appsapi.Manifest); ok {
-			obj, err := transformManifest(manifest)
-			if err != nil {
-				klog.ErrorDepth(3, fmt.Sprintf("failed to transform Manifest %s: %v", klog.KObj(manifest), err))
+			obj, err2 := transformManifest(manifest)
+			if err2 != nil {
+				klog.ErrorDepth(3, fmt.Sprintf("failed to transform Manifest %s: %v", klog.KObj(manifest), err2))
 				return manifest
 			}
 			return obj
@@ -355,7 +378,7 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		return nil, err
 	}
 
-	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(appsapi.ReservedNamespace).List(ctx, metav1.ListOptions{
+	manifests, err := r.clusternetClient.AppsV1alpha1().Manifests(r.reservedNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector:        label.String(),
 		FieldSelector:        "", // explicitly set FieldSelector to an empty string
 		Watch:                options.Watch,
@@ -375,6 +398,9 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 	result.SetAPIVersion(orignalGVK.GroupVersion().String())
 	result.SetKind(r.getListKind())
 	result.SetResourceVersion(manifests.ResourceVersion)
+	result.SetContinue(manifests.Continue)
+	// remainingItemCount will always be nil, since we're using non-empty label selectors.
+	// This is a limitation on Kubernetes side.
 	if len(manifests.Items) == 0 {
 		return result, nil
 	}
@@ -398,8 +424,22 @@ func (r *REST) NewList() runtime.Object {
 }
 
 func (r *REST) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
-	tableConvertor := rest.NewDefaultTableConvertor(schema.GroupResource{Group: r.group, Resource: r.name})
-	return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	if r.group == apiextensionsv1.GroupName && r.kind == crdKind {
+		return rest.NewDefaultTableConvertor(schema.GroupResource{
+			Group:    apiextensionsv1.GroupName,
+			Resource: r.name,
+		}).ConvertToTable(ctx, object, tableOptions)
+	}
+
+	if r.CRD != nil {
+		storageVersion, _ := apiextensionshelpers.GetCRDStorageVersion(r.CRD)
+		columns, _ := util.GetColumnsForVersion(r.CRD, storageVersion)
+		tableConvertor, _ := tableconvertor.New(columns)
+		return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	} else {
+		tableConvertor := printerstorage.TableConvertor{TableGenerator: printers.NewTableGenerator().With(printersinternal.AddHandlers)}
+		return tableConvertor.ConvertToTable(ctx, object, tableOptions)
+	}
 }
 
 func (r *REST) ShortNames() []string {
@@ -423,7 +463,7 @@ func (r *REST) SetNamespaceScoped(namespaceScoped bool) {
 }
 
 func (r *REST) Categories() []string {
-	return []string{category}
+	return []string{known.Category}
 }
 
 func (r *REST) SetGroup(group string) {
@@ -438,6 +478,10 @@ func (r *REST) SetKind(kind string) {
 	r.kind = kind
 }
 
+func (r *REST) SetCRD(crd *apiextensionsv1.CustomResourceDefinition) {
+	r.CRD = crd
+}
+
 func (r *REST) New() runtime.Object {
 	newObj := &unstructured.Unstructured{}
 	orignalGVK := r.GroupVersionKind(schema.GroupVersion{})
@@ -447,10 +491,13 @@ func (r *REST) New() runtime.Object {
 
 func (r *REST) GroupVersionKind(_ schema.GroupVersion) schema.GroupVersionKind {
 	// use original GVK
-	return schema.GroupVersionKind{
+	return r.GroupVersion().WithKind(r.kind)
+}
+
+func (r *REST) GroupVersion() schema.GroupVersion {
+	return schema.GroupVersion{
 		Group:   r.group,
 		Version: r.version,
-		Kind:    r.kind,
 	}
 }
 
@@ -466,7 +513,35 @@ func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *cl
 	return req
 }
 
+// getNormalizedManifestName will converge generateLegacyNameForManifest and generateNameForManifest
+func (r *REST) getNormalizedManifestName(namespace, name string) string {
+	legacyManifestName := r.generateLegacyNameForManifest(namespace, name)
+	// backward compatible
+	_, err := r.manifestLister.Manifests(r.reservedNamespace).Get(legacyManifestName)
+	if err == nil {
+		return legacyManifestName
+	}
+
+	return r.generateNameForManifest(namespace, name)
+}
+
 func (r *REST) generateNameForManifest(namespace, name string) string {
+	resource, _ := r.getResourceName()
+	// resource is a word ("[a-z]([-a-z0-9]*[a-z0-9])?") without "."
+	// namespace is a word ("[a-z]([-a-z0-9]*[a-z0-9])?") without "."
+	// so we use "." for concatenation
+	if r.namespaced {
+		return fmt.Sprintf("%s.%s.%s", resource, namespace, name)
+	}
+	return fmt.Sprintf("%s.%s", resource, name)
+}
+
+// DEPRECATED
+// use hyphens for concatenation may lead to conflicts, such as
+// - resource "foos" with name "lovely-panda" in namespace "bar"
+// - resource "foos" with name "panda" in namespace "bar-lovely"
+// will map a same Manifest object with name "foos-bar-lovely-panda"
+func (r *REST) generateLegacyNameForManifest(namespace, name string) string {
 	resource, _ := r.getResourceName()
 	if r.namespaced {
 		return fmt.Sprintf("%s-%s-%s", resource, namespace, name)
@@ -481,6 +556,19 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	if !ok {
 		return nil, errors.NewBadRequest(fmt.Sprintf("not a Unstructured object: %T", obj))
 	}
+
+	// check whether the given namespace name is valid
+	if r.namespaced || r.kind == "Namespace" {
+		fieldPath := field.NewPath("metadata", "namespace")
+		if r.kind == "Namespace" {
+			fieldPath = field.NewPath("metadata", "name")
+		}
+		if errs := apimachineryvalidation.ValidateNamespaceName(objNamespace, false); len(errs) > 0 {
+			allErrs := field.ErrorList{field.Invalid(fieldPath, objNamespace, strings.Join(errs, ","))}
+			return nil, errors.NewInvalid(r.GroupVersionKind(schema.GroupVersion{}).GroupKind(), u.GetName(), allErrs)
+		}
+	}
+
 	labels := u.GetLabels()
 	if labels == nil {
 		labels = map[string]string{}
@@ -488,10 +576,21 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 	labels[known.ObjectCreatedByLabel] = known.ClusternetHubName
 	u.SetLabels(labels)
 
-	if r.kind != "Namespace" && r.namespaced {
-		u.SetNamespace(appsapi.ReservedNamespace)
+	annotations := u.GetAnnotations()
+	// skip validating when SkipValidatingAnnotation is true
+	if annotations != nil && annotations[known.SkipValidatingAnnotation] == "true" {
+		if len(u.GetUID()) == 0 {
+			// fixes https://github.com/clusternet/clusternet/issues/468
+			u.SetUID(uuid.NewUUID())
+		}
+		return u, nil
 	}
-	dryRunNamespace := appsapi.ReservedNamespace
+
+	if r.kind != "Namespace" && r.namespaced {
+		u.SetNamespace(r.reservedNamespace)
+	}
+	// use reserved namespace (default to be "clusternet-reserved") to avoid error "namespaces not found"
+	dryRunNamespace := r.reservedNamespace
 	if r.kind == "Namespace" {
 		dryRunNamespace = ""
 	}
@@ -501,35 +600,64 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 		return nil, errors.NewBadRequest(fmt.Sprintf("failed to marshal to json: %v", u.Object))
 	}
 
-	client := r.dryRunClient.RESTClient()
 	result := &unstructured.Unstructured{}
 	klog.V(7).Infof("creating %s with %s", r.kind, body)
 	resource, _ := r.getResourceName()
 	// first we dry-run the creation
-	req := client.Post().
+	req := r.dryRunClient.Post().
 		Resource(resource).
 		Param("dryRun", "All").
 		VersionedParams(options, r.parameterCodec).
 		Body(body)
 	err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
-	if err != nil && errors.IsAlreadyExists(err) {
-		// TODO: security risk
-		// get existing object
-		req := client.Get().
-			Name(u.GetName()).
-			Resource(resource).
-			VersionedParams(options, r.parameterCodec).
-			Body(body)
-		err = r.normalizeRequest(req, dryRunNamespace).Do(ctx).Into(result)
-	}
 	if err != nil {
-		return nil, err
+		if !errors.IsAlreadyExists(err) {
+			return nil, err
+		}
+
+		// already exists (only for CRD)
+		if r.group == apiextensionsv1.GroupName && r.kind == crdKind {
+			err = r.normalizeRequest(r.dryRunClient.Get().Resource(resource).Name(u.GetName()), dryRunNamespace).Do(ctx).Into(result)
+			if err == nil {
+				r.trimResult(result)
+			}
+			return result, err
+		}
+
+		// already exists, create a separate clean obj
+		// we don't want to expose sensitive data of original obj
+		uCopy := u.DeepCopy()
+		uCopy.SetName(fmt.Sprintf("%s%s", u.GetName(), utilrand.String(3)))
+		result, err = r.dryRunCreate(ctx, uCopy, nil, options)
+		if err == nil {
+			result.SetName(u.GetName())
+		}
+		return result, err
 	}
 
 	if r.kind != "Namespace" && r.namespaced {
+		// set original namespace back
 		result.SetNamespace(objNamespace)
 	}
+
+	// trim metadata
+	r.trimResult(result)
 	return result, nil
+}
+
+func (r *REST) trimResult(result *unstructured.Unstructured) {
+	// trim common metadata
+	trimCommonMetadata(result)
+
+	switch r.GroupVersionKind(schema.GroupVersion{}).GroupKind() {
+	case schema.GroupKind{Kind: "Job", Group: batchv1.GroupName}:
+		trimBatchJob(result)
+	case schema.GroupKind{Kind: "Service", Group: corev1.GroupName}:
+		trimCoreService(result)
+	}
+
+	// trim status
+	trimStatus(result)
 }
 
 func (r *REST) convertListOptionsToLabels(ctx context.Context, options *internalversion.ListOptions) (labels.Selector, error) {
@@ -593,16 +721,15 @@ func (r *REST) getListKind() string {
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
-func NewREST(dryRunClient *kubernetes.Clientset, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
-	clusternetInformerFactory informers.SharedInformerFactory) *REST {
+func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.Clientset, parameterCodec runtime.ParameterCodec,
+	manifestLister applisters.ManifestLister, reservedNamespace string) *REST {
 	return &REST{
-		dryRunClient:              dryRunClient,
-		clusternetClient:          clusternetclient,
-		clusternetInformerFactory: clusternetInformerFactory,
-		parameterCodec:            parameterCodec,
-		// currently we only set a default value for deleteCollectionWorkers
-		// TODO: make it configurable?
-		deleteCollectionWorkers: DefaultDeleteCollectionWorkers,
+		dryRunClient:            dryRunClient,
+		clusternetClient:        clusternetclient,
+		manifestLister:          manifestLister,
+		parameterCodec:          parameterCodec,
+		deleteCollectionWorkers: DefaultDeleteCollectionWorkers, // currently we only set a default value for deleteCollectionWorkers
+		reservedNamespace:       reservedNamespace,
 	}
 }
 
