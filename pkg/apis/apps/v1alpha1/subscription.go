@@ -246,7 +246,7 @@ type Subscriber struct {
 // SubGroupStrategy defines the subgroup strategy
 type SubGroupStrategy struct {
 	// MinClusters is the minimum number of clusters to be selected in this subgroup.
-	// If this value is less than the total number of clusters in this subgroup, then all clusters will be selected.
+	// If this value is more than the total number of clusters in this subgroup, then all clusters will be selected.
 	//
 	// +optional
 	// +kubebuilder:validation:Minimum=0

@@ -403,7 +403,7 @@ func prioritizeClusters(ctx context.Context, fwk framework.Framework, state *fra
 
 // subgroupClusters grouping the clusters by subgroups
 func (g *genericScheduler) subgroupClusters(sub *appsapi.Subscription, clusterScoreList framework.ClusterScoreList) (framework.ClusterScoreList, error) {
-	if sub.Spec.SchedulingBySubGroup == nil || *sub.Spec.SchedulingBySubGroup {
+	if sub.Spec.SchedulingBySubGroup == nil || !*sub.Spec.SchedulingBySubGroup {
 		return clusterScoreList, nil
 	}
 
@@ -426,7 +426,7 @@ func (g *genericScheduler) subgroupClusters(sub *appsapi.Subscription, clusterSc
 		}
 
 		if subscriber.SubGroupStrategy == nil {
-			return nil, fmt.Errorf("groupStrategy filed can not be Empty")
+			return nil, fmt.Errorf("subGroupStrategy filed can not be Empty")
 		}
 		minClusters := subscriber.SubGroupStrategy.MinClusters
 
