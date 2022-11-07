@@ -104,7 +104,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 	}
 
 	// Step 4: Subgroup clusters.
-	subgroupList, err := g.subgroupClusters(ctx, sub, priorityList)
+	subgroupList, err := g.subgroupClusters(sub, priorityList)
 	if err != nil {
 		return result, err
 	}
@@ -402,7 +402,7 @@ func prioritizeClusters(ctx context.Context, fwk framework.Framework, state *fra
 }
 
 // subgroupClusters grouping the clusters by
-func (g *genericScheduler) subgroupClusters(ctx context.Context, sub *appsapi.Subscription, clusterScoreList framework.ClusterScoreList) (framework.ClusterScoreList, error) {
+func (g *genericScheduler) subgroupClusters(sub *appsapi.Subscription, clusterScoreList framework.ClusterScoreList) (framework.ClusterScoreList, error) {
 
 	grouping := sub.Spec.SchedulingByGroup != nil && *sub.Spec.SchedulingByGroup
 
