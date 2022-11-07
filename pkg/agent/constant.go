@@ -64,6 +64,9 @@ const (
 
 	// PredictorPort flag specifies the port on which to serve built-in predictor
 	PredictorPort = "predictor-port"
+
+	// LabelAggregateThreshold 0.8 means 80% of work nodes in child clusters labels in common will be aggregated to parent.
+	LabelAggregateThreshold = "labels-aggregate-threshold"
 )
 
 // default values

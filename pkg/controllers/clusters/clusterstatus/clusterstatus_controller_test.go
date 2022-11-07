@@ -33,6 +33,7 @@ func (suite *StatusSuite) SetupTest() {
 		0: BuildNode("node0", map[string]string{
 			"node.clusternet.io/k1": "v1",
 			"node.clusternet.io/k2": "v2",
+			"node.clusternet.io/k3": "v3",
 			"others.keys.io/k2":     "a1",
 		}),
 		1: BuildNode("node1", map[string]string{
@@ -51,6 +52,13 @@ func (suite *StatusSuite) SetupTest() {
 			"node.clusternet.io/k2": "v2",
 			"node.clusternet.io/k3": "v3",
 			"node.clusternet.io/k4": "v4",
+		}),
+		4: BuildNode("node4", map[string]string{
+			"node.clusternet.io/k1":          "v1",
+			"node.clusternet.io/k2":          "v2",
+			"node.clusternet.io/k3":          "v3",
+			"node.clusternet.io/k4":          "v4",
+			"node-role.kubernetes.io/master": "",
 		}),
 	}
 }
@@ -71,6 +79,51 @@ func (suite *StatusSuite) TestGetSingleNodeCommonNodeLabels() {
 		map[string]string{
 			"node.clusternet.io/k1": "v1",
 			"node.clusternet.io/k2": "v2",
+			"node.clusternet.io/k3": "v3",
 		},
 		commonLabels, "failed get common labels from nodes")
+}
+
+func (suite *StatusSuite) TestAggregateLimitedLabels1() {
+	commonLabels := aggregateLimitedLabels(suite.nodes, 0.8)
+	suite.Equal(
+		map[string]string{
+			"node.clusternet.io/k1": "v1",
+			"node.clusternet.io/k2": "v2",
+		},
+		commonLabels, "failed to aggregate labels from nodes")
+}
+
+func (suite *StatusSuite) TestAggregateLimitedLabels2() {
+	commonLabels := aggregateLimitedLabels(suite.nodes, 0.7)
+	suite.Equal(
+		map[string]string{
+			"node.clusternet.io/k1": "v1",
+			"node.clusternet.io/k2": "v2",
+			"node.clusternet.io/k3": "v3",
+		},
+		commonLabels, "failed to aggregate labels from nodes")
+}
+
+func (suite *StatusSuite) TestAggregateLimitedLabels3() {
+	commonLabels := aggregateLimitedLabels(suite.nodes, 0.5)
+	suite.Equal(
+		map[string]string{
+			"node.clusternet.io/k1": "v1",
+			"node.clusternet.io/k2": "v2",
+			"node.clusternet.io/k3": "v3",
+			"node.clusternet.io/k4": "v4",
+		},
+		commonLabels, "failed to aggregate labels from nodes")
+}
+
+func (suite *StatusSuite) TestAggregateLimitedSingleLabels() {
+	commonLabels := aggregateLimitedLabels(suite.nodes[0:1], 1)
+	suite.Equal(
+		map[string]string{
+			"node.clusternet.io/k1": "v1",
+			"node.clusternet.io/k2": "v2",
+			"node.clusternet.io/k3": "v3",
+		},
+		commonLabels, "failed to aggregate single node")
 }
