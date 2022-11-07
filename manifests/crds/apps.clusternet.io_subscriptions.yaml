@@ -366,9 +366,10 @@ spec:
                   scheduler. If not specified, the Subscription will be handled by
                   default scheduler.
                 type: string
-              schedulingByGroup:
-                description: If specified, the Subscription will be handled with SchedulingByGroup.
-                  Used together with SubgroupStrategy in every Subscriber.
+              schedulingBySubGroup:
+                description: If specified, the Subscription will be handled with SchedulingBySubGroup.
+                  Used together with SubGroupStrategy in every Subscriber. Can work
+                  with all supported SchedulingStrategy, such as Replication, Dividing.
                 type: boolean
               schedulingStrategy:
                 default: Replication
@@ -428,14 +429,19 @@ spec:
                             only "value". The requirements are ANDed.
                           type: object
                       type: object
-                    groupStrategy:
-                      description: GroupStrategy strategy of subscriber when dividing
-                        clusters into every group. Present for scheduling by group.
+                    subGroupStrategy:
+                      description: SubGroupStrategy defines the subgroup strategy
+                        for the clusters matched by this subscriber. During the scheduling,
+                        all the matching clusters will be treated as a subgroup instead
+                        of individual clusters. With subgroup, we can describe clusters
+                        with different regions, zones, etc. Present only when SchedulingBySubGroup
+                        is set.
                       properties:
-                        pickClustersNum:
-                          description: PickClustersNum number of clusters from every
-                            group. Replicas distribution is the same as spread dynamic
-                            divided.
+                        minClusters:
+                          description: MinClusters is the minimum number of clusters
+                            to be selected in this subgroup. If this value is less
+                            than the total number of clusters in this subgroup, then
+                            all clusters will be selected.
                           format: int32
                           minimum: 0
                           type: integer

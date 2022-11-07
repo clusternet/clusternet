@@ -4,18 +4,18 @@ metadata:
   name: replication-scheduling-demo
   namespace: default
 spec:
-  schedulingByGroup: true
+  schedulingBySubGroup: true
   subscribers: # defines the clusters to be distributed to
     - clusterAffinity:
         matchLabels:
           region: ap-shanghai
-      groupStrategy:
-        pickClustersNum: 2 # the number of pick cluster in every group
+      subGroupStrategy:
+        minClusters: 2 # the number of pick cluster in every group
     - clusterAffinity:
         matchLabels:
           region: ap-beijing
-      groupStrategy:
-        pickClustersNum: 1 # the number of pick cluster in every group
+      subGroupStrategy:
+        minClusters: 1 # the number of pick cluster in every group
   schedulingStrategy: Replication
   feeds: # defines all the resources to be deployed with
     - apiVersion: v1

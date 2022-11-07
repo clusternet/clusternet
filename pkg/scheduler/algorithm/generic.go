@@ -401,27 +401,23 @@ func prioritizeClusters(ctx context.Context, fwk framework.Framework, state *fra
 	return result, nil
 }
 
-// subgroupClusters grouping the clusters by
+// subgroupClusters grouping the clusters by subgroups
 func (g *genericScheduler) subgroupClusters(sub *appsapi.Subscription, clusterScoreList framework.ClusterScoreList) (framework.ClusterScoreList, error) {
-
-	grouping := sub.Spec.SchedulingByGroup != nil && *sub.Spec.SchedulingByGroup
-
-	if !grouping {
+	if sub.Spec.SchedulingBySubGroup == nil || *sub.Spec.SchedulingBySubGroup {
 		return clusterScoreList, nil
 	}
 
 	subgroup := make([]framework.ClusterScoreList, len(sub.Spec.Subscribers))
 	result := make(framework.ClusterScoreList, 0)
-
 	for i, subscriber := range sub.Spec.Subscribers {
 		selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
 		if err != nil {
 			continue
 		}
 		for _, clusterScore := range clusterScoreList {
-			cluster, err := g.cache.Get(clusterScore.NamespacedName)
-			if err != nil {
-				return nil, err
+			cluster, err2 := g.cache.Get(clusterScore.NamespacedName)
+			if err2 != nil {
+				return nil, err2
 			}
 			if !selector.Matches(labels.Set(cluster.Labels)) {
 				continue
@@ -429,16 +425,16 @@ func (g *genericScheduler) subgroupClusters(sub *appsapi.Subscription, clusterSc
 			subgroup[i] = append(subgroup[i], clusterScore)
 		}
 
-		if subscriber.GroupStrategy == nil {
+		if subscriber.SubGroupStrategy == nil {
 			return nil, fmt.Errorf("groupStrategy filed can not be Empty")
 		}
-		pickClusterNum := subscriber.GroupStrategy.PickClustersNum
+		minClusters := subscriber.SubGroupStrategy.MinClusters
 
 		subgroupLen := int32(len(subgroup[i]))
-		if pickClusterNum > subgroupLen {
-			pickClusterNum = subgroupLen
+		if minClusters > subgroupLen {
+			minClusters = subgroupLen
 		}
-		subgroup[i] = subgroup[i][:pickClusterNum]
+		subgroup[i] = subgroup[i][:minClusters]
 
 		result = append(result, subgroup[i]...)
 	}

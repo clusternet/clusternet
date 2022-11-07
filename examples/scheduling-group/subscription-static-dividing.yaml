@@ -4,19 +4,19 @@ metadata:
   name: static-dividing-scheduling-demo
   namespace: default
 spec:
-  schedulingByGroup: true
+  schedulingBySubGroup: true
   subscribers: # defines the clusters to be distributed to
     - clusterAffinity:
         matchLabels:
           region: ap-shanghai
-      groupStrategy:
-        pickClustersNum: 1 # the number of pick cluster in every group
+      subGroupStrategy:
+        minClusters: 1 # the number of pick cluster in every group
       weight: 2
     - clusterAffinity:
         matchLabels:
           region: ap-beijing
-      groupStrategy:
-        pickClustersNum: 1 # the number of pick cluster in every group
+      subGroupStrategy:
+        minClusters: 1 # the number of pick cluster in every group
       weight: 1
   schedulingStrategy: Dividing
   dividingScheduling:
