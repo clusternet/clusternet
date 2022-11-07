@@ -72,6 +72,10 @@ type ClusterRegistrationOptions struct {
 	// UseMetricsServer specifies whether to collect metrics from metrics server
 	UseMetricsServer bool
 
+	// LabelAggregateThreshold specifies the threshold of common labels in child cluster nodes should be aggregated to parent
+	// e.g LabelAggregateThreshold 0.8  means 80% of work nodes in child clusters labels in common will be aggregated to parent.
+	LabelAggregateThreshold float32
+
 	// TODO: check ca hash
 }
 
@@ -85,6 +89,7 @@ func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
 		PredictorPort:                 8080,
 		PredictorDirectAccess:         false,
+		LabelAggregateThreshold:       0.8,
 	}
 }
 
@@ -122,6 +127,8 @@ func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
 		"Whether the predictor be accessed directly by clusternet-scheduler")
 	fs.IntVar(&opts.PredictorPort, PredictorPort, opts.PredictorPort,
 		"Set port on which to serve built-in predictor server. It is only used when feature gate 'Predictor' is enabled and '--predictor-addr' is not set.")
+	fs.Float32Var(&opts.LabelAggregateThreshold, LabelAggregateThreshold, opts.LabelAggregateThreshold,
+		"Specifies the threshold of common labels in child cluster nodes should be aggregated to parent")
 }
 
 // Complete completes all the required options.

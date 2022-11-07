@@ -59,9 +59,10 @@ type Controller struct {
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
 
-	predictorEnable       bool
-	predictorAddress      string
-	predictorDirectAccess bool
+	predictorEnable         bool
+	predictorAddress        string
+	predictorDirectAccess   bool
+	labelAggregateThreshold float32
 }
 
 func NewController(
@@ -73,24 +74,26 @@ func NewController(
 	predictorDirectAccess, useMetricsServer bool,
 	collectingPeriod metav1.Duration,
 	heartbeatFrequency metav1.Duration,
+	labelAggregateThreshold float32,
 ) *Controller {
 	return &Controller{
-		kubeClient:            kubeClient,
-		metricClientset:       metricClient,
-		lock:                  &sync.Mutex{},
-		collectingPeriod:      collectingPeriod,
-		heartbeatFrequency:    heartbeatFrequency,
-		apiserverURL:          apiserverURL,
-		appPusherEnabled:      utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
-		useSocket:             utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
-		predictorEnable:       utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
-		useMetricsServer:      useMetricsServer,
-		predictorAddress:      predictorAddress,
-		predictorDirectAccess: predictorDirectAccess,
-		nodeLister:            kubeInformerFactory.Core().V1().Nodes().Lister(),
-		nodeSynced:            kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
-		podLister:             kubeInformerFactory.Core().V1().Pods().Lister(),
-		podSynced:             kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
+		kubeClient:              kubeClient,
+		metricClientset:         metricClient,
+		lock:                    &sync.Mutex{},
+		collectingPeriod:        collectingPeriod,
+		heartbeatFrequency:      heartbeatFrequency,
+		apiserverURL:            apiserverURL,
+		labelAggregateThreshold: labelAggregateThreshold,
+		appPusherEnabled:        utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
+		useSocket:               utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection),
+		predictorEnable:         utilfeature.DefaultFeatureGate.Enabled(features.Predictor),
+		useMetricsServer:        useMetricsServer,
+		predictorAddress:        predictorAddress,
+		predictorDirectAccess:   predictorDirectAccess,
+		nodeLister:              kubeInformerFactory.Core().V1().Nodes().Lister(),
+		nodeSynced:              kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
+		podLister:               kubeInformerFactory.Core().V1().Pods().Lister(),
+		podSynced:               kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
 	}
 }
 
@@ -191,7 +194,7 @@ func (c *Controller) GetManagedClusterLabels() labels.Set {
 		klog.Warningf("failed to list nodes: %v", err)
 		return nil
 	}
-	return getCommonNodeLabels(nodes)
+	return aggregateLimitedLabels(nodes, c.labelAggregateThreshold)
 }
 
 func (c *Controller) getKubernetesVersion(_ context.Context) (*version.Info, error) {
@@ -383,4 +386,41 @@ func isMasterNode(labels map[string]string) bool {
 		return true
 	}
 	return false
+}
+
+func statisticNodesLabels(nodes []*corev1.Node) (map[string]int, int) {
+	// statistic map.
+	countMap := make(map[string]int, 0)
+	masterNodeNum := 0
+	for _, node := range nodes {
+		if isMasterNode(node.Labels) {
+			masterNodeNum += 1
+			continue
+		}
+		for k, v := range node.Labels {
+			if strings.HasPrefix(k, known.NodeLabelsKeyPrefix) {
+				countKey := strings.Join([]string{k, v}, "/")
+				if total, exist := countMap[countKey]; exist {
+					countMap[countKey] = total + 1
+				} else {
+					countMap[countKey] = 1
+				}
+			}
+		}
+	}
+	return countMap, masterNodeNum
+}
+
+func aggregateLimitedLabels(nodes []*corev1.Node, threshold float32) map[string]string {
+	newMap := make(map[string]string, 0)
+	countMap, masterNum := statisticNodesLabels(nodes)
+	workNodeNum := len(nodes) - masterNum
+	for k, v := range countMap {
+		// the key is higher than threshold
+		if float32(v)/float32(workNodeNum) >= threshold {
+			lastInd := strings.LastIndex(k, "/")
+			newMap[k[:lastInd]] = k[lastInd+1:]
+		}
+	}
+	return newMap
 }
