@@ -366,6 +366,10 @@ spec:
                   scheduler. If not specified, the Subscription will be handled by
                   default scheduler.
                 type: string
+              schedulingByGroup:
+                description: If specified, the Subscription will be handled with SchedulingByGroup.
+                  Used together with SubgroupStrategy in every Subscriber.
+                type: boolean
               schedulingStrategy:
                 default: Replication
                 description: If specified, the Subscription will be handled with specified
@@ -423,6 +427,18 @@ spec:
                             "key", the operator is "In", and the values array contains
                             only "value". The requirements are ANDed.
                           type: object
+                      type: object
+                    groupStrategy:
+                      description: GroupStrategy strategy of subscriber when dividing
+                        clusters into every group. Present for scheduling by group.
+                      properties:
+                        pickClustersNum:
+                          description: PickClustersNum number of clusters from every
+                            group. Replicas distribution is the same as spread dynamic
+                            divided.
+                          format: int32
+                          minimum: 0
+                          type: integer
                       type: object
                     weight:
                       description: Static weight of subscriber when dividing replicas.
