@@ -177,32 +177,6 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 		return nil
 	}
 
-	// TODO: may ignore checking AppPusher for helm charts?
-	// check whether ManagedCluster will enable deploying Description with Pusher/Dual mode
-	labelSet := labels.Set{}
-	if len(desc.Labels[known.ClusterIDLabel]) > 0 {
-		labelSet[known.ClusterIDLabel] = desc.Labels[known.ClusterIDLabel]
-	}
-	mcls, err := deployer.clusterLister.ManagedClusters(desc.Namespace).List(
-		labels.SelectorFromSet(labelSet))
-	if err != nil {
-		return err
-	}
-	if mcls == nil {
-		deployer.recorder.Event(desc, corev1.EventTypeWarning, "ManagedClusterNotFound",
-			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", desc.Labels[known.ClusterIDLabel]))
-		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", desc.Namespace)
-	}
-	if mcls[0].Status.AppPusher == nil {
-		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "unknown AppPusher")
-		return fmt.Errorf("unknown AppPusher for ManagedCluster with uid=%s", mcls[0].UID)
-	}
-	if !*mcls[0].Status.AppPusher {
-		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
-		klog.V(5).Infof("ManagedCluster with uid=%s has disabled AppPusher", mcls[0].UID)
-		return nil
-	}
-
 	if desc.DeletionTimestamp != nil {
 		// make sure all controllees have been deleted
 		hrs, err := deployer.hrLister.HelmReleases(desc.Namespace).List(labels.SelectorFromSet(labels.Set{
@@ -240,6 +214,32 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(desc), err))
 		}
 		return err
+	}
+
+	// TODO: may ignore checking AppPusher for helm charts?
+	// check whether ManagedCluster will enable deploying Description with Pusher/Dual mode
+	labelSet := labels.Set{}
+	if len(desc.Labels[known.ClusterIDLabel]) > 0 {
+		labelSet[known.ClusterIDLabel] = desc.Labels[known.ClusterIDLabel]
+	}
+	mcls, err := deployer.clusterLister.ManagedClusters(desc.Namespace).List(
+		labels.SelectorFromSet(labelSet))
+	if err != nil {
+		return err
+	}
+	if mcls == nil {
+		deployer.recorder.Event(desc, corev1.EventTypeWarning, "ManagedClusterNotFound",
+			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", desc.Labels[known.ClusterIDLabel]))
+		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", desc.Namespace)
+	}
+	if mcls[0].Status.AppPusher == nil {
+		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "unknown AppPusher")
+		return fmt.Errorf("unknown AppPusher for ManagedCluster with uid=%s", mcls[0].UID)
+	}
+	if !*mcls[0].Status.AppPusher {
+		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
+		klog.V(5).Infof("ManagedCluster with uid=%s has disabled AppPusher", mcls[0].UID)
+		return nil
 	}
 
 	if err := deployer.populateHelmRelease(desc); err != nil {
