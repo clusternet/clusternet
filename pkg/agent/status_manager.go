@@ -71,6 +71,7 @@ func NewStatusManager(
 			regOpts.UseMetricsServer,
 			regOpts.ClusterStatusCollectFrequency,
 			regOpts.ClusterStatusReportFrequency,
+			regOpts.LabelAggregateThreshold,
 		),
 	}
 }
