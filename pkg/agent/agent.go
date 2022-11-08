@@ -155,15 +155,15 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 		return nil, err
 	}
 
-	// parse serviceExportEnabled (EndpointSliceV1beta1Promoted) by server version
+	// parse serviceExportEnabled (EndpointSliceV1Promoted) by server version
 	var serviceExportEnabled bool
-	if serviceExportEnabled, err = utils.EndpointSliceV1beta1Promoted(ver.String()); err != nil {
+	if serviceExportEnabled, err = utils.EndpointSliceV1Promoted(ver.String()); err != nil {
 		return nil, err
 	}
 
 	var serviceExportController *mcs.ServiceExportController
 	if serviceExportEnabled {
-		serviceExportController = mcs.NewServiceExportController(kubeInformerFactory.Discovery().V1beta1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
+		serviceExportController = mcs.NewServiceExportController(kubeInformerFactory.Discovery().V1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
 	}
 
 	agent := &Agent{
