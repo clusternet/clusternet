@@ -448,7 +448,7 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 
 	var err error
 	if !reflect.DeepEqual(desc.Status.Phase, descStatus.Phase) || !reflect.DeepEqual(desc.Status.Reason, descStatus.Reason) {
-		err = UpdateDescriptionStatus(desc, descStatus, clusternetClient)
+		err = UpdateDescriptionStatus(desc, descStatus, clusternetClient, true)
 		klog.V(5).Infof("ApplyDescription phaseStatus has changed, UpdateStatus. err: %s", err)
 	}
 
@@ -769,7 +769,7 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, i
 	return false
 }
 
-func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus, clusternetClient *clusternetclientset.Clientset) error {
+func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus, clusternetClient *clusternetclientset.Clientset, deployerTrigger bool) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
@@ -778,6 +778,12 @@ func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.Descript
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		desc.Status = *status
+		if !deployerTrigger {
+			if reflect.DeepEqual(desc.Status, appsapi.DescriptionStatus{}) {
+				return fmt.Errorf("waiting for deployer update desc status at first")
+			}
+			desc.Status.ManifestStatuses = status.ManifestStatuses
+		}
 		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
