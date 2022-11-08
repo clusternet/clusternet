@@ -186,13 +186,13 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	}
 
 	var serviceImportEnabled bool
-	if serviceImportEnabled, err = utils.EndpointSliceV1beta1Promoted(ver.String()); err != nil {
+	if serviceImportEnabled, err = utils.EndpointSliceV1Promoted(ver.String()); err != nil {
 		return nil, err
 	}
 
 	var serviceImport *mcs.ServiceImportController
 	if serviceImportEnabled {
-		serviceImport = mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1beta1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
+		serviceImport = mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
 	}
 
 	hub := &Hub{

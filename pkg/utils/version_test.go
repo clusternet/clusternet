@@ -203,3 +203,96 @@ func TestEndpointSliceV1beta1Promoted(t *testing.T) {
 		})
 	}
 }
+
+func TestEndpointSliceV1Promoted(t *testing.T) {
+	tests := []struct {
+		name              string
+		kubeServerVersion string
+		want              bool
+		err               error
+	}{
+		// bad versions
+		{
+			kubeServerVersion: "unknown",
+			err:               fmt.Errorf("could not parse \"unknown\" as version"),
+		},
+		// EndpointSlice v1 promoted
+		{
+			kubeServerVersion: KubeV1210Beta1.String(),
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.25.0",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.22.1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.22.0-alpha.4",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0+k3s1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0-rc1+k3s1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0-rc.0",
+			want:              true,
+		},
+
+		// EndpointSlice v1 not promoted
+		{
+			kubeServerVersion: "v1.21.0-beta.0",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.17.0-alpha.2+k3s1",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.20.10",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.21.0-alpha.0",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.16.5-rc.1",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.16.6+k3s1",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.16.10",
+			want:              false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpointSliceV1Promoted, err := EndpointSliceV1Promoted(tt.kubeServerVersion)
+			if !reflect.DeepEqual(err, tt.err) {
+				t.Errorf("kubeServerVersion %s, error expected %v but got %v", tt.kubeServerVersion, tt.err, err)
+			}
+			if endpointSliceV1Promoted != tt.want {
+				t.Errorf("kubeServerVersion %s, EndpointSliceV1Promoted expected %v but got %v", tt.kubeServerVersion, tt.want, endpointSliceV1Promoted)
+			}
+		})
+	}
+}
