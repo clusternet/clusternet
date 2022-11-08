@@ -48,6 +48,13 @@ type SubscriptionSpec struct {
 	// +kubebuilder:default=default
 	SchedulerName string `json:"schedulerName,omitempty"`
 
+	// If specified, the Subscription will be handled with SchedulingBySubGroup.
+	// Used together with SubGroupStrategy in every Subscriber.
+	// Can work with all supported SchedulingStrategy, such as Replication, Dividing.
+	//
+	// +optional
+	SchedulingBySubGroup *bool `json:"schedulingBySubGroup,omitempty"`
+
 	// If specified, the Subscription will be handled with specified SchedulingStrategy.
 	// Otherwise, with generic SchedulingStrategy.
 	//
@@ -226,6 +233,26 @@ type Subscriber struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	Weight int32 `json:"weight,omitempty"`
+
+	// SubGroupStrategy defines the subgroup strategy for the clusters matched by this subscriber.
+	// During the scheduling, all the matching clusters will be treated as a subgroup instead of individual clusters.
+	// With subgroup, we can describe clusters with different regions, zones, etc.
+	// Present only when SchedulingBySubGroup is set.
+	//
+	// +optional
+	SubGroupStrategy *SubGroupStrategy `json:"subGroupStrategy,omitempty"`
+}
+
+// SubGroupStrategy defines the subgroup strategy
+type SubGroupStrategy struct {
+	// MinClusters is the minimum number of clusters to be selected in this subgroup.
+	// If this value is more than the total number of clusters in this subgroup, then all clusters will be selected.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	MinClusters int32 `json:"minClusters,omitempty"`
+
+	// TODO: other scenarios
 }
 
 // Feed defines the resource to be selected.

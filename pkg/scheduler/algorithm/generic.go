@@ -26,6 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	utiltrace "k8s.io/utils/trace"
@@ -101,7 +103,13 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 		return result, err
 	}
 
-	clusters, err := g.selectClusters(ctx, state, priorityList, fwk, sub, finv)
+	// Step 4: Subgroup clusters.
+	subgroupList, err := g.subgroupClusters(sub, priorityList)
+	if err != nil {
+		return result, err
+	}
+
+	clusters, err := g.selectClusters(ctx, state, subgroupList, fwk, sub, finv)
 	trace.Step("Prioritizing done")
 
 	return ScheduleResult{
@@ -390,6 +398,47 @@ func prioritizeClusters(ctx context.Context, fwk framework.Framework, state *fra
 			klog.V(10).InfoS("Calculated cluster's final score for subscription", "subscription", klog.KObj(sub), "cluster", result[i].NamespacedName, "score", result[i].Score)
 		}
 	}
+	return result, nil
+}
+
+// subgroupClusters grouping the clusters by subgroups
+func (g *genericScheduler) subgroupClusters(sub *appsapi.Subscription, clusterScoreList framework.ClusterScoreList) (framework.ClusterScoreList, error) {
+	if sub.Spec.SchedulingBySubGroup == nil || !*sub.Spec.SchedulingBySubGroup {
+		return clusterScoreList, nil
+	}
+
+	subgroup := make([]framework.ClusterScoreList, len(sub.Spec.Subscribers))
+	result := make(framework.ClusterScoreList, 0)
+	for i, subscriber := range sub.Spec.Subscribers {
+		selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
+		if err != nil {
+			continue
+		}
+		for _, clusterScore := range clusterScoreList {
+			cluster, err2 := g.cache.Get(clusterScore.NamespacedName)
+			if err2 != nil {
+				return nil, err2
+			}
+			if !selector.Matches(labels.Set(cluster.Labels)) {
+				continue
+			}
+			subgroup[i] = append(subgroup[i], clusterScore)
+		}
+
+		if subscriber.SubGroupStrategy == nil {
+			return nil, fmt.Errorf("subGroupStrategy filed can not be Empty")
+		}
+		minClusters := subscriber.SubGroupStrategy.MinClusters
+
+		subgroupLen := int32(len(subgroup[i]))
+		if minClusters > subgroupLen {
+			minClusters = subgroupLen
+		}
+		subgroup[i] = subgroup[i][:minClusters]
+
+		result = append(result, subgroup[i]...)
+	}
+
 	return result, nil
 }
 
