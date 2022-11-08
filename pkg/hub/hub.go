@@ -36,6 +36,7 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/version"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
@@ -102,7 +103,9 @@ type Hub struct {
 
 	socketConnection bool
 	deployerEnabled  bool
-	serviceImport    *mcs.ServiceImportController
+
+	serviceImportEnabled bool
+	serviceImport        *mcs.ServiceImportController
 }
 
 // NewHub returns a new Hub.
@@ -176,7 +179,21 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		klog.Warning("will not discovery clusters created by cluster-api providers due to empty kubeconfig path")
 	}
 
-	serviceImport := mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1beta1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
+	// get kubernetes server version
+	var ver *version.Info
+	if ver, err = mcsClientSet.Discovery().ServerVersion(); err != nil {
+		return nil, err
+	}
+
+	var serviceImportEnabled bool
+	if serviceImportEnabled, err = utils.EndpointSliceV1beta1Promoted(ver.String()); err != nil {
+		return nil, err
+	}
+
+	var serviceImport *mcs.ServiceImportController
+	if serviceImportEnabled {
+		serviceImport = mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1beta1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
+	}
 
 	hub := &Hub{
 		peerID:                    utilrand.String(5),
@@ -195,6 +212,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		deployerEnabled:           deployerEnabled,
 		clusterLifecycle:          clusterLifecycle,
 		clusterDiscovery:          clusterDiscovery,
+		serviceImportEnabled:      serviceImportEnabled,
 		serviceImport:             serviceImport,
 	}
 	return hub, nil
@@ -419,9 +437,11 @@ func (hub *Hub) runControllers(ctx context.Context) {
 		}()
 	}
 
-	go func() {
-		hub.serviceImport.Run(ctx)
-	}()
+	if hub.serviceImportEnabled {
+		go func() {
+			hub.serviceImport.Run(ctx)
+		}()
+	}
 
 	go func() {
 		if hub.clusterDiscovery != nil {
