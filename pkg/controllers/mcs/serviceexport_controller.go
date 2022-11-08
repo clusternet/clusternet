@@ -50,7 +50,7 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 }
 
-type SeController struct {
+type ServiceExportController struct {
 	//local msc client
 	mcsClientset       *mcsclientset.Clientset
 	parentk8sClient    kubernetes.Interface
@@ -63,10 +63,10 @@ type SeController struct {
 	endpointSliceInformer discoveryinformerv1beta1.EndpointSliceInformer
 }
 
-func NewSeController(epsInformer discoveryinformerv1beta1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
-	mcsInformerFactory mcsInformers.SharedInformerFactory) *SeController {
+func NewServiceExportController(epsInformer discoveryinformerv1beta1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
+	mcsInformerFactory mcsInformers.SharedInformerFactory) *ServiceExportController {
 	seInformer := mcsInformerFactory.Multicluster().V1alpha1().ServiceExports()
-	c := &SeController{
+	c := &ServiceExportController{
 		mcsClientset:          mcsClientset,
 		mcsInformerFactory:    mcsInformerFactory,
 		endpointSlicesLister:  epsInformer.Lister(),
@@ -77,7 +77,7 @@ func NewSeController(epsInformer discoveryinformerv1beta1.EndpointSliceInformer,
 	return c
 }
 
-func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err error) {
+func (c *ServiceExportController) Handle(obj interface{}) (requeueAfter *time.Duration, err error) {
 	ctx := context.Background()
 	key := obj.(string)
 	namespace, seName, err := cache.SplitMetaNamespaceKey(key)
@@ -169,7 +169,7 @@ func (c *SeController) Handle(obj interface{}) (requeueAfter *time.Duration, err
 	return nil, nil
 }
 
-func (c *SeController) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Config, delicatedNamespace string) error {
+func (c *ServiceExportController) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Config, delicatedNamespace string) error {
 	c.mcsInformerFactory.Start(ctx.Done())
 	// set parent cluster related filed.
 	c.dedicatedNamespace = delicatedNamespace
@@ -216,7 +216,7 @@ func (c *SeController) Run(ctx context.Context, parentDedicatedKubeConfig *rest.
 	return nil
 }
 
-func (c *SeController) getServiceExportFromEndpointSlice(obj interface{}) (*v1alpha1.ServiceExport, error) {
+func (c *ServiceExportController) getServiceExportFromEndpointSlice(obj interface{}) (*v1alpha1.ServiceExport, error) {
 	slice := obj.(*discoveryv1beta1.EndpointSlice)
 	if serviceName, ok := slice.Labels[discoveryv1beta1.LabelServiceName]; ok {
 		if se, err := c.serviceExportLister.ServiceExports(slice.Namespace).Get(serviceName); err == nil {
