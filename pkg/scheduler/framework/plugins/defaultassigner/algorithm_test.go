@@ -427,3 +427,45 @@ func TestDivideReplicas(t *testing.T) {
 		})
 	}
 }
+
+func Test_dynamicDivideReplicas(t *testing.T) {
+	tests := []struct {
+		name                 string
+		desiredReplicas      int32
+		maxAvailableReplicas []int32
+		want                 []int32
+	}{
+		{
+			desiredReplicas:      6,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{1, 2, 3},
+		},
+		{
+			desiredReplicas:      2,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{0, 1, 1},
+		},
+		{
+			desiredReplicas:      3,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{1, 1, 1},
+		},
+		{
+			desiredReplicas:      3,
+			maxAvailableReplicas: []int32{0, 0, 0},
+			want:                 []int32{0, 0, 0},
+		},
+		{
+			desiredReplicas:      6,
+			maxAvailableReplicas: []int32{1, 2, 2},
+			want:                 []int32{1, 2, 2},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dynamicDivideReplicas(tt.desiredReplicas, tt.maxAvailableReplicas); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("dynamicDivideReplicas() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -91,19 +91,35 @@ func dynamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) 
 	}
 
 	remain := desiredReplicas
+
+	type cluster struct {
+		index   int
+		decimal float32
+	}
+	clusters := make([]cluster, 0, len(maxAvailableReplicas))
+
 	for i, weight := range maxAvailableReplicas {
 		replica := weight * desiredReplicas / weightSum
 		res[i] = replica
 		remain -= replica
+		clusters = append(clusters, cluster{
+			index:   i,
+			decimal: float32(weight*desiredReplicas)/float32(weightSum) - float32(replica),
+		})
 	}
+
+	// sort the clusters by descending order of decimal part of replica
+	sort.Slice(clusters, func(i, j int) bool {
+		return clusters[i].decimal > clusters[j].decimal
+	})
 
 	if remain > 0 {
 		for i := 0; i < int(remain) && i < len(res); i++ {
-			res[i]++
+			res[clusters[i].index]++
 		}
 	} else if remain < 0 {
 		for i := 0; i < int(-remain) && i < len(res); i++ {
-			res[i]--
+			res[clusters[i].index]--
 		}
 	}
 
