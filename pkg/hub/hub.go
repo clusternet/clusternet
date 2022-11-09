@@ -96,8 +96,10 @@ type Hub struct {
 	crrApprover *approver.CRRApprover
 	deployer    *deployer.Deployer
 
-	clusterLifecycle *clusterlifecycle.Controller
 	clusterDiscovery *discovery.Controller
+
+	clusterLifecycleEnabled bool
+	clusterLifecycle        *clusterlifecycle.Controller
 
 	recorder record.EventRecorder
 
@@ -163,7 +165,6 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		}
 	}
 
-	clusterLifecycle := clusterlifecycle.NewController(clusternetClient, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(), recorder)
 	var clusterDiscovery *discovery.Controller
 	if len(opts.ClusterAPIKubeconfig) > 0 {
 		clusterAPICfg, err2 := utils.LoadsKubeConfigFromFile(opts.ClusterAPIKubeconfig)
@@ -183,6 +184,16 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	var ver *version.Info
 	if ver, err = mcsClientSet.Discovery().ServerVersion(); err != nil {
 		return nil, err
+	}
+
+	var clusterLifecycleEnabled bool
+	if clusterLifecycleEnabled, err = utils.ClusterLifecycleEnabled(ver.String()); err != nil {
+		return nil, err
+	}
+
+	var clusterLifecycle *clusterlifecycle.Controller
+	if clusterLifecycleEnabled {
+		clusterLifecycle = clusterlifecycle.NewController(clusternetClient, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(), recorder)
 	}
 
 	var serviceImportEnabled bool
@@ -210,8 +221,9 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		deployer:                  d,
 		recorder:                  recorder,
 		deployerEnabled:           deployerEnabled,
-		clusterLifecycle:          clusterLifecycle,
 		clusterDiscovery:          clusterDiscovery,
+		clusterLifecycleEnabled:   clusterLifecycleEnabled,
+		clusterLifecycle:          clusterLifecycle,
 		serviceImportEnabled:      serviceImportEnabled,
 		serviceImport:             serviceImport,
 	}
@@ -427,10 +439,6 @@ func (hub *Hub) Run(ctx context.Context) error {
 }
 
 func (hub *Hub) runControllers(ctx context.Context) {
-	go func() {
-		hub.crrApprover.Run(hub.options.Threadiness, ctx.Done())
-	}()
-
 	if hub.deployerEnabled {
 		go func() {
 			hub.deployer.Run(hub.options.Threadiness, ctx.Done())
@@ -449,7 +457,13 @@ func (hub *Hub) runControllers(ctx context.Context) {
 		}
 	}()
 
-	hub.clusterLifecycle.Run(hub.options.Threadiness, ctx.Done())
+	go func() {
+		if hub.clusterLifecycleEnabled {
+			hub.clusterLifecycle.Run(hub.options.Threadiness, ctx.Done())
+		}
+	}()
+
+	hub.crrApprover.Run(hub.options.Threadiness, ctx.Done())
 }
 
 func createPeerLease(peer peerInfo, leaderOption componentbaseconfig.LeaderElectionConfiguration,

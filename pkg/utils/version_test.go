@@ -296,3 +296,95 @@ func TestEndpointSliceV1Promoted(t *testing.T) {
 		})
 	}
 }
+
+func TestClusterLifecycleEnabled(t *testing.T) {
+	tests := []struct {
+		name              string
+		kubeServerVersion string
+		want              bool
+		err               error
+	}{
+		// bad versions
+		{
+			kubeServerVersion: "unknown",
+			err:               fmt.Errorf("could not parse \"unknown\" as version"),
+		},
+		// clusterLifecycle Controller can be started
+		{
+			kubeServerVersion: KubeV1180Alpha0.String(),
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.25.0",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.22.1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.22.0-alpha.4",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0+k3s1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0-rc1+k3s1",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0-rc.0",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0-beta.0",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.20.10",
+			want:              true,
+		},
+		{
+			kubeServerVersion: "v1.21.0-alpha.0",
+			want:              true,
+		},
+		//  clusterLifecycle Controller cannot be started
+		{
+			kubeServerVersion: "v1.17.0-alpha.2+k3s1",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.16.5-rc.1",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.16.6+k3s1",
+			want:              false,
+		},
+		{
+			kubeServerVersion: "v1.16.10",
+			want:              false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clusterLifecycleEnabled, err := ClusterLifecycleEnabled(tt.kubeServerVersion)
+			if !reflect.DeepEqual(err, tt.err) {
+				t.Errorf("kubeServerVersion %s, error expected %v but got %v", tt.kubeServerVersion, tt.err, err)
+			}
+			if clusterLifecycleEnabled != tt.want {
+				t.Errorf("kubeServerVersion %s, ClusterLifecycleEnabled expected %v but got %v", tt.kubeServerVersion, tt.want, clusterLifecycleEnabled)
+			}
+		})
+	}
+}
