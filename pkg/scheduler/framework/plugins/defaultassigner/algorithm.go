@@ -1,6 +1,7 @@
 package defaultassigner
 
 import (
+	"math"
 	"sort"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -94,7 +95,7 @@ func dynamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) 
 
 	type cluster struct {
 		index   int
-		decimal float32
+		decimal float64
 	}
 	clusters := make([]cluster, 0, len(maxAvailableReplicas))
 
@@ -104,7 +105,7 @@ func dynamicDivideReplicas(desiredReplicas int32, maxAvailableReplicas []int32) 
 		remain -= replica
 		clusters = append(clusters, cluster{
 			index:   i,
-			decimal: float32(weight*desiredReplicas)/float32(weightSum) - float32(replica),
+			decimal: math.Abs(float64(weight*desiredReplicas)/float64(weightSum) - float64(replica)),
 		})
 	}
 

@@ -460,6 +460,16 @@ func Test_dynamicDivideReplicas(t *testing.T) {
 			maxAvailableReplicas: []int32{1, 2, 2},
 			want:                 []int32{1, 2, 2},
 		},
+		{
+			desiredReplicas:      -6,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{-1, -2, -3},
+		},
+		{
+			desiredReplicas:      -2,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{0, -1, -1},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
