@@ -512,8 +512,21 @@ func (sched *Scheduler) addAllEventHandlers() {
 					klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err))
 					continue
 				}
-				if !selector.Matches(labels.Set(newMcls.Labels)) && oldMcls != nil && !selector.Matches(labels.Set(oldMcls.Labels)) {
-					continue
+				if newMcls != nil && oldMcls == nil {
+					// For AddFunc
+					if !selector.Matches(labels.Set(newMcls.Labels)) {
+						continue
+					}
+				} else if newMcls != nil && oldMcls != nil {
+					// For UpdateFunc
+					if !selector.Matches(labels.Set(newMcls.Labels)) && !selector.Matches(labels.Set(oldMcls.Labels)) {
+						continue
+					}
+				} else if newMcls == nil && oldMcls != nil {
+					// For DeleteFunc
+					if !selector.Matches(labels.Set(oldMcls.Labels)) {
+						continue
+					}
 				}
 				sched.SchedulingQueue.Add(key)
 				break
@@ -548,6 +561,8 @@ func (sched *Scheduler) addAllEventHandlers() {
 			// when a ManagedCluster is deleted,
 			// - Auto populated objects, like Base and Description, will be auto-deleted on next sync/resync of subscribed Subscriptions
 			// - If current dedicated namespace is deleted, then all objects in this namespaces will be pruned.
+			mcls := obj.(*clusterapi.ManagedCluster)
+			enqueueSubscriptionForClusterFunc(nil, mcls)
 		},
 	})
 

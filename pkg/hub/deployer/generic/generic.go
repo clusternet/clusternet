@@ -122,6 +122,16 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 		return nil
 	}
 
+	if desc.DeletionTimestamp != nil {
+		// if the cluster got lost
+		if utils.IsClusterLost(desc.Labels[known.ClusterIDLabel], desc.Namespace, deployer.clusterLister) {
+			descCopy := desc.DeepCopy()
+			descCopy.Finalizers = utils.RemoveString(descCopy.Finalizers, known.AppFinalizer)
+			_, err := deployer.clusternetClient.AppsV1alpha1().Descriptions(descCopy.Namespace).Update(context.TODO(), descCopy, metav1.UpdateOptions{})
+			return err
+		}
+	}
+
 	deployable, err := utils.DeployableByHub(deployer.clusterLister, desc.Labels[known.ClusterIDLabel], desc.Namespace)
 	if err != nil {
 		klog.ErrorDepth(4, err)
@@ -131,16 +141,6 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	if !deployable {
 		klog.V(5).Infof("Description %s is not deployable by hub, skipping syncing", klog.KObj(desc))
 		return nil
-	}
-
-	if desc.DeletionTimestamp != nil {
-		// if the cluster got lost
-		if utils.IsClusterLost(desc.Labels[known.ClusterIDLabel], desc.Namespace, deployer.clusterLister) {
-			descCopy := desc.DeepCopy()
-			descCopy.Finalizers = utils.RemoveString(descCopy.Finalizers, known.AppFinalizer)
-			_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(descCopy.Namespace).Update(context.TODO(), descCopy, metav1.UpdateOptions{})
-			return err
-		}
 	}
 
 	dynamicClient, discoveryRESTMapper, err := deployer.getDynamicClient(desc)
