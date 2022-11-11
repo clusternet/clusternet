@@ -172,8 +172,11 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 
 		//DO NOT recycle resource controller so they live forever as resource controller cache
 		deployer.AddController(gvk, resourceController)
-		stopChan := make(chan struct{})
-		resourceController.Run(known.DefaultThreadiness, stopChan)
+		go func() {
+			stopChan := make(chan struct{})
+			resourceController.Run(known.DefaultThreadiness, stopChan)
+		}()
+
 	}
 	return nil
 }

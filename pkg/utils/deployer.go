@@ -398,6 +398,7 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			}
 
 			if utilfeature.DefaultFeatureGate.Enabled(features.Recovery) && callbackHandler != nil {
+				// callbackHandler cannot block, otherwise the subsequent events of the description cannot be processed
 				callbackErr := callbackHandler(resource)
 				if callbackErr != nil {
 					errCh <- callbackErr
