@@ -44,25 +44,30 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - managing any [Certified Kubernetes Distributions](https://www.cncf.io/certification/software-conformance/), such
       as [k3s](https://github.com/k3s-io/k3s)
     - managing Kubernetes clusters running at the edge
-    - discovering clusters created by [cluster-api](https://github.com/kubernetes-sigs/cluster-api)
+    - automatically discovering and registering clusters created by [cluster-api](https://github.com/kubernetes-sigs/cluster-api)
     - parent cluster can also register itself as a child cluster to run workloads
-    - managing Kubernetes version skewed from v1.17.x to v1.23.x (Learn more
+    - managing Kubernetes upper than v1.17.x (Learn more
       about [Kubernetes Version Skew](https://clusternet.io/docs/introduction/#kubernetes-version-skew))
     - visiting any managed clusters with dynamic RBAC rules (Learn more
       from [this tuorial](https://clusternet.io/docs/tutorials/cluster-management/visiting-child-clusters-with-rbac/))
     - cluster auto-labelling based on [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery)
 - Application Coordinations
+    - Scheduling Framework (`in-tree` plugins, `out-of-tree` plugins)
     - Cross-Cluster Scheduling
         - replication scheduling
         - static dividing scheduling by weight
         - dynamic dividing scheduling by capacity
+          - cluster resource predictor framework for `in-tree` and `out-of-tree` implementations
+          - various deployment topologies for cluster resource predictors
+        - subgroup cluster scheduling
     - Various Resource Types
         - Kubernetes native objects, such as `Deployment`, `StatefulSet`, etc
-        - CRD
+        - CRDs
         - helm charts, including [OCI-based Helm charts](https://helm.sh/docs/topics/registries/)
+    - Resource interpretation with `in-tree` or `out-of-tree` controller
     - [Setting Overrides](https://clusternet.io/docs/tutorials/multi-cluster-apps/setting-overrides/)
         - two-stage priority based override strategies
-        - easy to rollback
+        - easy to rollback overrides
         - cross-cluster canary rollout
     - Multi-Cluster Services
         - multi-cluster services discovery with [mcs-api](https://github.com/kubernetes-sigs/mcs-api)
