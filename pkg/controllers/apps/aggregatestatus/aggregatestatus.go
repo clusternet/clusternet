@@ -292,20 +292,21 @@ func (c *Controller) updateSubscriptionStatus(sub *appsapi.Subscription, status 
 	// Or create a copy manually for better performance
 
 	klog.V(5).Infof("try to update Subscription %q status", sub.Name)
+	subsCopy := sub.DeepCopy()
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		sub.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(context.TODO(), sub, metav1.UpdateOptions{})
+		subsCopy.Status = *status
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subsCopy.Namespace).UpdateStatus(context.TODO(), subsCopy, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
 		}
 
-		if updated, err := c.subsLister.Subscriptions(sub.Namespace).Get(sub.Name); err == nil {
+		if updated, err := c.subsLister.Subscriptions(subsCopy.Namespace).Get(subsCopy.Name); err == nil {
 			// make a copy so we don't mutate the shared cache
-			sub = updated.DeepCopy()
+			subsCopy = updated.DeepCopy()
 		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", sub.Name, err))
+			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", subsCopy.Name, err))
 		}
 		return err
 	})
