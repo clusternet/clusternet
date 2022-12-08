@@ -57,7 +57,7 @@ type ResourceAttrs struct {
 	ObjectAction string
 }
 
-// Controller is a controller that handle `name` specified resource
+// Controller is a controller that handles `name` specified resource
 type Controller struct {
 	workqueue        workqueue.RateLimitingInterface
 	client           utils.ResourceClient

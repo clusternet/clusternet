@@ -46,7 +46,7 @@ var controllerKind = appsapi.SchemeGroupVersion.WithKind("Manifest")
 
 type SyncHandlerFunc func(manifest *appsapi.Manifest) error
 
-// Controller is a controller that handle Manifest
+// Controller is a controller that handles Manifest
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
 

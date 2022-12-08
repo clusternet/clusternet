@@ -55,7 +55,7 @@ const (
 	JobKind = "Job"
 )
 
-// Controller is a controller that handle Description
+// Controller is a controller that handles Description
 type Controller struct {
 	clusternetClient clusternetClientSet.Interface
 

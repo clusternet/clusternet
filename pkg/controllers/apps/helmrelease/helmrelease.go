@@ -45,7 +45,7 @@ var controllerKind = appsapi.SchemeGroupVersion.WithKind("HelmRelease")
 
 type SyncHandlerFunc func(helmrelease *appsapi.HelmRelease) error
 
-// Controller is a controller that handle HelmRelease
+// Controller is a controller that handles HelmRelease
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
 

@@ -43,7 +43,7 @@ var controllerKind = corev1.SchemeGroupVersion.WithKind("Secret")
 
 type SyncHandlerFunc func(secret *corev1.Secret) error
 
-// Controller is a controller that handle Secret
+// Controller is a controller that handles Secret
 // here we only focus on Secret "child-cluster-deployer" !!!
 type Controller struct {
 	kubeclient kubernetes.Interface

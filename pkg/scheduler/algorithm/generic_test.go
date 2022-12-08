@@ -65,7 +65,7 @@ func (s *scheduleCache) Get(namespacedName string) (*clusterapi.ManagedCluster, 
 	return nil, nil
 }
 
-func Test_genericScheduler_subgroupClusters(t *testing.T) {
+func TestSubgroupClusters(t *testing.T) {
 	type fields struct {
 		cache                       cache.Cache
 		percentageOfClustersToScore int32

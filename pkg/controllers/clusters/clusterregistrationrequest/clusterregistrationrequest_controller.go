@@ -48,7 +48,7 @@ var controllerKind = clusterapi.SchemeGroupVersion.WithKind("ClusterRegistration
 
 type SyncHandlerFunc func(*clusterapi.ClusterRegistrationRequest) error
 
-// Controller is a controller that handle edge cluster registration requests
+// Controller is a controller that handles edge cluster registration requests
 type Controller struct {
 	clusternetClient clusternetClientSet.Interface
 
