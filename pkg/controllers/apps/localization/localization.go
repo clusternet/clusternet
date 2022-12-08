@@ -50,7 +50,7 @@ var (
 
 type SyncHandlerFunc func(loc *appsapi.Localization) error
 
-// Controller is a controller that handle Localization
+// Controller is a controller that handles Localization
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
 

@@ -48,7 +48,7 @@ var controllerKind = appsapi.SchemeGroupVersion.WithKind("Description")
 
 type SyncHandlerFunc func(description *appsapi.Description) error
 
-// Controller is a controller that handle Description
+// Controller is a controller that handles Description
 type Controller struct {
 	clusternetClient clusternetClientSet.Interface
 

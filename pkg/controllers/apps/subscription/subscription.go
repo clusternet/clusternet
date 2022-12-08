@@ -49,7 +49,7 @@ var controllerKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
 
 type SyncHandlerFunc func(subscription *appsapi.Subscription) error
 
-// Controller is a controller that handle Subscription
+// Controller is a controller that handles Subscription
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
 

@@ -47,7 +47,7 @@ var controllerKind = appsapi.SchemeGroupVersion.WithKind("HelmChart")
 
 type SyncHandlerFunc func(chart *appsapi.HelmChart) error
 
-// Controller is a controller that handle HelmChart
+// Controller is a controller that handles HelmChart
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
 

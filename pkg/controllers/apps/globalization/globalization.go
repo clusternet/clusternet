@@ -50,7 +50,7 @@ var (
 
 type SyncHandlerFunc func(glob *appsapi.Globalization) error
 
-// Controller is a controller that handle Globalization
+// Controller is a controller that handles Globalization
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
 
