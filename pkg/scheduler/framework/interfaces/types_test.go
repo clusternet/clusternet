@@ -138,6 +138,23 @@ func TestTargetClusters_Merge(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "unsorted cluster",
+			b: &TargetClusters{
+				BindingClusters: []string{"c1", "c3", "c2"},
+				Replicas: map[string][]int32{
+					"f2": {1, 2, 0},
+				},
+			},
+			result: &TargetClusters{
+				BindingClusters: []string{"c1", "c2", "c3"},
+				Replicas: map[string][]int32{
+					"f1": {1, 2, 3},
+					"f2": {1, 0, 2},
+					"f3": {1, 0, 1},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t1 *testing.T) {
