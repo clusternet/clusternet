@@ -132,7 +132,7 @@ func (t *TargetClusters) Merge(b *TargetClusters) {
 			// this cluster is a new one, we should append
 			t.BindingClusters = append(t.BindingClusters, bCluster)
 			for feed, tReplicas := range t.Replicas {
-				if len(tReplicas) != 0 {
+				if len(tReplicas) != 0 && len(tReplicas) < len(t.BindingClusters) {
 					t.Replicas[feed] = append(t.Replicas[feed], 0)
 				}
 			}
@@ -142,7 +142,7 @@ func (t *TargetClusters) Merge(b *TargetClusters) {
 		for feed, bReplicas := range b.Replicas {
 			if len(bReplicas) != 0 {
 				if len(t.Replicas[feed]) == 0 {
-					t.Replicas[feed] = append(t.Replicas[feed], 0)
+					t.Replicas[feed] = make([]int32, len(b.Replicas[feed]))
 				}
 				t.Replicas[feed][ti] += bReplicas[bi]
 			}
