@@ -17,6 +17,9 @@ limitations under the License.
 package v1alpha1
 
 import (
+	kyverno "github.com/kyverno/kyverno/api/kyverno/v1"
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -95,6 +98,10 @@ const (
 
 	// StrategicMergePatchType won't be supported, since `patchStrategy`
 	// and `patchMergeKey` can not be retrieved.
+
+	// KyvernoPatchType applies a kyverno style patch for all matched objects.
+	// Note: KyvernoPatchType does not work with HelmChart(s).
+	KyvernoPatchType OverrideType = "KyvernoPatch"
 )
 
 // OverrideConfig holds information that describes a override config.
@@ -107,7 +114,7 @@ type OverrideConfig struct {
 	// Value represents override value.
 	//
 	// +required
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Type=string
 	Value string `json:"value"`
 
@@ -116,13 +123,47 @@ type OverrideConfig struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Enum=Helm;JSONPatch;MergePatch
+	// +kubebuilder:validation:Enum=Helm;JSONPatch;MergePatch;KyvernoPatch
 	Type OverrideType `json:"type"`
 
 	// OverrideChart indicates whether the override value for the HelmChart CR.
 	//
 	// +optional
 	OverrideChart bool `json:"overrideChart,omitempty"`
+
+	// KyvernoPatchConfig kyverno style patch config
+	//
+	// +optional
+	KyvernoConfig *KyvernoPatchConfig `json:"kyvernoConfig,omitempty"`
+}
+
+// KyvernoPatchConfig config for a kyverno style patch
+type KyvernoPatchConfig struct {
+	// Context defines variables and data sources that can be used during rule execution.
+	// +optional
+	Context []kyverno.ContextEntry `json:"context,omitempty" yaml:"context,omitempty"`
+
+	// Preconditions are used to determine if a policy rule should be applied by evaluating a
+	// set of conditions. The declaration can contain nested `any` or `all` statements. A direct list
+	// of conditions (without `any` or `all` statements is supported for backwards compatibility but
+	// will be deprecated in the next major release.
+	// See: https://kyverno.io/docs/writing-policies/preconditions/
+	// +optional
+	RawAnyAllConditions *apiextv1.JSON `json:"preconditions,omitempty" yaml:"preconditions,omitempty"`
+
+	// Mutation is used to modify matching resources.
+	// +optional
+	Mutation kyverno.Mutation `json:"mutate,omitempty" yaml:"mutate,omitempty"`
+}
+
+// GetAnyAllConditions get preconditions
+func (kpc *KyvernoPatchConfig) GetAnyAllConditions() apiextensions.JSON {
+	return FromJSON(kpc.RawAnyAllConditions)
+}
+
+// SetAnyAllConditions set preconditions
+func (kpc *KyvernoPatchConfig) SetAnyAllConditions(in apiextensions.JSON) {
+	kpc.RawAnyAllConditions = ToJSON(in)
 }
 
 // +kubebuilder:object:root=true
