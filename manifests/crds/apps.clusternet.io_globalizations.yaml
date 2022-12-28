@@ -1,10 +1,9 @@
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.7.0
+    controller-gen.kubebuilder.io/version: v0.8.0
   creationTimestamp: null
   name: globalizations.apps.clusternet.io
 spec:
@@ -128,6 +127,236 @@ spec:
                   description: OverrideConfig holds information that describes a override
                     config.
                   properties:
+                    kyvernoConfig:
+                      description: KyvernoPatchConfig kyverno style patch config
+                      properties:
+                        context:
+                          description: Context defines variables and data sources
+                            that can be used during rule execution.
+                          items:
+                            description: KyvernoContextEntry adds variables to a rule
+                              context
+                            properties:
+                              name:
+                                description: Name is the variable name.
+                                type: string
+                              variable:
+                                description: Variable defines an arbitrary JMESPath
+                                  context variable that can be defined inline.
+                                properties:
+                                  default:
+                                    description: Default is an optional arbitrary
+                                      JSON object that the variable may take if the
+                                      JMESPath expression evaluates to nil
+                                    x-kubernetes-preserve-unknown-fields: true
+                                  jmesPath:
+                                    description: JMESPath is an optional JMESPath
+                                      Expression that can be used to transform the
+                                      variable.
+                                    type: string
+                                  value:
+                                    description: Value is any arbitrary JSON object
+                                      representable in YAML or JSON form.
+                                    x-kubernetes-preserve-unknown-fields: true
+                                type: object
+                            type: object
+                          type: array
+                        mutate:
+                          description: Mutation is used to modify matching resources.
+                          properties:
+                            foreach:
+                              description: ForEach applies mutation rules to a list
+                                of sub-elements by creating a context for each entry
+                                in the list and looping over it to apply the specified
+                                logic.
+                              items:
+                                description: KyvernoForEachMutation applies mutation
+                                  rules to a list of sub-elements by creating a context
+                                  for each entry in the list and looping over it to
+                                  apply the specified logic.
+                                properties:
+                                  context:
+                                    description: Context defines variables and data
+                                      sources that can be used during rule execution.
+                                    items:
+                                      description: KyvernoContextEntry adds variables
+                                        to a rule context
+                                      properties:
+                                        name:
+                                          description: Name is the variable name.
+                                          type: string
+                                        variable:
+                                          description: Variable defines an arbitrary
+                                            JMESPath context variable that can be
+                                            defined inline.
+                                          properties:
+                                            default:
+                                              description: Default is an optional
+                                                arbitrary JSON object that the variable
+                                                may take if the JMESPath expression
+                                                evaluates to nil
+                                              x-kubernetes-preserve-unknown-fields: true
+                                            jmesPath:
+                                              description: JMESPath is an optional
+                                                JMESPath Expression that can be used
+                                                to transform the variable.
+                                              type: string
+                                            value:
+                                              description: Value is any arbitrary
+                                                JSON object representable in YAML
+                                                or JSON form.
+                                              x-kubernetes-preserve-unknown-fields: true
+                                          type: object
+                                      type: object
+                                    type: array
+                                  list:
+                                    description: List specifies a JMESPath expression
+                                      that results in one or more elements to which
+                                      the validation logic is applied.
+                                    type: string
+                                  patchStrategicMerge:
+                                    description: PatchStrategicMerge is a strategic
+                                      merge patch used to modify resources. See https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/
+                                      and https://kubectl.docs.kubernetes.io/references/kustomize/patchesstrategicmerge/.
+                                    x-kubernetes-preserve-unknown-fields: true
+                                  patchesJson6902:
+                                    description: PatchesJSON6902 is a list of RFC
+                                      6902 JSON Patch declarations used to modify
+                                      resources. See https://tools.ietf.org/html/rfc6902
+                                      and https://kubectl.docs.kubernetes.io/references/kustomize/patchesjson6902/.
+                                    type: string
+                                  preconditions:
+                                    description: 'AnyAllConditions are used to determine
+                                      if a policy rule should be applied by evaluating
+                                      a set of conditions. The declaration can contain
+                                      nested `any` or `all` statements. See: https://kyverno.io/docs/writing-policies/preconditions/'
+                                    properties:
+                                      all:
+                                        description: AllConditions enable variable-based
+                                          conditional rule execution. This is useful
+                                          for finer control of when an rule is applied.
+                                          A condition can reference object data using
+                                          JMESPath notation. Here, all of the conditions
+                                          need to pass
+                                        items:
+                                          description: KyvernoCondition defines variable-based
+                                            conditional criteria for rule execution.
+                                          properties:
+                                            key:
+                                              description: Key is the context entry
+                                                (using JMESPath) for conditional rule
+                                                evaluation.
+                                              x-kubernetes-preserve-unknown-fields: true
+                                            operator:
+                                              description: 'Operator is the conditional
+                                                operation to perform. Valid operators
+                                                are: Equals, NotEquals, In, AnyIn,
+                                                AllIn, NotIn, AnyNotIn, AllNotIn,
+                                                GreaterThanOrEquals, GreaterThan,
+                                                LessThanOrEquals, LessThan, DurationGreaterThanOrEquals,
+                                                DurationGreaterThan, DurationLessThanOrEquals,
+                                                DurationLessThan'
+                                              enum:
+                                              - Equals
+                                              - NotEquals
+                                              - In
+                                              - AnyIn
+                                              - AllIn
+                                              - NotIn
+                                              - AnyNotIn
+                                              - AllNotIn
+                                              - GreaterThanOrEquals
+                                              - GreaterThan
+                                              - LessThanOrEquals
+                                              - LessThan
+                                              - DurationGreaterThanOrEquals
+                                              - DurationGreaterThan
+                                              - DurationLessThanOrEquals
+                                              - DurationLessThan
+                                              type: string
+                                            value:
+                                              description: Value is the conditional
+                                                value, or set of values. The values
+                                                can be fixed set or can be variables
+                                                declared using JMESPath.
+                                              x-kubernetes-preserve-unknown-fields: true
+                                          type: object
+                                        type: array
+                                      any:
+                                        description: AnyConditions enable variable-based
+                                          conditional rule execution. This is useful
+                                          for finer control of when an rule is applied.
+                                          A condition can reference object data using
+                                          JMESPath notation. Here, at least one of
+                                          the conditions need to pass
+                                        items:
+                                          description: KyvernoCondition defines variable-based
+                                            conditional criteria for rule execution.
+                                          properties:
+                                            key:
+                                              description: Key is the context entry
+                                                (using JMESPath) for conditional rule
+                                                evaluation.
+                                              x-kubernetes-preserve-unknown-fields: true
+                                            operator:
+                                              description: 'Operator is the conditional
+                                                operation to perform. Valid operators
+                                                are: Equals, NotEquals, In, AnyIn,
+                                                AllIn, NotIn, AnyNotIn, AllNotIn,
+                                                GreaterThanOrEquals, GreaterThan,
+                                                LessThanOrEquals, LessThan, DurationGreaterThanOrEquals,
+                                                DurationGreaterThan, DurationLessThanOrEquals,
+                                                DurationLessThan'
+                                              enum:
+                                              - Equals
+                                              - NotEquals
+                                              - In
+                                              - AnyIn
+                                              - AllIn
+                                              - NotIn
+                                              - AnyNotIn
+                                              - AllNotIn
+                                              - GreaterThanOrEquals
+                                              - GreaterThan
+                                              - LessThanOrEquals
+                                              - LessThan
+                                              - DurationGreaterThanOrEquals
+                                              - DurationGreaterThan
+                                              - DurationLessThanOrEquals
+                                              - DurationLessThan
+                                              type: string
+                                            value:
+                                              description: Value is the conditional
+                                                value, or set of values. The values
+                                                can be fixed set or can be variables
+                                                declared using JMESPath.
+                                              x-kubernetes-preserve-unknown-fields: true
+                                          type: object
+                                        type: array
+                                    type: object
+                                    x-kubernetes-preserve-unknown-fields: true
+                                type: object
+                              type: array
+                            patchStrategicMerge:
+                              description: PatchStrategicMerge is a strategic merge
+                                patch used to modify resources. See https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/
+                                and https://kubectl.docs.kubernetes.io/references/kustomize/patchesstrategicmerge/.
+                              x-kubernetes-preserve-unknown-fields: true
+                            patchesJson6902:
+                              description: PatchesJSON6902 is a list of RFC 6902 JSON
+                                Patch declarations used to modify resources. See https://tools.ietf.org/html/rfc6902
+                                and https://kubectl.docs.kubernetes.io/references/kustomize/patchesjson6902/.
+                              type: string
+                          type: object
+                        preconditions:
+                          description: 'Preconditions are used to determine if a policy
+                            rule should be applied by evaluating a set of conditions.
+                            The declaration can contain nested `any` or `all` statements.
+                            A direct list of conditions (without `any` or `all` statements
+                            is supported for backwards compatibility but will be deprecated
+                            in the next major release. See: https://kyverno.io/docs/writing-policies/preconditions/'
+                          x-kubernetes-preserve-unknown-fields: true
+                      type: object
                     name:
                       description: Name indicate the OverrideConfig name.
                       type: string
@@ -141,13 +370,13 @@ spec:
                       - Helm
                       - JSONPatch
                       - MergePatch
+                      - KyvernoPatch
                       type: string
                     value:
                       description: Value represents override value.
                       type: string
                   required:
                   - type
-                  - value
                   type: object
                 type: array
               priority:

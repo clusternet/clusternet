@@ -27,6 +27,8 @@ import (
 	"sigs.k8s.io/yaml"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/kyverno"
+	jsonutils "github.com/clusternet/clusternet/pkg/kyverno/engine/utils/json"
 )
 
 const (
@@ -42,7 +44,7 @@ func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []ap
 	genericResult, chartResult := genericOriginal, chartOriginal
 	for _, overrideConfig := range overrides {
 		// validates override value first
-		if len(strings.TrimSpace(overrideConfig.Value)) == 0 {
+		if len(strings.TrimSpace(overrideConfig.Value)) == 0 && overrideConfig.Type != appsapi.KyvernoPatchType {
 			continue
 		}
 		overrideBytes, err := yaml.YAMLToJSON([]byte(overrideConfig.Value))
@@ -83,6 +85,16 @@ func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []ap
 			}
 		case appsapi.MergePatchType:
 			genericResult, err = jsonpatch.MergePatch(genericResult, overrideBytes)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
+			}
+		case appsapi.KyvernoPatchType:
+			patches, err := kyverno.Mutate(genericResult, overrideConfig.Name, overrideConfig.KyvernoConfig)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
+			}
+			joinedPatch := jsonutils.JoinPatches(patches...)
+			genericResult, err = applyJSONPatch(genericResult, joinedPatch)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}

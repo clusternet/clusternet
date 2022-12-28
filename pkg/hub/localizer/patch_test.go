@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"testing"
 
+	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
@@ -421,6 +422,188 @@ hole: black
 							"image": "redis:6.2.5"
 						}
 					]
+				}
+			}`),
+		},
+		{
+			name: "Kyverno style patch",
+			original: []byte(`{
+				"apiVersion": "v1",
+				"kind": "Pod",
+				"metadata": {
+					"name": "pod",
+					"labels": {"app": "nginx"}
+				},
+				"spec": {
+					"containers": [{
+						"name":  "nginx1",
+						"image": "nginx:latest",
+						"resources": {
+							"requests": {
+								"example.com/fgpu": "100"
+							}
+						}
+					},
+					{
+						"name":  "nginx2",
+						"image": "nginx:latest"
+					}]
+				}
+			}`),
+			overrides: []appsapi.OverrideConfig{
+				{
+					Name: "patch strategy merge",
+					Type: appsapi.KyvernoPatchType,
+					KyvernoConfig: &appsapi.KyvernoPatchConfig{
+						Mutation: appsapi.KyvernoMutation{
+							RawPatchStrategicMerge: &apiextv1.JSON{
+								Raw: []byte(`{
+									"spec": {
+										"containers": [
+											{
+												"(image)": "*:latest",
+												"imagePullPolicy": "IfNotPresent"
+											}
+										]
+									}
+								}`),
+							},
+						},
+					},
+				},
+				{
+					Name: "add labels",
+					Type: appsapi.KyvernoPatchType,
+					KyvernoConfig: &appsapi.KyvernoPatchConfig{
+						Mutation: appsapi.KyvernoMutation{
+							RawPatchStrategicMerge: &apiextv1.JSON{
+								Raw: []byte(`{
+									"metadata": {
+										"labels": {
+											"appname": "{{request.object.metadata.name}}"
+										}
+									}
+								}`),
+							},
+						},
+					},
+				},
+				{
+					Name: "conditional anchor",
+					Type: appsapi.KyvernoPatchType,
+					KyvernoConfig: &appsapi.KyvernoPatchConfig{
+						Mutation: appsapi.KyvernoMutation{
+							RawPatchStrategicMerge: &apiextv1.JSON{
+								Raw: []byte(`{
+									"spec": {
+										"containers": [
+											{
+												"(name)": "nginx1",
+												"ports": [
+													{
+														"name": "http",
+														"port": 80
+													}
+												]
+											}
+										]
+									}
+								}`),
+							},
+						},
+					},
+				},
+				{
+					Name: "for each",
+					Type: appsapi.KyvernoPatchType,
+					KyvernoConfig: &appsapi.KyvernoPatchConfig{
+						Mutation: appsapi.KyvernoMutation{
+							ForEachMutation: []appsapi.KyvernoForEachMutation{
+								{
+									List: "request.object.spec.containers",
+									RawPatchStrategicMerge: &apiextv1.JSON{
+										Raw: []byte(`{
+											"spec": {
+												"containers": [
+													{
+														"(name)": "{{ element.name }}",
+														"image": "registry.io/{{ images.containers.\"{{element.name}}\".name}}:{{images.containers.\"{{element.name}}\".tag}}"
+													}
+												]
+											}
+										}`),
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Name: "patch resource name",
+					Type: appsapi.KyvernoPatchType,
+					KyvernoConfig: &appsapi.KyvernoPatchConfig{
+						Mutation: appsapi.KyvernoMutation{
+							ForEachMutation: []appsapi.KyvernoForEachMutation{
+								{
+									List: "request.object.spec.containers",
+									AnyAllConditions: &appsapi.AnyAllConditions{
+										AllConditions: []appsapi.KyvernoCondition{
+											{
+												RawKey: &apiextv1.JSON{
+													Raw: []byte(`"{{ element.resources.requests.\"example.com/fgpu\" || '' }}"`),
+												},
+												Operator: appsapi.ConditionOperators["NotEquals"],
+												RawValue: &apiextv1.JSON{
+													Raw: []byte("\"\""),
+												},
+											},
+										},
+									},
+									PatchesJSON6902: `
+- path: /spec/containers/{{elementIndex}}/resources/requests
+  op: add
+  value: {"nvidia.com/gpu": '{{ divide('{{element.resources.requests."example.com/fgpu" || '0' }}', '100') }}'}
+- path: /spec/containers/{{elementIndex}}/resources/requests/example.com~fgpu
+  op: remove
+`,
+								},
+							},
+						},
+					},
+				},
+			},
+			want: []byte(`{
+				"apiVersion": "v1",
+				"kind": "Pod",
+				"metadata": {
+					"name": "pod",
+					"labels": {
+						"app": "nginx",
+						"appname": "pod"
+					}
+				},
+				"spec": {
+					"containers": [{
+						"name":  "nginx1",
+						"image": "registry.io/nginx:latest",
+						"imagePullPolicy": "IfNotPresent",
+						"ports": [
+							{
+								"name": "http",
+								"port": 80
+							}
+						],
+						"resources": {
+							"requests": {
+								"nvidia.com/gpu": "1"
+							}
+						}
+					},
+					{
+						"name":  "nginx2",
+						"image": "registry.io/nginx:latest",
+						"imagePullPolicy": "IfNotPresent"
+					}]
 				}
 			}`),
 		},
