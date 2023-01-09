@@ -78,7 +78,7 @@ func NewController(clusternetClient clusternetclientset.Interface,
 
 	c := &Controller{
 		clusternetClient:    clusternetClient,
-		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmChart"),
+		workqueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "HelmChart"),
 		helmChartLister:     helmChartInformer.Lister(),
 		helmChartSynced:     helmChartInformer.Informer().HasSynced,
 		baseLister:          baseInformer.Lister(),

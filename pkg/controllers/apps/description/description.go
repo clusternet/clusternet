@@ -79,7 +79,7 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 
 	c := &Controller{
 		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "description"),
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Description"),
 		descLister:       descInformer.Lister(),
 		descSynced:       descInformer.Informer().HasSynced,
 		hrSynced:         hrInformer.Informer().HasSynced,

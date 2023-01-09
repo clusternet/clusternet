@@ -76,7 +76,7 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 		clusternetClient: clusternetClient,
 		crrsLister:       crrsInformer.Lister(),
 		crrsSynced:       crrsInformer.Informer().HasSynced,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster-registration-requests"),
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ClusterRegistrationRequest"),
 		SyncHandler:      syncHandler,
 	}
 

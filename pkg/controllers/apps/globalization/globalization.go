@@ -88,7 +88,7 @@ func NewController(clusternetClient clusternetclientset.Interface,
 
 	c := &Controller{
 		clusternetClient:  clusternetClient,
-		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "globalization"),
+		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Globalization"),
 		globLister:        globInformer.Lister(),
 		globSynced:        globInformer.Informer().HasSynced,
 		chartLister:       chartInformer.Lister(),
