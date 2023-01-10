@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -79,7 +80,21 @@ func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, resp
 		return nil, fmt.Errorf("invalid options object: %#v", opts)
 	}
 
-	return r.Exchanger.Connect(ctx, id, socket, responder)
+	handler, err := r.Exchanger.Connect(ctx, id, socket, responder)
+	if err != nil {
+		return nil, err
+	}
+	// wrap the handler func only to better add metrics
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		startTime := time.Now()
+		defer func() {
+			defer ConnectionCount.Dec()
+			ConnectionDurationSeconds.Observe(time.Since(startTime).Seconds())
+		}()
+		ConnectionCount.Inc()
+
+		handler.ServeHTTP(writer, request)
+	}), nil
 }
 
 // NewREST returns a RESTStorage object that will work against API services.

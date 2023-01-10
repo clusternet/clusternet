@@ -66,7 +66,7 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 	clusterInformer clusterinformers.ManagedClusterInformer, recorder record.EventRecorder) *Controller {
 	c := &Controller{
 		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "managedCluster"),
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ManagedCluster"),
 		clusterLister:    clusterInformer.Lister(),
 		clusterSynced:    clusterInformer.Informer().HasSynced,
 		recorder:         recorder,

@@ -85,7 +85,7 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	reservedNamespace string, customSyncHandlerFunc SyncHandlerFunc) (*Controller, error) {
 	c := &Controller{
 		clusternetClient:      clusternetClient,
-		workqueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "feedInventory"),
+		workqueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "FeedInventory"),
 		subLister:             subsInformer.Lister(),
 		subSynced:             subsInformer.Informer().HasSynced,
 		finvLister:            finvInformer.Lister(),

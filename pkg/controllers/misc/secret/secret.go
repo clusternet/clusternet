@@ -70,7 +70,7 @@ func NewController(kubeclient kubernetes.Interface, secretInformer coreInformers
 
 	c := &Controller{
 		kubeclient:   kubeclient,
-		workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "secret"),
+		workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Secret"),
 		secretLister: secretInformer.Lister(),
 		secretSynced: secretInformer.Informer().HasSynced,
 		recorder:     recorder,

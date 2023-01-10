@@ -71,7 +71,7 @@ func NewController(clusternetClient clusternetclientset.Interface, hrInformer ap
 
 	c := &Controller{
 		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "helmRelease"),
+		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "HelmRelease"),
 		hrLister:         hrInformer.Lister(),
 		hrSynced:         hrInformer.Informer().HasSynced,
 		recorder:         recorder,

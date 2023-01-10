@@ -69,6 +69,7 @@ import (
 	shadowapiserver "github.com/clusternet/clusternet/pkg/hub/apiserver/shadow"
 	"github.com/clusternet/clusternet/pkg/hub/approver"
 	"github.com/clusternet/clusternet/pkg/hub/deployer"
+	_ "github.com/clusternet/clusternet/pkg/hub/metrics"
 	"github.com/clusternet/clusternet/pkg/hub/options"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
