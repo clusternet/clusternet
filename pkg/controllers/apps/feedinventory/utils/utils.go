@@ -27,8 +27,18 @@ func GetReplicaRequirements(podSpec corev1.PodSpec) appsapi.ReplicaRequirements 
 	resourceLimits := map[corev1.ResourceName]resource.Quantity{}
 	resourceRequests := map[corev1.ResourceName]resource.Quantity{}
 	for _, container := range podSpec.Containers {
+		if container.Resources.Limits != nil {
+			if container.Resources.Requests == nil {
+				container.Resources.Requests = make(corev1.ResourceList)
+			}
+		}
 		// calculate total resource limits
 		for resourceName, limit := range container.Resources.Limits {
+			// set default request to limit if request is not set
+			if _, exists := container.Resources.Requests[resourceName]; !exists {
+				container.Resources.Requests[resourceName] = limit.DeepCopy()
+			}
+
 			curLimit, ok := resourceLimits[resourceName]
 			if !ok {
 				resourceLimits[resourceName] = limit
@@ -54,8 +64,18 @@ func GetReplicaRequirements(podSpec corev1.PodSpec) appsapi.ReplicaRequirements 
 
 	// take max_resource(sum_pod, any_init_container)
 	for _, container := range podSpec.InitContainers {
+		if container.Resources.Limits != nil {
+			if container.Resources.Requests == nil {
+				container.Resources.Requests = make(corev1.ResourceList)
+			}
+		}
 		// take max resource limits
 		for resourceName, limit := range container.Resources.Limits {
+			// set default request to limit if request is not set
+			if _, exists := container.Resources.Requests[resourceName]; !exists {
+				container.Resources.Requests[resourceName] = limit.DeepCopy()
+			}
+
 			curLimit, ok := resourceLimits[resourceName]
 			if !ok {
 				resourceLimits[resourceName] = limit
