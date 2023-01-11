@@ -209,18 +209,20 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 	}
 	deployer.localizer = l
 
-	finv, err := feedinventory.NewController(clusternetclient,
-		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
-		clusternetInformerFactory.Apps().V1alpha1().FeedInventories(),
-		clusternetInformerFactory.Apps().V1alpha1().Manifests(),
-		deployer.recorder,
-		feedinventory.NewInTreeRegistry(),
-		reservedNamespace, nil)
-	if err != nil {
-		return nil, err
+	// When using external FeedInventory controller, this feature gate should be closed
+	if utilfeature.DefaultFeatureGate.Enabled(features.FeedInventory) {
+		finv, err := feedinventory.NewController(clusternetclient,
+			clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
+			clusternetInformerFactory.Apps().V1alpha1().FeedInventories(),
+			clusternetInformerFactory.Apps().V1alpha1().Manifests(),
+			deployer.recorder,
+			feedinventory.NewInTreeRegistry(),
+			reservedNamespace, nil)
+		if err != nil {
+			return nil, err
+		}
+		deployer.finvController = finv
 	}
-	deployer.finvController = finv
-
 	aggregatestatusController, err := aggregatestatus.NewController(clusternetclient,
 		clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
 		clusternetInformerFactory.Apps().V1alpha1().Descriptions(),
