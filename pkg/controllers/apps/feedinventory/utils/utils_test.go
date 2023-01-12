@@ -265,6 +265,54 @@ func TestPluginParser(t *testing.T) {
 				},
 			},
 		},
+
+		{
+			name: "multiple-qos-with-empty-request",
+			podSpec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{
+						Name:  "best-effort",
+						Image: "nginx",
+					},
+					{
+						Name:  "burstable",
+						Image: "nginx",
+						Resources: corev1.ResourceRequirements{
+							Requests: map[corev1.ResourceName]resource.Quantity{
+								corev1.ResourceMemory: newQuantity("128Mi"),
+								corev1.ResourceCPU:    newQuantity("500m"),
+							},
+							Limits: map[corev1.ResourceName]resource.Quantity{
+								corev1.ResourceMemory: newQuantity("256Mi"),
+								corev1.ResourceCPU:    newQuantity("500m"),
+							},
+						},
+					},
+					{
+						Name:  "guaranteed",
+						Image: "nginx",
+						Resources: corev1.ResourceRequirements{
+							Limits: map[corev1.ResourceName]resource.Quantity{
+								corev1.ResourceMemory: newQuantity("128Mi"),
+								corev1.ResourceCPU:    newQuantity("500m"),
+							},
+						},
+					},
+				},
+			},
+			requirements: appsapi.ReplicaRequirements{
+				Resources: corev1.ResourceRequirements{
+					Requests: map[corev1.ResourceName]resource.Quantity{
+						corev1.ResourceMemory: newQuantity("256Mi"),
+						corev1.ResourceCPU:    newQuantity("1000m"),
+					},
+					Limits: map[corev1.ResourceName]resource.Quantity{
+						corev1.ResourceMemory: newQuantity("384Mi"),
+						corev1.ResourceCPU:    newQuantity("1000m"),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
