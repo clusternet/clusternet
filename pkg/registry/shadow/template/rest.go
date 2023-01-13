@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -29,7 +28,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
 	"k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -250,84 +247,11 @@ func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.Va
 // In case of success, the list of deleted objects will be returned.
 // Copied from k8s.io/apiserver/pkg/registry/generic/registry/store.go and modified.
 func (r *REST) DeleteCollection(ctx context.Context, deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions, listOptions *internalversion.ListOptions) (runtime.Object, error) {
-	if listOptions == nil {
-		listOptions = &internalversion.ListOptions{}
-	} else {
-		listOptions = listOptions.DeepCopy()
-	}
-
-	listObj, err := r.List(ctx, listOptions)
-	if err != nil {
-		return nil, err
-	}
-	items, err := meta.ExtractList(listObj)
-	if err != nil {
-		return nil, err
-	}
-	if len(items) == 0 {
-		// Nothing to delete, return now
-		return listObj, nil
-	}
-	// Spawn a number of goroutines, so that we can issue requests to storage
-	// in parallel to speed up deletion.
-	// It is proportional to the number of items to delete, up to
-	// deleteCollectionWorkers (it doesn't make much sense to spawn 16
-	// workers to delete 10 items).
-	workersNumber := r.deleteCollectionWorkers
-	if workersNumber > len(items) {
-		workersNumber = len(items)
-	}
-	if workersNumber < 1 {
-		workersNumber = 1
-	}
-	wg := sync.WaitGroup{}
-	toProcess := make(chan int, 2*workersNumber)
-	errs := make(chan error, workersNumber+1)
-
-	go func() {
-		defer utilruntime.HandleCrash(func(panicReason interface{}) {
-			errs <- fmt.Errorf("DeleteCollection distributor panicked: %v", panicReason)
-		})
-		for i := 0; i < len(items); i++ {
-			toProcess <- i
-		}
-		close(toProcess)
-	}()
-
-	wg.Add(workersNumber)
-	for i := 0; i < workersNumber; i++ {
-		go func() {
-			// panics don't cross goroutine boundaries
-			defer utilruntime.HandleCrash(func(panicReason interface{}) {
-				errs <- fmt.Errorf("DeleteCollection goroutine panicked: %v", panicReason)
-			})
-			defer wg.Done()
-
-			for index := range toProcess {
-				accessor, err := meta.Accessor(items[index])
-				if err != nil {
-					errs <- err
-					return
-				}
-				// DeepCopy the deletion options because individual graceful deleters communicate changes via a mutating
-				// function in the delete strategy called in the delete method.  While that is always ugly, it works
-				// when making a single call.  When making multiple calls via delete collection, the mutation applied to
-				// pod/A can change the option ultimately used for pod/B.
-				if _, _, err := r.Delete(ctx, accessor.GetName(), deleteValidation, options.DeepCopy()); err != nil && !errors.IsNotFound(err) {
-					klog.V(4).InfoS("Delete object in DeleteCollection failed", "object", klog.KObj(accessor), "err", err)
-					errs <- err
-					return
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	select {
-	case err := <-errs:
-		return nil, err
-	default:
-		return listObj, nil
-	}
+	// Related issue: https://github.com/clusternet/clusternet/issues/528
+	// When clusternet-agent runs in parent cluster, if we delete a Subscription, then corresponding manifest feeds are deleted as well except namespace.
+	// That's because when namespace were deleted, all namespaced API group include `shadow` group were deleted triggered by a Terminating namespace.
+	// Then namespace-controller will delete all content ForGroupVersionResource.
+	return nil, nil
 }
 
 // Watch makes a matcher for the given label and field.
