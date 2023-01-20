@@ -17,6 +17,7 @@ limitations under the License.
 package utils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -140,6 +141,13 @@ func CheckIfInstallable(chart *chart.Chart) error {
 
 func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
+	if hr.Spec.ReplaceCRDs != nil && *hr.Spec.ReplaceCRDs {
+		err := replaceCRD(cfg, chart)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	client := action.NewInstall(cfg)
 	client.ReleaseName = getReleaseName(hr)
 	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
@@ -170,6 +178,14 @@ func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 
 func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
+
+	if hr.Spec.ReplaceCRDs != nil && *hr.Spec.ReplaceCRDs {
+		err := replaceCRD(cfg, chart)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	client := action.NewUpgrade(cfg)
 	client.MaxHistory = cfg.Releases.MaxHistory // need to rewire it here
 	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
@@ -327,4 +343,24 @@ func getReleaseName(hr *appsapi.HelmRelease) string {
 		releaseName = *hr.Spec.ReleaseName
 	}
 	return releaseName
+}
+
+func replaceCRD(cfg *action.Configuration, targetChart *chart.Chart) error {
+	queue := []*chart.Chart{targetChart}
+	for _, c := range queue {
+		for _, crd := range c.CRDObjects() {
+			crdResource, err := cfg.KubeClient.Build(bytes.NewBuffer(crd.File.Data), true)
+			if err != nil {
+				return err
+			}
+			res, err := cfg.KubeClient.Update(crdResource, crdResource, true)
+			if err != nil {
+				klog.V(1).Infof("crd replace error, %s ", err.Error())
+				return err
+			}
+			klog.V(4).Infof("crd replaced success, %v", res.Updated)
+		}
+		queue = append(queue, c.Dependencies()...)
+	}
+	return nil
 }
