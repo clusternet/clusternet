@@ -349,14 +349,12 @@ func replaceCRDs(cfg *action.Configuration, hr *appsapi.HelmRelease, chart *char
 	}
 
 	if hr.Spec.ReplaceCRDs != nil && *hr.Spec.ReplaceCRDs {
-		if errs := doReplaceCRDs(cfg, chart); len(errs) > 0 {
-			return errors.NewAggregate(errs)
-		}
+		return doReplaceCRDs(cfg, chart)
 	}
 	return nil
 }
 
-func doReplaceCRDs(cfg *action.Configuration, targetChart *chart.Chart) []error {
+func doReplaceCRDs(cfg *action.Configuration, targetChart *chart.Chart) error {
 	var allErrs []error
 	for _, crd := range targetChart.CRDObjects() {
 		crdResource, err := cfg.KubeClient.Build(bytes.NewBuffer(crd.File.Data), true)
@@ -372,8 +370,9 @@ func doReplaceCRDs(cfg *action.Configuration, targetChart *chart.Chart) []error 
 		klog.V(4).Infof("crd replaced success, %v", res.Updated)
 	}
 	for _, dep := range targetChart.Dependencies() {
-		errs := doReplaceCRDs(cfg, dep)
-		allErrs = append(allErrs, errs...)
+		if err := doReplaceCRDs(cfg, dep); err != nil {
+			allErrs = append(allErrs, err)
+		}
 	}
-	return allErrs
+	return errors.NewAggregate(allErrs)
 }
