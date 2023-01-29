@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/errors"
 	"os"
 	"reflect"
 	"strings"
@@ -141,11 +142,10 @@ func CheckIfInstallable(chart *chart.Chart) error {
 
 func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
-	if hr.Spec.ReplaceCRDs != nil && *hr.Spec.ReplaceCRDs {
-		err := replaceCRD(cfg, chart)
-		if err != nil {
-			return nil, err
-		}
+
+	err := replaceCRDs(cfg, hr, chart)
+	if err != nil {
+		return nil, err
 	}
 
 	client := action.NewInstall(cfg)
@@ -179,11 +179,9 @@ func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
 
-	if hr.Spec.ReplaceCRDs != nil && *hr.Spec.ReplaceCRDs {
-		err := replaceCRD(cfg, chart)
-		if err != nil {
-			return nil, err
-		}
+	err := replaceCRDs(cfg, hr, chart)
+	if err != nil {
+		return nil, err
 	}
 
 	client := action.NewUpgrade(cfg)
@@ -345,22 +343,37 @@ func getReleaseName(hr *appsapi.HelmRelease) string {
 	return releaseName
 }
 
-func replaceCRD(cfg *action.Configuration, targetChart *chart.Chart) error {
-	queue := []*chart.Chart{targetChart}
-	for _, c := range queue {
-		for _, crd := range c.CRDObjects() {
-			crdResource, err := cfg.KubeClient.Build(bytes.NewBuffer(crd.File.Data), true)
-			if err != nil {
-				return err
-			}
-			res, err := cfg.KubeClient.Update(crdResource, crdResource, true)
-			if err != nil {
-				klog.V(1).Infof("crd replace error, %s ", err.Error())
-				return err
-			}
-			klog.V(4).Infof("crd replaced success, %v", res.Updated)
+func replaceCRDs(cfg *action.Configuration, hr *appsapi.HelmRelease, chart *chart.Chart) error {
+	if hr.Spec.SkipCRDs != nil && *hr.Spec.SkipCRDs {
+		return nil
+	}
+
+	if hr.Spec.ReplaceCRDs != nil && *hr.Spec.ReplaceCRDs {
+		if errs := doReplaceCRDs(cfg, chart); len(errs) > 0 {
+			return errors.NewAggregate(errs)
 		}
-		queue = append(queue, c.Dependencies()...)
 	}
 	return nil
+}
+
+func doReplaceCRDs(cfg *action.Configuration, targetChart *chart.Chart) []error {
+	var allErrs []error
+	for _, crd := range targetChart.CRDObjects() {
+		crdResource, err := cfg.KubeClient.Build(bytes.NewBuffer(crd.File.Data), true)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			continue
+		}
+		res, err := cfg.KubeClient.Update(crdResource, crdResource, true)
+		if err != nil {
+			klog.V(1).Infof("crd replace error, %s ", err.Error())
+			allErrs = append(allErrs, err)
+		}
+		klog.V(4).Infof("crd replaced success, %v", res.Updated)
+	}
+	for _, dep := range targetChart.Dependencies() {
+		errs := doReplaceCRDs(cfg, dep)
+		allErrs = append(allErrs, errs...)
+	}
+	return allErrs
 }
