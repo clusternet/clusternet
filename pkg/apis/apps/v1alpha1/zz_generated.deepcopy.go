@@ -721,6 +721,11 @@ func (in *HelmOptions) DeepCopyInto(out *HelmOptions) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.ReplaceCRDs != nil {
+		in, out := &in.ReplaceCRDs, &out.ReplaceCRDs
+		*out = new(bool)
+		**out = **in
+	}
 	if in.DisableHooks != nil {
 		in, out := &in.DisableHooks, &out.DisableHooks
 		*out = new(bool)

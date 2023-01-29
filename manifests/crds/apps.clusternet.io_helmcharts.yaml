@@ -93,6 +93,10 @@ spec:
                   is a deleted release that remains in the history. This is unsafe
                   in production.
                 type: boolean
+              replaceCRDs:
+                description: ReplaceCRDs replace all crds in chart and sub charts
+                  before upgrade and install, not working when SkipCRDs true
+                type: boolean
               repo:
                 description: a Helm Repository to be used. OCI-based registries are
                   also supported. For example, https://charts.bitnami.com/bitnami

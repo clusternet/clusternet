@@ -148,6 +148,12 @@ type HelmOptions struct {
 	// +kubebuilder:validation:Type=boolean
 	SkipCRDs *bool `json:"skipCRDs,omitempty"`
 
+	// ReplaceCRDs replace all crds in chart and sub charts before upgrade and install, not working when SkipCRDs true
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	ReplaceCRDs *bool `json:"replaceCRDs,omitempty"`
+
 	// DisableHooks disables hook processing if set to true.
 	//
 	// +optional
