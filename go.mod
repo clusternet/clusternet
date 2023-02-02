@@ -1,6 +1,6 @@
 module github.com/clusternet/clusternet
 
-go 1.17
+go 1.18
 
 require (
 	github.com/davecgh/go-spew v1.1.1
@@ -186,7 +186,6 @@ require (
 )
 
 replace (
-	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.20.0
 	go.opentelemetry.io/otel => go.opentelemetry.io/otel v0.20.0
 	go.opentelemetry.io/otel/oteltest => go.opentelemetry.io/otel/oteltest v0.20.0

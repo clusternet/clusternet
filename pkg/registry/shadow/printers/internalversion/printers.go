@@ -715,7 +715,7 @@ var (
 	podFailedConditions  = []metav1.TableRowCondition{{Type: metav1.RowCompleted, Status: metav1.ConditionTrue, Reason: string(corev1.PodFailed), Message: "The pod failed."}}
 )
 
-//func printPodList(podList *corev1.PodList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+// func printPodList(podList *corev1.PodList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 func printPodList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	podList := &corev1.PodList{}
 	// unstructObj
@@ -734,7 +734,7 @@ func printPodList(unstructList *unstructured.UnstructuredList, options printers.
 	return rows, nil
 }
 
-//func printPod(pod *corev1.Pod, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+// func printPod(pod *corev1.Pod, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 func printPod(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	pod := &corev1.Pod{}
 	// unstructObj
@@ -954,7 +954,7 @@ func printPodDisruptionBudget(unstruct *unstructured.Unstructured, options print
 	return []metav1.TableRow{row}, nil
 }
 
-//func printPodDisruptionBudgetList(list *policyv1.PodDisruptionBudgetList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+// func printPodDisruptionBudgetList(list *policyv1.PodDisruptionBudgetList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 func printPodDisruptionBudgetList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	list := &policyv1.PodDisruptionBudgetList{}
 	// unstructObj
@@ -973,7 +973,7 @@ func printPodDisruptionBudgetList(unstructList *unstructured.UnstructuredList, o
 }
 
 // TODO(AdoHe): try to put wide output in a single method
-//func printReplicationController(obj *corev1.ReplicationController, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+// func printReplicationController(obj *corev1.ReplicationController, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 func printReplicationController(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	obj := &corev1.ReplicationController{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {
@@ -1012,7 +1012,7 @@ func printReplicationControllerList(unstructList *unstructured.UnstructuredList,
 	return rows, nil
 }
 
-//func printReplicaSet(obj *appsv1.ReplicaSet, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+// func printReplicaSet(obj *appsv1.ReplicaSet, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 func printReplicaSet(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	obj := &appsv1.ReplicaSet{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {
@@ -1034,7 +1034,7 @@ func printReplicaSet(unstruct *unstructured.Unstructured, options printers.Gener
 	return []metav1.TableRow{row}, nil
 }
 
-//func printReplicaSetList(list *appsv1.ReplicaSetList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+// func printReplicaSetList(list *appsv1.ReplicaSetList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 func printReplicaSetList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	list := &appsv1.ReplicaSetList{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructList.UnstructuredContent(), list); err != nil {
@@ -1051,7 +1051,7 @@ func printReplicaSetList(unstructList *unstructured.UnstructuredList, options pr
 	return rows, nil
 }
 
-//func printJob(obj *batchv1.Job, options printers.GenerateOptions) ([]metav1.TableRow, error) {
+// func printJob(obj *batchv1.Job, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 func printJob(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	obj := &batchv1.Job{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {

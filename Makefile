@@ -17,7 +17,7 @@ CRD_OPTIONS ?= "crd:crdVersions=v1"
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
 BASEIMAGE ?= alpine:3.16.2
-GOVERSION ?= 1.17.13
+GOVERSION ?= 1.18.10
 REGISTRY ?= ghcr.io
 
 # Run tests
@@ -40,7 +40,7 @@ verify:
 # Run go fmt against code
 .PHONY: fmt
 fmt:
-	@find . -type f -name '*.go'| grep -v "/vendor/" | xargs gofmt -w -s
+	@find . -type f -name '*.go'| grep -v "/vendor/" | grep -v "/pkg/generated/" | xargs gofmt -w -s
 
 # Run go vet against code
 .PHONY: vet
