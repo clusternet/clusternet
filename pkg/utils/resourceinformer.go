@@ -45,7 +45,7 @@ func (ri *resourceInformer) HasSynced() bool {
 }
 
 // NewResourceInformer returns a filtered informer limited to resources managed by Clusternet
-//// as indicated by labeling.
+// as indicated by labeling.
 func NewResourceInformer(client ResourceClient, apiResource *metav1.APIResource,
 	handler cache.ResourceEventHandlerFuncs) *resourceInformer {
 	store, controller := newResourceInformer(client, apiResource, handler)

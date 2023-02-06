@@ -263,7 +263,7 @@ func (c *ServiceImportController) Run(ctx context.Context) {
 	controller.Run(ctx)
 }
 
-//recycleServiceImport recycle derived service and derived endpoint slices.
+// recycleServiceImport recycle derived service and derived endpoint slices.
 func (c *ServiceImportController) recycleServiceImport(ctx context.Context, si *v1alpha1.ServiceImport) error {
 	rawServiceName, _ := si.Labels[known.LabelServiceName]
 	rawServiceNamespace, _ := si.Labels[known.LabelServiceNameSpace]
