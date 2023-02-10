@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dixudx/yacht v0.2.1
-	github.com/emicklei/go-restful v2.9.5+incompatible
+	github.com/emicklei/go-restful v2.16.0+incompatible
 	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/google/go-cmp v0.5.6
 	github.com/gorilla/mux v1.8.0
