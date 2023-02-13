@@ -34,6 +34,9 @@ import (
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
+// Name is the name of the plugin used in the plugin registry and configurations.
+const Name = names.DefaultBinder
+
 // DefaultBinder binds subscriptions to clusters using a clusternet client.
 type DefaultBinder struct {
 	handle framework.Handle
@@ -48,7 +51,7 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 
 // Name returns the name of the plugin.
 func (pl *DefaultBinder) Name() string {
-	return names.DefaultBinder
+	return Name
 }
 
 // Bind binds subscriptions to clusters using the clusternet client.

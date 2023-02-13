@@ -293,13 +293,6 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 
 	kind := crd.Spec.Names.Kind
 	resource := crd.Spec.Names.Plural
-	selfLinkPrefix := ""
-	switch crd.Spec.Scope {
-	case apiextensionsv1.ClusterScoped:
-		selfLinkPrefix = "/" + path.Join("apis", shadowapi.GroupName, shadowapi.SchemeGroupVersion.Version) + "/" + resource + "/"
-	case apiextensionsv1.NamespaceScoped:
-		selfLinkPrefix = "/" + path.Join("apis", shadowapi.GroupName, shadowapi.SchemeGroupVersion.Version, "namespaces") + "/"
-	}
 
 	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, runtime.NewParameterCodec(Scheme), r.manifestLister, r.reservedNamespace)
 	restStorage.SetNamespaceScoped(crd.Spec.Scope == apiextensionsv1.NamespaceScoped)
@@ -331,9 +324,8 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	r.storages[resource] = restStorage
 	r.requestScopes[resource] = &handlers.RequestScope{
 		Namer: handlers.ContextBasedNaming{
-			SelfLinker:         meta.NewAccessor(),
-			ClusterScoped:      crd.Spec.Scope == apiextensionsv1.ClusterScoped,
-			SelfLinkPathPrefix: selfLinkPrefix,
+			Namer:         meta.NewAccessor(),
+			ClusterScoped: crd.Spec.Scope == apiextensionsv1.ClusterScoped,
 		},
 		Serializer:               crdGroupInfo.NegotiatedSerializer,
 		ParameterCodec:           crdGroupInfo.ParameterCodec,

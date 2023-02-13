@@ -70,10 +70,6 @@ func FindOCIChart(chartRepo, chartName, chartVersion string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	err = registryClient.WithResolver(true, false)
-	if err != nil {
-		return false, err
-	}
 
 	// Retrieve list of tags for repository
 	ref := fmt.Sprintf("%s/%s", strings.TrimPrefix(chartRepo, fmt.Sprintf("%s://", registry.OCIScheme)), chartName)

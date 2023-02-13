@@ -5,39 +5,34 @@ run:
   deadline: 10m
 
 linters:
-  fast: false
-  enable:
-    - deadcode
-    - unused
-    - gci
-    - varcheck
-    - ineffassign
-    - goimports
-    - gofmt
-    - misspell
-    - unparam
-    - unconvert
-    - govet
-    - errcheck
-    - structcheck
   disable-all: true
+  enable: # please keep this alphabetized
+    - errcheck
+    - gocritic
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - stylecheck
+    - unconvert
+    - unparam
+    - unused
 
 linters-settings:
-  gci:
-    # Checks that no inline Comments are present.
-    # Default: false
-    no-inline-comments: false
-    # Checks that no prefix Comments(comment lines above an import) are present.
-    # Default: false
-    no-prefix-comments: false
-    # Section configuration to compare against.
-    # Section names are case-insensitive and may contain parameters in ().
-    # Default: ["standard", "default"]
-    sections:
-      - standard # Captures all standard packages if they do not match another section.
-      - default # Contains all imports that could not be matched to another section type.
-      - prefix(github.com/clusternet) # Groups all imports with the specified Prefix.
-    # Separators that should be present between sections.
-    # Default: ["newLine"]
-    section-separators:
-      - newLine
+  gocritic:
+    enabled-checks:
+      - equalFold
+      - boolExprSimplify
+  staticcheck:
+    checks: [
+      "all",
+      "-SA1024",
+      "-SA1019", # TODO(fix) Using a deprecated function, variable, constant or field
+      "-SA2002"  # TODO(fix) Called testing.T.FailNow or SkipNow in a goroutine, which isn’t allowed
+    ]
+  stylecheck:
+    checks: [
+      "ST1019",  # Importing the same package multiple times.
+    ]

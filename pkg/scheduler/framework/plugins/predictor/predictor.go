@@ -41,6 +41,9 @@ import (
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
 )
 
+// Name is the name of the plugin used in the plugin registry and configurations.
+const Name = names.Predictor
+
 var _ framework.PredictPlugin = &Predictor{}
 
 // Predictor is a plugin than checks if a subscription need resources
@@ -55,7 +58,7 @@ func New(_ runtime.Object, h framework.Handle) (framework.Plugin, error) {
 
 // Name returns name of the plugin. It is used in logs, etc.
 func (pl *Predictor) Name() string {
-	return names.Predictor
+	return Name
 }
 
 // Predict invoked by scheduler predictor plugin

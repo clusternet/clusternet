@@ -31,6 +31,9 @@ import (
 )
 
 const (
+	// NameDynamicAssigner is the name of the plugin used in the plugin registry and configurations.
+	NameDynamicAssigner = names.DynamicAssigner
+
 	// preAssignStateKey is the key in CycleState to DynamicAssigner pre-computed data.
 	// Using the name of the plugin will likely help us avoid collisions with other plugins.
 	preAssignStateKey = "PreAssign" + names.DynamicAssigner
@@ -75,7 +78,7 @@ func NewDynamicAssigner(_ runtime.Object, handle framework.Handle) (framework.Pl
 
 // Name returns the name of the plugin.
 func (pl *DynamicAssigner) Name() string {
-	return names.DynamicAssigner
+	return NameDynamicAssigner
 }
 
 func (pl *DynamicAssigner) PreAssign(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) *framework.Status {

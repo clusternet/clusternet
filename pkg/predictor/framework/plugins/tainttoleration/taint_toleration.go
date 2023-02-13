@@ -32,6 +32,9 @@ import (
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins/names"
 )
 
+// Name is the name of the plugin used in the plugin registry and configurations.
+const Name = names.TaintToleration
+
 // TaintToleration is a plugin that checks if a pod tolerates a node's taints.
 type TaintToleration struct {
 	handle framework.Handle
@@ -42,7 +45,7 @@ var _ framework.ScorePlugin = &TaintToleration{}
 
 // Name returns name of the plugin. It is used in logs, etc.
 func (pl *TaintToleration) Name() string {
-	return names.TaintToleration
+	return Name
 }
 
 // Filter invoked at the filter extension point.

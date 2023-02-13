@@ -29,6 +29,9 @@ import (
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
+// Name is the name of the plugin used in the plugin registry and configurations.
+const Name = names.DefaultComputer
+
 // DefaultComputer compute replicas according to the resource.
 type DefaultComputer struct {
 	handle framework.Handle
@@ -43,7 +46,7 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 
 // Name returns the name of the plugin.
 func (pl *DefaultComputer) Name() string {
-	return names.DefaultComputer
+	return Name
 }
 
 // Compute compute acceptable replicas for each filtered node

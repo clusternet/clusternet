@@ -186,15 +186,17 @@ func (c *ServiceImportController) applyServiceFromServiceImport(svcImport *v1alp
 		},
 	}
 
-	derivedService, err := c.localk8sClient.CoreV1().Services(svcImport.Namespace).Create(context.TODO(), newService, metav1.CreateOptions{})
-	if err != nil && !errors.IsAlreadyExists(err) {
-		klog.Errorf("Create delicate service(%s/%s) failed, for: %v", newService.Namespace, newService.Name, err)
-		return err
-	}
-
-	derivedService, err = c.localk8sClient.CoreV1().Services(svcImport.Namespace).Get(context.TODO(), newService.Name, metav1.GetOptions{})
+	derivedService, err := c.localk8sClient.CoreV1().Services(svcImport.Namespace).Get(context.TODO(), newService.Name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		if !errors.IsNotFound(err) {
+			return err
+		}
+
+		derivedService, err = c.localk8sClient.CoreV1().Services(svcImport.Namespace).Create(context.TODO(), newService, metav1.CreateOptions{})
+		if err != nil {
+			klog.Errorf("Create delicate service(%s/%s) failed, for: %v", newService.Namespace, newService.Name, err)
+			return err
+		}
 	}
 
 	if !reflect.DeepEqual(derivedService.Spec.Ports, newService.Spec.Ports) {
