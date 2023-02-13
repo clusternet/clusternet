@@ -361,7 +361,7 @@ func (ss *ShadowAPIServer) newAPIGroupVersion(apiGroupInfo *genericapiserver.API
 		UnsafeConvertor:       runtime.UnsafeObjectConvertor(apiGroupInfo.Scheme),
 		Defaulter:             apiGroupInfo.Scheme,
 		Typer:                 apiGroupInfo.Scheme,
-		Linker:                runtime.SelfLinker(meta.NewAccessor()),
+		Namer:                 runtime.Namer(meta.NewAccessor()),
 
 		EquivalentResourceRegistry: ss.GenericAPIServer.EquivalentResourceRegistry,
 

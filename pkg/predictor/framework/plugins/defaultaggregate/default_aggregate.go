@@ -33,6 +33,9 @@ type DefaultAggregator struct {
 	handle framework.Handle
 }
 
+// Name is the name of the plugin used in the plugin registry and configurations.
+const Name = names.DefaultAggregator
+
 var _ framework.AggregatePlugin = &DefaultAggregator{}
 
 // New creates a DefaultAssigner.
@@ -42,7 +45,7 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 
 // Name returns the name of the plugin.
 func (pl *DefaultAggregator) Name() string {
-	return names.DefaultAggregator
+	return Name
 }
 
 // Aggregate aggregate acceptable replicas for all filtered node

@@ -118,7 +118,7 @@ func (o *HubServerOptions) Validate() error {
 
 // Complete fills in fields required to have valid data
 func (o *HubServerOptions) Complete() error {
-	o.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath = o.ClientConnection.Kubeconfig
+	o.RecommendedOptions.CoreAPI.CoreAPIKubeconfigPath = o.ControllerOptions.ClientConnection.Kubeconfig
 
 	if o.PeerAdvertiseAddress == nil || o.PeerAdvertiseAddress.IsUnspecified() {
 		hostIP, err := o.RecommendedOptions.SecureServing.DefaultExternalAddress()

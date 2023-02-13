@@ -43,7 +43,7 @@ type PredictorReplicas map[string]int32
 // PredictorResults specify
 type PredictorResults struct {
 	// Replicas records the max acceptable replicas in this cluster
-	Replicas PredictorReplicas `json:"replicas,omitemtpy"`
+	Replicas PredictorReplicas `json:"replicas,omitempty"`
 }
 
 // PredictorProvider is an interface that provides replicas predictions.

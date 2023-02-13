@@ -19,7 +19,6 @@ package plugins
 import (
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/defaultassigner"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/defaultbinder"
-	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/predictor"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/tainttoleration"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
@@ -28,10 +27,10 @@ import (
 // NewInTreeRegistry builds the registry with all the in-tree plugins.
 func NewInTreeRegistry() runtime.Registry {
 	return runtime.Registry{
-		names.DefaultBinder:   defaultbinder.New,
-		names.TaintToleration: tainttoleration.New,
-		names.StaticAssigner:  defaultassigner.NewStaticAssigner,
-		names.DynamicAssigner: defaultassigner.NewDynamicAssigner,
-		names.Predictor:       predictor.New,
+		defaultbinder.Name:                  defaultbinder.New,
+		tainttoleration.Name:                tainttoleration.New,
+		defaultassigner.NameStaticAssigner:  defaultassigner.NewStaticAssigner,
+		defaultassigner.NameDynamicAssigner: defaultassigner.NewDynamicAssigner,
+		predictor.Name:                      predictor.New,
 	}
 }

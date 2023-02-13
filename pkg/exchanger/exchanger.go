@@ -33,9 +33,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/proxy"
-	genericfeatures "k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/rest"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
@@ -191,7 +189,7 @@ func (e *Exchanger) ProxyConnect(ctx context.Context, id string, opts *proxies.S
 			}
 		}
 
-		handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, false, true, true, responder)
+		handler := newThrottledUpgradeAwareProxyHandler(location, transport, false, false, true, responder)
 		handler.ServeHTTP(writer, request)
 	})
 
@@ -264,12 +262,10 @@ func (e *Exchanger) ClusterLocation(id string, opts *proxies.Socket) (*url.URL, 
 	return location, transport, nil
 }
 
-func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired, interceptRedirects, useLocationHost bool, responder rest.Responder) *proxy.UpgradeAwareHandler {
+func newThrottledUpgradeAwareProxyHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired, useLocationHost bool, responder rest.Responder) *proxy.UpgradeAwareHandler {
 	// if location.Path is empty, a status code 301 will be returned by below handler with a new location
 	// ends with a '/'. This is essentially a hack for http://issue.k8s.io/4958.
 	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, proxy.NewErrorResponder(responder))
-	handler.InterceptRedirects = interceptRedirects && utilfeature.DefaultFeatureGate.Enabled(genericfeatures.StreamingProxyRedirects)
-	handler.RequireSameHostRedirects = utilfeature.DefaultFeatureGate.Enabled(genericfeatures.ValidateProxyRedirects)
 	handler.UseLocationHost = useLocationHost
 	return handler
 }

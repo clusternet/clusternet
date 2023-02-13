@@ -28,6 +28,9 @@ import (
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
 )
 
+// NameStaticAssigner is the name of the plugin used in the plugin registry and configurations.
+const NameStaticAssigner = names.StaticAssigner
+
 // StaticAssigner assigns replicas to clusters.
 type StaticAssigner struct {
 	handle framework.Handle
@@ -42,7 +45,7 @@ func NewStaticAssigner(_ runtime.Object, handle framework.Handle) (framework.Plu
 
 // Name returns the name of the plugin.
 func (pl *StaticAssigner) Name() string {
-	return names.StaticAssigner
+	return NameStaticAssigner
 }
 
 // Assign assigns subscriptions to clusters using the clusternet client.

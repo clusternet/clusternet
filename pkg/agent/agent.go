@@ -56,6 +56,9 @@ import (
 const (
 	// default number of threads
 	defaultThreadiness = 2
+
+	httpPrefix  = "http://"
+	httpsPrefix = "https://"
 )
 
 // Agent defines configuration for clusternet-agent
@@ -141,8 +144,8 @@ func NewAgent(registrationOpts *ClusterRegistrationOptions, controllerOpts *util
 	var p *predictor.Server
 	if registrationOpts.serveInternalPredictor {
 		// predictorAddr is in the form "host:port"
-		predictorAddr := strings.TrimLeft(registrationOpts.PredictorAddress, "http://")
-		predictorAddr = strings.TrimLeft(predictorAddr, "https://")
+		predictorAddr := strings.TrimLeft(registrationOpts.PredictorAddress, httpPrefix)
+		predictorAddr = strings.TrimLeft(predictorAddr, httpsPrefix)
 		p, err = predictor.NewServer(childKubeConfig, childKubeClientSet, kubeInformerFactory, predictorAddr)
 		if err != nil {
 			return nil, err
