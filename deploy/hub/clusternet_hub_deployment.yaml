@@ -69,7 +69,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-hub
-          image: ghcr.io/clusternet/clusternet-hub:v0.13.0
+          image: ghcr.io/clusternet/clusternet-hub:v0.14.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
