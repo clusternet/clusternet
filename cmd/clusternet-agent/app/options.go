@@ -74,9 +74,7 @@ func (opts *options) AddFlags(fs *pflag.FlagSet) {
 
 // NewOptions creates a new *options with sane defaults
 func NewOptions() (*options, error) {
-	// "self-cluster" is the legacy name for lease
-	// TODO: rename to "clusternet-agent"
-	controllerOptions, err := utils.NewControllerOptions("self-cluster", known.ClusternetSystemNamespace)
+	controllerOptions, err := utils.NewControllerOptions("clusternet-agent", known.ClusternetSystemNamespace)
 	if err != nil {
 		return nil, err
 	}

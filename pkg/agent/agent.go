@@ -57,6 +57,9 @@ const (
 	// default number of threads
 	defaultThreadiness = 2
 
+	legacyLeaseName           = "self-cluster"
+	legacyClusterIDAnnotation = "legacy-cluster-id"
+
 	httpPrefix  = "http://"
 	httpsPrefix = "https://"
 )
@@ -361,7 +364,44 @@ func (agent *Agent) getClusterID(ctx context.Context, childClientSet kubernetes.
 			agent.controllerOptions.LeaderElection.ResourceName, err)
 		return "", err
 	}
-	return lease.UID, nil
+
+	// TODO: remove below legacy logic in release v0.17.0
+	// prefer to use legacy lease id
+	if legacyID, ok := lease.GetAnnotations()[legacyClusterIDAnnotation]; ok {
+		return types.UID(legacyID), nil
+	}
+	// check whether legacy lease exists
+	leagcyLease, err := childClientSet.CoordinationV1().
+		Leases(agent.controllerOptions.LeaderElection.ResourceNamespace).
+		Get(ctx, legacyLeaseName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return lease.UID, nil
+		}
+		klog.Errorf("unable to retrieve %s/%s Lease object: %v",
+			agent.controllerOptions.LeaderElection.ResourceNamespace,
+			legacyLeaseName, err)
+		return "", err
+	}
+	// migrate legacy lease
+	patchData, err := utils.GetPatchDataForLabelsAndAnnotations(nil, map[string]*string{
+		legacyClusterIDAnnotation: utilpointer.StringPtr(string(leagcyLease.UID)),
+	})
+	if err != nil {
+		klog.Errorf("failed to create patch data for legacy lease: %v", err)
+		return "", err
+	}
+	_, err = childClientSet.CoordinationV1().Leases(agent.controllerOptions.LeaderElection.ResourceNamespace).Patch(ctx,
+		agent.controllerOptions.LeaderElection.ResourceName,
+		types.MergePatchType,
+		patchData,
+		metav1.PatchOptions{})
+	if err != nil {
+		klog.Errorf("failed to migrate legacy lease %s/%s: %v",
+			agent.controllerOptions.LeaderElection.ResourceNamespace, legacyLeaseName, err)
+		return "", err
+	}
+	return leagcyLease.UID, nil
 }
 
 func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) error {
