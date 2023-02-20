@@ -59,17 +59,12 @@ spec:
         app: clusternet-hub
     spec:
       serviceAccountName: clusternet-hub
-      volumes:
-        - hostPath:
-            path: /etc/clusternet
-            type: DirectoryOrCreate
-          name: clusternet
       tolerations:
         - key: node-role.kubernetes.io/master
           operator: Exists
       containers:
         - name: clusternet-hub
-          image: ghcr.io/clusternet/clusternet-hub:v0.14.0
+          image: ghcr.io/clusternet/clusternet-hub:v0.15.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
@@ -83,17 +78,15 @@ spec:
             - name: peer
               containerPort: 8123
               protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
           command:
             - /usr/local/bin/clusternet-hub
+          args:
             - --secure-port=443
-            - --feature-gates=SocketConnection=true,Deployer=true,ShadowAPI=true,FeedInUseProtection=true,FeedInventory=true
-            - --anonymous-auth-supported=true
+            - --feature-gates=SocketConnection=true,ShadowAPI=true
             - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
             - --reserved-namespace=$(RESERVED_NAMESPACE)
             - --peer-port=8123
             # -v=4
-            # --cluster-api-kubeconfig=/etc/clusternet/my-capi.conf
-          volumeMounts:
-            - mountPath: /etc/clusternet
-              name: clusternet
-              readOnly: true
