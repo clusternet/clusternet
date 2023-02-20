@@ -428,7 +428,7 @@ func TestDivideReplicas(t *testing.T) {
 	}
 }
 
-func Test_dynamicDivideReplicas(t *testing.T) {
+func TestDynamicDivideReplicas(t *testing.T) {
 	tests := []struct {
 		name                 string
 		desiredReplicas      int32
