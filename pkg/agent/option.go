@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	bootstraputil "k8s.io/cluster-bootstrap/token/util"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/features"
@@ -201,7 +202,10 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 		allErrs = append(allErrs, fmt.Errorf("invalid sync mode %q, only 'Pull', 'Push' and 'Dual' are supported", opts.ClusterSyncMode))
 	}
 
-	// TODO: check bootstrap token
+	// once getting registered, expired bootstrap tokens do no harm
+	if !bootstraputil.IsValidBootstrapToken(opts.BootstrapToken) {
+		allErrs = append(allErrs, fmt.Errorf("the bootstrap token %q is invalid", opts.BootstrapToken))
+	}
 
 	return allErrs
 }
