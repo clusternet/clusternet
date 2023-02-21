@@ -87,7 +87,11 @@ func (r *ScaleREST) Update(ctx context.Context, name string, objInfo rest.Update
 	return scaleFromUnstructuredObject(obj.(*unstructured.Unstructured)), false, nil
 }
 
+func (r *ScaleREST) Destroy() {
+}
+
 // ScaleREST implements Patcher
+var _ = rest.Storage(&ScaleREST{})
 var _ = rest.Patcher(&ScaleREST{})
 var _ = rest.GroupVersionKindProvider(&ScaleREST{})
 

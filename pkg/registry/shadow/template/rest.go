@@ -425,6 +425,9 @@ func (r *REST) GroupVersion() schema.GroupVersion {
 	}
 }
 
+func (r *REST) Destroy() {
+}
+
 func (r *REST) normalizeRequest(req *clientgorest.Request, namespace string) *clientgorest.Request {
 	if len(r.group) == 0 {
 		req.Prefix(CoreGroupPrefix, r.version)
@@ -661,7 +664,7 @@ var _ rest.GroupVersionKindProvider = &REST{}
 var _ rest.CategoriesProvider = &REST{}
 var _ rest.ShortNamesProvider = &REST{}
 var _ rest.StandardStorage = &REST{}
-
+var _ rest.Storage = &REST{}
 var supportedSubresources = sets.NewString(
 	"scale",
 )
