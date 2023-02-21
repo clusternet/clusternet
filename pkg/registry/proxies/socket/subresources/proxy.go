@@ -39,12 +39,16 @@ type ProxyREST struct {
 
 // Implement Connecter
 var _ = rest.Connecter(&ProxyREST{})
+var _ = rest.Storage(&ProxyREST{})
 
 var proxyMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
 // New returns an empty podProxyOptions object.
 func (r *ProxyREST) New() runtime.Object {
 	return &proxiesapi.Socket{}
+}
+
+func (r *ProxyREST) Destroy() {
 }
 
 // ConnectMethods returns the list of HTTP methods that can be proxied

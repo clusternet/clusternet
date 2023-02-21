@@ -97,6 +97,9 @@ func (r *REST) Connect(ctx context.Context, id string, opts runtime.Object, resp
 	}), nil
 }
 
+func (r *REST) Destroy() {
+}
+
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(socketConnection bool, ec *exchanger.Exchanger) *REST {
 	return &REST{
@@ -108,3 +111,4 @@ func NewREST(socketConnection bool, ec *exchanger.Exchanger) *REST {
 var _ rest.CategoriesProvider = &REST{}
 var _ rest.ShortNamesProvider = &REST{}
 var _ rest.Connecter = &REST{}
+var _ rest.Storage = &REST{}
