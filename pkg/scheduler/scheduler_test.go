@@ -9,7 +9,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
-func Test_isFeedChanged(t *testing.T) {
+func TestIsFeedChanged(t *testing.T) {
 	feeds := []appsapi.Feed{
 		{
 			Kind:       "Deployment",
