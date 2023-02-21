@@ -440,14 +440,6 @@ func (agent *Agent) getBootstrapKubeConfigForParentCluster() (*rest.Config, erro
 		return agent.parentDedicatedKubeConfig, nil
 	}
 
-	// todo: move to option.Validate() ?
-	if len(agent.registrationOptions.ParentURL) == 0 {
-		klog.Exitf("please specify a parent cluster url by flag --%s", ClusterRegistrationURL)
-	}
-	if len(agent.registrationOptions.BootstrapToken) == 0 {
-		klog.Exitf("please specify a token for parent cluster accessing by flag --%s", ClusterRegistrationToken)
-	}
-
 	// get bootstrap kubeconfig from token
 	clientConfig, err := utils.GenerateKubeConfigFromToken(agent.registrationOptions.ParentURL, agent.registrationOptions.BootstrapToken, nil, 1)
 	if err != nil {
