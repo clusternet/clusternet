@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	bootstraputil "k8s.io/cluster-bootstrap/token/util"
+	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/features"
@@ -151,11 +152,16 @@ func (opts *ClusterRegistrationOptions) Complete() []error {
 func (opts *ClusterRegistrationOptions) Validate() []error {
 	allErrs := []error{}
 
-	if len(opts.ParentURL) > 0 {
+	if len(opts.ParentURL) == 0 {
+		klog.Exitf("please specify a parent cluster url by flag --%s", ClusterRegistrationURL)
+	} else {
 		_, err := url.ParseRequestURI(opts.ParentURL)
 		if err != nil {
 			allErrs = append(allErrs, fmt.Errorf("invalid value for --%s: %v", ClusterRegistrationURL, err))
 		}
+	}
+	if len(opts.BootstrapToken) == 0 {
+		klog.Exitf("please specify a token for parent cluster accessing by flag --%s", ClusterRegistrationToken)
 	}
 
 	if len(opts.ClusterName) > 0 {
