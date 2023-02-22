@@ -17,14 +17,11 @@ limitations under the License.
 package main
 
 import (
-	goflag "flag"
-	"fmt"
 	"math/rand"
 	"os"
 	"time"
 
-	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	"k8s.io/component-base/cli"
 
 	"github.com/clusternet/clusternet/cmd/clusternet-agent/app"
 	"github.com/clusternet/clusternet/pkg/utils"
@@ -32,18 +29,7 @@ import (
 
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
-
-	klog.InitFlags(nil)
-	defer klog.Flush()
-
-	ctx := utils.GracefulStopWithContext()
-	command := app.NewClusternetAgentCmd(ctx)
-
-	pflag.CommandLine.SetNormalizeFunc(utils.WordSepNormalizeFunc)
-	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-
-	if err := command.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
+	command := app.NewClusternetAgentCmd(utils.GracefulStopWithContext())
+	code := cli.Run(command)
+	os.Exit(code)
 }
