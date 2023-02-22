@@ -17,7 +17,7 @@ limitations under the License.
 package options
 
 import (
-	"io/ioutil"
+	"os"
 
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -92,7 +92,7 @@ func (o *SchedulerOptions) AddFlags(fs *pflag.FlagSet) {
 }
 
 func loadConfigFromFile(file string) (*apis.SchedulerConfiguration, error) {
-	data, err := ioutil.ReadFile(file)
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
