@@ -23,7 +23,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/pflag"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
@@ -39,6 +38,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
@@ -82,11 +82,13 @@ type HubServerOptions struct {
 	PeerAdvertiseAddress net.IP
 	// secure port used for communicating with peers
 	PeerPort int
-
 	// token used for authentication with peers
 	PeerToken string
 
 	ClusterAPIKubeconfig string
+
+	// Flags hold the parsed CLI flags.
+	Flags *cliflag.NamedFlagSets
 }
 
 // NewHubServerOptions returns a new HubServerOptions
@@ -98,7 +100,7 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 	controllerOpts.ClientConnection.QPS = rest.DefaultQPS * float32(10)
 	controllerOpts.ClientConnection.Burst = int32(rest.DefaultBurst * 10)
 
-	return &HubServerOptions{
+	o := &HubServerOptions{
 		RecommendedOptions:     genericoptions.NewRecommendedOptions("fake", nil),
 		AnonymousAuthSupported: true,
 		ReservedNamespace:      known.ClusternetReservedNamespace,
@@ -106,7 +108,9 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 		ControllerOptions:      controllerOpts,
 		PeerPort:               8123,
 		PeerToken:              "Cheugy",
-	}, nil
+	}
+	o.initFlags()
+	return o, nil
 }
 
 // Validate validates HubServerOptions
@@ -181,33 +185,49 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 	return config, nil
 }
 
-func (o *HubServerOptions) AddFlags(fs *pflag.FlagSet) {
-	o.addRecommendedOptionsFlags(fs)
-	o.ControllerOptions.AddFlags(fs)
+// initFlags initializes flags by section name.
+func (o *HubServerOptions) initFlags() {
+	if o.Flags != nil {
+		return
+	}
 
-	fs.IPVar(&o.PeerAdvertiseAddress, "peer-advertise-address", o.PeerAdvertiseAddress, ""+
+	fss := &cliflag.NamedFlagSets{}
+	o.addRecommendedOptionsFlags(fss)
+
+	// flags for clusternet-hub peer connections
+	peerfs := fss.FlagSet("peer connections")
+	peerfs.IPVar(&o.PeerAdvertiseAddress, "peer-advertise-address", o.PeerAdvertiseAddress, ""+
 		"The IP address on which to advertise the clusternet-hub to other peers in the cluster. This "+
 		"address must be reachable by the rest of the peers. If blank, the --bind-address "+
 		"will be used. If --bind-address is unspecified, the host's default interface will "+
 		"be used.")
-	fs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
-	fs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
-	fs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
-	fs.IntVar(&o.Threadiness, "threadiness", o.Threadiness, "The number of threads to use for controller workers")
-	fs.IntVar(&o.PeerPort, "peer-port", o.PeerPort, "The port on which to serve HTTPS for communicating with peers.")
-	fs.StringVar(&o.PeerToken, "peer-token", o.PeerToken, "The token for authentication with peers with peers.")
-	fs.StringVar(&o.ClusterAPIKubeconfig, "cluster-api-kubeconfig", o.ClusterAPIKubeconfig, "Path to a kubeconfig file pointing at the management cluster for cluster-api.")
+	peerfs.IntVar(&o.PeerPort, "peer-port", o.PeerPort, "The port on which to serve HTTPS for communicating with peers.")
+	peerfs.StringVar(&o.PeerToken, "peer-token", o.PeerToken, "The token for authentication with peers with peers.")
+
+	// flags for leader election and client connection
+	o.ControllerOptions.AddFlagSets(fss)
+
+	miscfs := fss.FlagSet("misc")
+	miscfs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
+	miscfs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
+	miscfs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
+	miscfs.IntVar(&o.Threadiness, "threadiness", o.Threadiness, "The number of threads to use for controller workers")
+	miscfs.StringVar(&o.ClusterAPIKubeconfig, "cluster-api-kubeconfig", o.ClusterAPIKubeconfig, "Path to a kubeconfig file pointing at the management cluster for cluster-api.")
+
+	utilfeature.DefaultMutableFeatureGate.AddFlag(fss.FlagSet("feature gate"))
+
+	o.Flags = fss
 }
 
-func (o *HubServerOptions) addRecommendedOptionsFlags(fs *pflag.FlagSet) {
+func (o *HubServerOptions) addRecommendedOptionsFlags(nfs *cliflag.NamedFlagSets) {
 	// Copied from k8s.io/apiserver/pkg/server/options/recommended.go
 	// and remove unused flags
 
-	o.RecommendedOptions.SecureServing.AddFlags(fs)
-	o.RecommendedOptions.Authentication.AddFlags(fs)
-	o.RecommendedOptions.Authorization.AddFlags(fs)
-	o.RecommendedOptions.Audit.LogOptions.AddFlags(fs)
-	o.RecommendedOptions.Features.AddFlags(fs)
+	o.RecommendedOptions.SecureServing.AddFlags(nfs.FlagSet("secure serving"))
+	o.RecommendedOptions.Authentication.AddFlags(nfs.FlagSet("authentication"))
+	o.RecommendedOptions.Authorization.AddFlags(nfs.FlagSet("authorization"))
+	o.RecommendedOptions.Audit.LogOptions.AddFlags(nfs.FlagSet("audit"))
+	o.RecommendedOptions.Features.AddFlags(nfs.FlagSet("profiling"))
 	// flag "kubeconfig" has been declared in o.ControllerOptions
 	//o.RecommendedOptions.CoreAPI.AddFlags(fs) // --kubeconfig flag
 }

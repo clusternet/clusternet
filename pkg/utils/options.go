@@ -17,7 +17,6 @@ limitations under the License.
 package utils
 
 import (
-	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -83,18 +82,6 @@ func (o *ControllerOptions) Complete() error {
 	// TODO
 
 	return nil
-}
-
-// AddFlags adds flags for ControllerOptions.
-func (o *ControllerOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&o.ClientConnection.Kubeconfig, "kubeconfig", o.ClientConnection.Kubeconfig, "Path to a kubeconfig file pointing at the 'core' kubernetes server. Only required if out-of-cluster.")
-	fs.Float32Var(&o.ClientConnection.QPS, "kube-api-qps", o.ClientConnection.QPS, "QPS to use while talking with the 'core' kubernetes apiserver.")
-	fs.Int32Var(&o.ClientConnection.Burst, "kube-api-burst", o.ClientConnection.Burst, "Burst to use while talking with 'core' kubernetes apiserver.")
-
-	componentbaseoptions.BindLeaderElectionFlags(&o.LeaderElection, fs)
-	if err := fs.MarkHidden("leader-elect-resource-lock"); err != nil {
-		klog.Errorf("failed to set a flag to hidden: %v", err)
-	}
 }
 
 func (o *ControllerOptions) AddFlagSets(fss *cliflag.NamedFlagSets) {
