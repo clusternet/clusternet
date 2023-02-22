@@ -1,8 +1,6 @@
 name: CI
 on:
-  # Run this workflow every time a new commit pushed to upstream/fork repository.
-  # Run workflow on fork repository will help contributors find and resolve issues before sending a PR.
-  push:
+  merge_group:
   pull_request:
 jobs:
   golangci:
