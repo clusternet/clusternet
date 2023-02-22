@@ -19,9 +19,10 @@ package options
 import (
 	"os"
 
-	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/scheduler/apis"
@@ -34,7 +35,12 @@ type SchedulerOptions struct {
 	*utils.ControllerOptions
 	FrameworkOutOfTreeRegistry frameworkruntime.Registry
 	SchedulerConfiguration     *apis.SchedulerConfiguration
-	ConfigFile                 string
+
+	// ConfigFile is the location of the scheduler server's configuration file.
+	ConfigFile string
+
+	// Flags hold the parsed CLI flags.
+	Flags *cliflag.NamedFlagSets
 }
 
 // NewSchedulerOptions returns a new SchedulerOptions
@@ -44,9 +50,12 @@ func NewSchedulerOptions() (*SchedulerOptions, error) {
 		return nil, err
 	}
 
-	return &SchedulerOptions{
+	o := &SchedulerOptions{
 		ControllerOptions: controllerOptions,
-	}, nil
+	}
+
+	o.initFlags()
+	return o, nil
 }
 
 // Validate validates SchedulerOptions
@@ -85,10 +94,20 @@ func (o *SchedulerOptions) Complete() error {
 	return utilerrors.NewAggregate(allErrs)
 }
 
-// AddFlags adds flags for SchedulerOptions.
-func (o *SchedulerOptions) AddFlags(fs *pflag.FlagSet) {
-	o.ControllerOptions.AddFlags(fs)
+// initFlags initializes flags by section name.
+func (o *SchedulerOptions) initFlags() {
+	if o.Flags != nil {
+		return
+	}
+
+	fss := &cliflag.NamedFlagSets{}
+	fs := fss.FlagSet("misc")
 	fs.StringVar(&o.ConfigFile, "config", o.ConfigFile, "The path to the configuration file.")
+
+	o.ControllerOptions.AddFlagSets(fss)
+	utilfeature.DefaultMutableFeatureGate.AddFlag(fss.FlagSet("feature gate"))
+
+	o.Flags = fss
 }
 
 func loadConfigFromFile(file string) (*apis.SchedulerConfiguration, error) {

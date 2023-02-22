@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"k8s.io/component-base/cli"
+	_ "k8s.io/component-base/logs/json/register" // for JSON log format registration
 
 	"github.com/clusternet/clusternet/cmd/clusternet-scheduler/app"
 	"github.com/clusternet/clusternet/pkg/utils"
