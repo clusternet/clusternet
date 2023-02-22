@@ -17,8 +17,9 @@ limitations under the License.
 package app
 
 import (
-	"github.com/spf13/pflag"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/clusternet/clusternet/pkg/agent"
 	"github.com/clusternet/clusternet/pkg/known"
@@ -29,6 +30,9 @@ import (
 type options struct {
 	clusterRegistration *agent.ClusterRegistrationOptions
 	*utils.ControllerOptions
+
+	// Flags hold the parsed CLI flags.
+	Flags *cliflag.NamedFlagSets
 }
 
 // Complete completes all the required options.
@@ -63,13 +67,21 @@ func (opts *options) Validate() error {
 	return utilerrors.NewAggregate(allErrs)
 }
 
-// AddFlags adds the flags to the flagset.
-func (opts *options) AddFlags(fs *pflag.FlagSet) {
-	// flags for cluster registration
-	opts.clusterRegistration.AddFlags(fs)
+// initFlags initializes flags by section name.
+func (opts *options) initFlags() {
+	if opts.Flags != nil {
+		return
+	}
 
+	fss := &cliflag.NamedFlagSets{}
+	// flags for cluster registration
+	opts.clusterRegistration.AddFlagSets(fss)
 	// flags for leader election and client connection
-	opts.ControllerOptions.AddFlags(fs)
+	opts.ControllerOptions.AddFlagSets(fss)
+
+	utilfeature.DefaultMutableFeatureGate.AddFlag(fss.FlagSet("feature gate"))
+
+	opts.Flags = fss
 }
 
 // NewOptions creates a new *options with sane defaults
@@ -79,8 +91,10 @@ func NewOptions() (*options, error) {
 		return nil, err
 	}
 
-	return &options{
+	opts := &options{
 		clusterRegistration: agent.NewClusterRegistrationOptions(),
 		ControllerOptions:   controllerOptions,
-	}, nil
+	}
+	opts.initFlags()
+	return opts, nil
 }
