@@ -22,11 +22,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	bootstraputil "k8s.io/cluster-bootstrap/token/util"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -95,42 +95,51 @@ func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 	}
 }
 
-// AddFlags adds the flags to the flagset.
-func (opts *ClusterRegistrationOptions) AddFlags(fs *pflag.FlagSet) {
+// AddFlagSets adds the flags to the flagsets.
+func (opts *ClusterRegistrationOptions) AddFlagSets(fss *cliflag.NamedFlagSets) {
+	crfs := fss.FlagSet("cluster registration")
 	// flags for cluster registration
-	fs.StringVar(&opts.ParentURL, ClusterRegistrationURL, opts.ParentURL,
+	crfs.StringVar(&opts.ParentURL, ClusterRegistrationURL, opts.ParentURL,
 		"The parent cluster url you want to register to")
-	fs.StringVar(&opts.BootstrapToken, ClusterRegistrationToken, opts.BootstrapToken,
+	crfs.StringVar(&opts.BootstrapToken, ClusterRegistrationToken, opts.BootstrapToken,
 		"The boostrap token is used to temporarily authenticate with parent cluster while registering "+
 			"a unregistered child cluster. On success, parent cluster credentials will be stored to a secret "+
 			"in child cluster. On every restart, this credentials will be firstly used if found")
-	fs.StringVar(&opts.ClusterName, ClusterRegistrationName, opts.ClusterName,
+	crfs.StringVar(&opts.ClusterName, ClusterRegistrationName, opts.ClusterName,
 		"Specify the cluster registration name")
-	fs.StringVar(&opts.ClusterNamePrefix, ClusterRegistrationNamePrefix, opts.ClusterNamePrefix,
+	crfs.StringVar(&opts.ClusterNamePrefix, ClusterRegistrationNamePrefix, opts.ClusterNamePrefix,
 		fmt.Sprintf("Specify a random cluster name with this prefix for registration if --%s is not specified",
 			ClusterRegistrationName))
-	fs.StringVar(&opts.ClusterNamespace, ClusterRegistrationNamespace, opts.ClusterNamespace,
+	crfs.StringVar(&opts.ClusterNamespace, ClusterRegistrationNamespace, opts.ClusterNamespace,
 		"Specify the cluster registration namespace")
-	fs.StringVar(&opts.ClusterType, ClusterRegistrationType, opts.ClusterType,
+	crfs.StringVar(&opts.ClusterType, ClusterRegistrationType, opts.ClusterType,
 		"Specify the cluster type")
-	fs.StringVar(&opts.ClusterSyncMode, ClusterSyncMode, opts.ClusterSyncMode,
+	crfs.StringVar(&opts.ClusterSyncMode, ClusterSyncMode, opts.ClusterSyncMode,
 		"Specify the sync mode 'Pull', 'Push' and 'Dual' between parent cluster and child cluster")
-	fs.StringVar(&opts.ClusterLabels, ClusterLabels, opts.ClusterLabels,
+
+	mgmtfs := fss.FlagSet("cluster management")
+	mgmtfs.StringVar(&opts.ClusterLabels, ClusterLabels, opts.ClusterLabels,
 		"Specify the labels for the child cluster, split by `,`")
-	fs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
-		"Specifies how often the agent posts current child cluster status to parent cluster")
-	fs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
-		"Specifies how often the agent collects current child cluster status")
-	fs.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
-	fs.BoolVar(&opts.UseMetricsServer, UseMetricsServer, opts.UseMetricsServer, "Use metrics server")
-	fs.StringVar(&opts.PredictorAddress, PredictorAddress, opts.PredictorAddress,
-		"Set address of external predictor, such as https://abc.com:8080. If not set, built-in predictor will be used when feature gate 'Predictor' is enabled.")
-	fs.BoolVar(&opts.PredictorDirectAccess, PredictorDirectAccess, opts.PredictorDirectAccess,
-		"Whether the predictor be accessed directly by clusternet-scheduler")
-	fs.IntVar(&opts.PredictorPort, PredictorPort, opts.PredictorPort,
-		"Set port on which to serve built-in predictor server. It is only used when feature gate 'Predictor' is enabled and '--predictor-addr' is not set.")
-	fs.Float32Var(&opts.LabelAggregateThreshold, LabelAggregateThreshold, opts.LabelAggregateThreshold,
+	mgmtfs.Float32Var(&opts.LabelAggregateThreshold, LabelAggregateThreshold, opts.LabelAggregateThreshold,
 		"Specifies the threshold of common labels in child cluster nodes should be aggregated to parent")
+
+	mfs := fss.FlagSet("cluster health status")
+	mfs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
+		"Specifies how often the agent posts current child cluster status to parent cluster")
+	mfs.DurationVar(&opts.ClusterStatusCollectFrequency.Duration, ClusterStatusCollectFrequency, opts.ClusterStatusCollectFrequency.Duration,
+		"Specifies how often the agent collects current child cluster status")
+	mfs.BoolVar(&opts.UseMetricsServer, UseMetricsServer, opts.UseMetricsServer, "Use metrics server")
+
+	predictorfs := fss.FlagSet("cluster capacity predictor")
+	predictorfs.StringVar(&opts.PredictorAddress, PredictorAddress, opts.PredictorAddress,
+		"Set address of external predictor, such as https://abc.com:8080. If not set, built-in predictor will be used when feature gate 'Predictor' is enabled.")
+	predictorfs.BoolVar(&opts.PredictorDirectAccess, PredictorDirectAccess, opts.PredictorDirectAccess,
+		"Whether the predictor be accessed directly by clusternet-scheduler")
+	predictorfs.IntVar(&opts.PredictorPort, PredictorPort, opts.PredictorPort,
+		"Set port on which to serve built-in predictor server. It is only used when feature gate 'Predictor' is enabled and '--predictor-addr' is not set.")
+
+	misc := fss.FlagSet("misc")
+	misc.BoolVar(&opts.TunnelLogging, "enable-tunnel-logging", opts.TunnelLogging, "Enable tunnel logging")
 }
 
 // Complete completes all the required options.
