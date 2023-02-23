@@ -75,7 +75,7 @@ func NewSchedulerCommand(ctx context.Context, outOfTreeRegistryOptions ...Option
 
 			// Activate logging as soon as possible, after that
 			// show flags with the final logging configuration.
-			if err := logsapi.ValidateAndApply(opts.Logs, utilfeature.DefaultFeatureGate); err != nil {
+			if err = logsapi.ValidateAndApply(opts.Logs, utilfeature.DefaultFeatureGate); err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
@@ -92,19 +92,19 @@ func NewSchedulerCommand(ctx context.Context, outOfTreeRegistryOptions ...Option
 
 			outOfTreeRegistry := make(runtime.Registry)
 			for _, option := range outOfTreeRegistryOptions {
-				if err := option(outOfTreeRegistry); err != nil {
+				if err = option(outOfTreeRegistry); err != nil {
 					klog.Exit(err)
 				}
 			}
 
 			opts.FrameworkOutOfTreeRegistry = outOfTreeRegistry
 
-			sched, err := scheduler.NewScheduler(opts)
-			if err != nil {
-				klog.Exit(err)
+			sched, err2 := scheduler.NewScheduler(opts)
+			if err2 != nil {
+				klog.Exit(err2)
 			}
-			if err = sched.Run(ctx); err != nil {
-				klog.Exit(err)
+			if err2 = sched.Run(ctx); err2 != nil {
+				klog.Exit(err2)
 			}
 		},
 	}

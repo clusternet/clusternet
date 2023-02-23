@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	apiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -37,6 +38,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 
@@ -72,6 +74,8 @@ const (
 // Scheduler defines configuration for clusternet scheduler
 type Scheduler struct {
 	schedulerOptions *options.SchedulerOptions
+
+	SecureServing *apiserver.SecureServingInfo
 
 	kubeClient                *kubernetes.Clientset
 	electionClient            *kubernetes.Clientset
@@ -186,6 +190,22 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 
 // Run begins watching and scheduling. It starts scheduling and blocked until the context is done.
 func (sched *Scheduler) Run(ctx context.Context) error {
+	err := sched.schedulerOptions.Config()
+	if err != nil {
+		return err
+	}
+	if err = sched.schedulerOptions.SecureServing.ApplyTo(&sched.SecureServing, nil); err != nil {
+		return err
+	}
+	// Start up the metrics and healthz server.
+	if sched.SecureServing != nil {
+		handler := controllermanagerapp.BuildHandlerChain(utils.NewHealthzAndMetricsHandler(sched.schedulerOptions.DebuggingOptions), nil, nil)
+		if _, _, err = sched.SecureServing.Serve(handler, 0, ctx.Done()); err != nil {
+			// fail early for secure handlers, removing the old error loop from above
+			return fmt.Errorf("failed to start secure server: %v", err)
+		}
+	}
+
 	defer sched.SchedulingQueue.ShutDown()
 
 	// Start all informers.
