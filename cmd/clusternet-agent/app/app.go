@@ -32,6 +32,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/clusternet/clusternet/pkg/agent"
+	"github.com/clusternet/clusternet/pkg/agent/options"
 	_ "github.com/clusternet/clusternet/pkg/features"
 	"github.com/clusternet/clusternet/pkg/version"
 )
@@ -47,7 +48,7 @@ var (
 
 // NewClusternetAgentCmd creates a *cobra.Command object with default parameters
 func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
-	opts, err := NewOptions()
+	opts, err := options.NewOptions()
 	if err != nil {
 		klog.Fatalf("unable to initialize command options: %v", err)
 	}
@@ -83,7 +84,7 @@ func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 				klog.Exit(err2)
 			}
 
-			agent, err2 := agent.NewAgent(opts.clusterRegistration, opts.ControllerOptions)
+			agent, err2 := agent.NewAgent(opts)
 			if err2 != nil {
 				klog.Exit(err2)
 			}

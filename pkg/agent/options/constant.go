@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package agent
+package options
 
 import (
 	"time"
@@ -90,10 +90,4 @@ const (
 
 	DefaultClusterStatusCollectFrequency = 20 * time.Second
 	DefaultClusterStatusReportFrequency  = 3 * time.Minute
-)
-
-// lease lock
-const (
-	DefaultLeaseDuration = 60 * time.Second
-	DefaultRenewDeadline = 15 * time.Second
 )

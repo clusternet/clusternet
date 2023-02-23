@@ -37,6 +37,7 @@ import (
 	"k8s.io/klog/v2"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 
+	"github.com/clusternet/clusternet/pkg/agent/options"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterstatus"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
@@ -54,24 +55,24 @@ type Manager struct {
 
 func NewStatusManager(
 	apiserverURL string,
-	regOpts *ClusterRegistrationOptions,
+	opts *options.AgentOptions,
 	kubeClient kubernetes.Interface,
 	metricClient *metricsv.Clientset,
 	kubeInformerFactory informers.SharedInformerFactory,
 ) *Manager {
 	return &Manager{
-		statusReportFrequency: regOpts.ClusterStatusReportFrequency,
+		statusReportFrequency: opts.ClusterRegistrationOptions.ClusterStatusReportFrequency,
 		clusterStatusController: clusterstatus.NewController(
 			apiserverURL,
 			kubeClient,
 			metricClient,
 			kubeInformerFactory,
-			regOpts.PredictorAddress,
-			regOpts.PredictorDirectAccess,
-			regOpts.UseMetricsServer,
-			regOpts.ClusterStatusCollectFrequency,
-			regOpts.ClusterStatusReportFrequency,
-			regOpts.LabelAggregateThreshold,
+			opts.PredictorAddress,
+			opts.PredictorDirectAccess,
+			opts.ClusterRegistrationOptions.UseMetricsServer,
+			opts.ClusterRegistrationOptions.ClusterStatusCollectFrequency,
+			opts.ClusterRegistrationOptions.ClusterStatusReportFrequency,
+			opts.ClusterRegistrationOptions.LabelAggregateThreshold,
 		),
 	}
 }
