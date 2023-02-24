@@ -65,23 +65,23 @@ func NewClusternetAgentCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err2 := version.PrintAndExitIfRequested(cmdName); err2 != nil {
-				klog.Exit(err2)
+			if err = version.PrintAndExitIfRequested(cmdName); err != nil {
+				klog.Exit(err)
 			}
 
 			// Activate logging as soon as possible, after that
 			// show flags with the final logging configuration.
-			if err := logsapi.ValidateAndApply(opts.Logs, utilfeature.DefaultFeatureGate); err != nil {
+			if err = logsapi.ValidateAndApply(opts.Logs, utilfeature.DefaultFeatureGate); err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
 			}
 			cliflag.PrintFlags(cmd.Flags())
 
-			if err2 := opts.Complete(); err2 != nil {
-				klog.Exit(err2)
+			if err = opts.Complete(); err != nil {
+				klog.Exit(err)
 			}
-			if err2 := opts.Validate(); err2 != nil {
-				klog.Exit(err2)
+			if err = opts.Validate(); err != nil {
+				klog.Exit(err)
 			}
 
 			agent, err2 := agent.NewAgent(opts)

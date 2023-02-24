@@ -18,20 +18,36 @@ package options
 
 import (
 	"fmt"
+	"net"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	apiserveroptions "k8s.io/apiserver/pkg/server/options"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	cliflag "k8s.io/component-base/cli/flag"
+	"k8s.io/component-base/metrics"
+	controllermanageroptions "k8s.io/controller-manager/options"
 
 	"github.com/clusternet/clusternet/pkg/features"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
+const (
+	// DefaultClusternetAgentPort is the default port for the clusternet-agent running in each child cluster.
+	// May be overridden by a flag at startup.
+	DefaultClusternetAgentPort = 10650
+)
+
 // AgentOptions holds the command-line options for command
 type AgentOptions struct {
+	SecureServing *apiserveroptions.SecureServingOptionsWithLoopback
+
+	// DebuggingOptions holds the Debugging options.
+	DebuggingOptions *controllermanageroptions.DebuggingOptions
+
 	*ClusterRegistrationOptions
 	*utils.ControllerOptions
+	Metrics *metrics.Options
 
 	// PredictorAddress specifies the address of predictor
 	PredictorAddress string
@@ -47,6 +63,17 @@ type AgentOptions struct {
 
 	// Flags hold the parsed CLI flags.
 	Flags *cliflag.NamedFlagSets
+}
+
+func (opts *AgentOptions) Config() error {
+	if opts.SecureServing != nil {
+		if err := opts.SecureServing.MaybeDefaultWithSelfSignedCerts("localhost", nil, []net.IP{net.ParseIP("127.0.0.1")}); err != nil {
+			return fmt.Errorf("error creating self-signed certificates: %v", err)
+		}
+	}
+
+	opts.Metrics.Apply()
+	return nil
 }
 
 // Complete completes all the required options.
@@ -93,6 +120,9 @@ func (opts *AgentOptions) initFlags() {
 	}
 
 	fss := &cliflag.NamedFlagSets{}
+	opts.SecureServing.AddFlags(fss.FlagSet("secure serving"))
+	opts.DebuggingOptions.AddFlags(fss.FlagSet("profiling"))
+	opts.Metrics.AddFlags(fss.FlagSet("metrics"))
 	// flags for cluster registration
 	opts.ClusterRegistrationOptions.AddFlagSets(fss)
 	// flags for leader election and client connection
@@ -122,11 +152,18 @@ func NewOptions() (*AgentOptions, error) {
 	}
 
 	opts := &AgentOptions{
+		SecureServing:              apiserveroptions.NewSecureServingOptions().WithLoopback(),
+		DebuggingOptions:           controllermanageroptions.RecommendedDebuggingOptions(),
 		ClusterRegistrationOptions: NewClusterRegistrationOptions(),
 		ControllerOptions:          controllerOptions,
+		Metrics:                    metrics.NewOptions(),
 		PredictorPort:              8080,
 		PredictorDirectAccess:      false,
 	}
+	// Set the PairName but leave certificate directory blank to generate in-memory by default
+	opts.SecureServing.ServerCert.CertDirectory = ""
+	opts.SecureServing.ServerCert.PairName = "clusternet-agent"
+	opts.SecureServing.BindPort = DefaultClusternetAgentPort
 	opts.initFlags()
 	return opts, nil
 }
