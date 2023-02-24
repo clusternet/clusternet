@@ -30,11 +30,13 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
+	apiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
+	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -67,6 +69,8 @@ const (
 
 // Agent defines configuration for clusternet-agent
 type Agent struct {
+	SecureServing *apiserver.SecureServingInfo
+
 	// Identity is the unique string identifying a lease holder across
 	// all participants in an election.
 	Identity string
@@ -195,6 +199,22 @@ func NewAgent(opts *options.AgentOptions) (*Agent, error) {
 }
 
 func (agent *Agent) Run(ctx context.Context) error {
+	err := agent.agentOptions.Config()
+	if err != nil {
+		return err
+	}
+	if err = agent.agentOptions.SecureServing.ApplyTo(&agent.SecureServing, nil); err != nil {
+		return err
+	}
+	// Start up the metrics and healthz server.
+	if agent.SecureServing != nil {
+		handler := controllermanagerapp.BuildHandlerChain(utils.NewHealthzAndMetricsHandler(agent.agentOptions.DebuggingOptions), nil, nil)
+		if _, _, err = agent.SecureServing.Serve(handler, 0, ctx.Done()); err != nil {
+			// fail early for secure handlers, removing the old error loop from above
+			return fmt.Errorf("failed to start secure server: %v", err)
+		}
+	}
+
 	klog.Info("starting agent controller ...")
 
 	agent.kubeInformerFactory.Start(ctx.Done())
