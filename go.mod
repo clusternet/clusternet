@@ -6,18 +6,18 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dixudx/yacht v0.3.0
 	github.com/emicklei/go-restful/v3 v3.8.0
-	github.com/evanphx/json-patch v4.12.0+incompatible
+	github.com/evanphx/json-patch v5.6.0+incompatible
 	github.com/google/go-cmp v0.5.9
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24
 	github.com/rancher/remotedialer v0.2.6-0.20210318171128-d1ebd5202be4
 	github.com/sirupsen/logrus v1.8.1
-	github.com/spf13/cobra v1.4.0
+	github.com/spf13/cobra v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.0
 	gopkg.in/yaml.v3 v3.0.1
-	helm.sh/helm/v3 v3.9.2
+	helm.sh/helm/v3 v3.10.3
 	k8s.io/api v0.25.6
 	k8s.io/apiextensions-apiserver v0.25.6
 	k8s.io/apimachinery v0.25.6
@@ -43,7 +43,7 @@ require (
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
-	github.com/BurntSushi/toml v1.0.0 // indirect
+	github.com/BurntSushi/toml v1.1.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
@@ -134,7 +134,7 @@ require (
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
-	github.com/rubenv/sql-migrate v1.1.1 // indirect
+	github.com/rubenv/sql-migrate v1.1.2 // indirect
 	github.com/russross/blackfriday v1.5.2 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
@@ -194,7 +194,7 @@ replace (
 	go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v0.20.0
 	go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v0.20.0
 	go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v0.7.0
-	helm.sh/helm/v3 => github.com/clusternet/helm/v3 v3.8.0-rc.1.0.20230203030033-afaded090d4d
+	helm.sh/helm/v3 => github.com/clusternet/helm/v3 v3.8.0-rc.1.0.20230227074319-b9ad49755c28
 	k8s.io/apimachinery => github.com/clusternet/apimachinery v0.23.0-alpha.0.0.20230221071342-1259f3c09fae
 	k8s.io/apiserver => github.com/clusternet/apiserver v0.0.0-20230221070942-d54ff344a53f
 )
