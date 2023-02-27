@@ -35,11 +35,8 @@ project.
       - [x] Various deployment topologies for cluster resource predictors
       - [x] Resource interpretation with `in-tree` or `out-of-tree` controller
   - [x] Subgroup cluster scheduling
-  - [ ] To be planned
 - [x] Integration with [mcs-api](https://github.com/kubernetes-sigs/mcs-api) to provide service discovery across multiple clusters
 - [x] Multi-cluster workloads status aggregation
-- [ ] Cross-cluster HPA (Ongoing)
-- [ ] Integration with Istio (Ongoing)
 
 ### Improvement of visibility and support for multi-cluster management
 
@@ -49,4 +46,13 @@ project.
 ### Stability Improvement
 
 - [x] Benchmarks on cluster management and application coordination
+
+## 2023 H1
+
+- [ ] Cross-cluster HPA (Ongoing)
+- [ ] Introduces de-scheduler for Clusternet
+- [ ] Enhancements on cluster resource predictor framework, such as supporting gRPC, rescheduling pending pods, etc.
+- [ ] Integrations with [Node Resource Interface](https://github.com/containerd/nri/) to address cross-cluster issues, such as service discovery, dns querying, etc.
+- [ ] Generic resource status aggregation
+- [ ] Integration with Istio (Ongoing)
 - [ ] E2E tests
