@@ -17,7 +17,9 @@ limitations under the License.
 package utils
 
 import (
+	"github.com/clusternet/clusternet/pkg/features"
 	"k8s.io/apimachinery/pkg/util/version"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 )
 
 var (
@@ -52,8 +54,12 @@ func EndpointSliceV1beta1Promoted(kubeServerVersion string) (bool, error) {
 	return parsedVersion.AtLeast(KubeV1170Beta2), nil
 }
 
-// EndpointSliceV1Promoted is used to indicate whether EndpointSlice v1 has been promoted
-func EndpointSliceV1Promoted(kubeServerVersion string) (bool, error) {
+// MultiClusterServiceEnabled is used to indicate whether EndpointSlice v1 has been promoted
+func MultiClusterServiceEnabled(kubeServerVersion string) (bool, error) {
+	mcsEnabled := utilfeature.DefaultFeatureGate.Enabled(features.MultiClusterService)
+	if !mcsEnabled {
+		return false, nil
+	}
 	parsedVersion, err := version.ParseSemantic(kubeServerVersion)
 	if err != nil {
 		return false, err
