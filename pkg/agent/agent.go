@@ -162,9 +162,9 @@ func NewAgent(opts *options.AgentOptions) (*Agent, error) {
 		return nil, err
 	}
 
-	// parse serviceExportEnabled (EndpointSliceV1Promoted) by server version
+	// parse serviceExportEnabled (MultiClusterServiceEnabled) by server version
 	var serviceExportEnabled bool
-	if serviceExportEnabled, err = utils.EndpointSliceV1Promoted(ver.String()); err != nil {
+	if serviceExportEnabled, err = utils.MultiClusterServiceEnabled(ver.String()); err != nil {
 		return nil, err
 	}
 

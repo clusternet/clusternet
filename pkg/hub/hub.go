@@ -187,7 +187,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	}
 
 	var serviceImportEnabled bool
-	if serviceImportEnabled, err = utils.EndpointSliceV1Promoted(ver.String()); err != nil {
+	if serviceImportEnabled, err = utils.MultiClusterServiceEnabled(ver.String()); err != nil {
 		return nil, err
 	}
 

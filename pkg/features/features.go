@@ -87,6 +87,14 @@ const (
 	// alpha: v0.10.0
 	// Setting on agent side
 	Predictor featuregate.Feature = "Predictor"
+
+	// MultiClusterService indicates whether we allow service export and service import related controllers
+	// to run. In some cases like integrating with submariner, this feature should be disabled.
+	//
+	// owner: @lmxia
+	// alpha: v0.15.0
+	// Setting on hub and agent side.
+	MultiClusterService featuregate.Feature = "MultiClusterService"
 )
 
 func init() {
@@ -105,4 +113,5 @@ var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	Recovery:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	FeedInventory:       {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	Predictor:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	MultiClusterService: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }
