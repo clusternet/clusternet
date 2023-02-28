@@ -5,22 +5,15 @@ Clusternet. [GitHub milestones](https://github.com/clusternet/clusternet/milesto
 this project. This roadmap is updated frequently to reflect the community's overall thinking on the future of the
 project.
 
-## 2021
+## 2023 H1
 
-- [x] Cluster registrations across different heterogeneous environments (e.g. public cloud, private cloud, hybrid, and
-  edge cloud)
-- [x] Coordination of various application types, `Deployment`, `CRD`, `HelmChart`, etc. to multiple clusters
-- [x] Full RBAC supports on child clusters
-- [x] Two-stage priority based override strategies
-  - [x] JSON patch and Merge patch
-  - [x] Easy to rollback overrides
-- [x] Support for more Kubernetes versions
-- [x] [Replication scheduling](https://clusternet.io/docs/tutorials/multi-cluster-apps/replication-scheduling-to-multiple-clusters/)
-- [x] User and developer experience improvement
-  - [x] client-go intergration
-  - [x] kubectl plugin
-  - [x] hack scripts for building, testing, etc.
-- [x] Clusternet CIs Enhancements
+- [ ] Cross-cluster HPA (Ongoing)
+- [ ] Introduces de-scheduler for Clusternet
+- [ ] Enhancements on cluster resource predictor framework, such as supporting gRPC, rescheduling pending pods, etc.
+- [ ] Integrations with [Node Resource Interface](https://github.com/containerd/nri/) to address cross-cluster issues, such as service discovery, dns querying, etc.
+- [ ] Generic resource status aggregation
+- [ ] Integration with Istio (Ongoing)
+- [ ] E2E tests
 
 ## 2022
 
@@ -47,12 +40,19 @@ project.
 
 - [x] Benchmarks on cluster management and application coordination
 
-## 2023 H1
+## 2021
 
-- [ ] Cross-cluster HPA (Ongoing)
-- [ ] Introduces de-scheduler for Clusternet
-- [ ] Enhancements on cluster resource predictor framework, such as supporting gRPC, rescheduling pending pods, etc.
-- [ ] Integrations with [Node Resource Interface](https://github.com/containerd/nri/) to address cross-cluster issues, such as service discovery, dns querying, etc.
-- [ ] Generic resource status aggregation
-- [ ] Integration with Istio (Ongoing)
-- [ ] E2E tests
+- [x] Cluster registrations across different heterogeneous environments (e.g. public cloud, private cloud, hybrid, and
+  edge cloud)
+- [x] Coordination of various application types, `Deployment`, `CRD`, `HelmChart`, etc. to multiple clusters
+- [x] Full RBAC supports on child clusters
+- [x] Two-stage priority based override strategies
+  - [x] JSON patch and Merge patch
+  - [x] Easy to rollback overrides
+- [x] Support for more Kubernetes versions
+- [x] [Replication scheduling](https://clusternet.io/docs/tutorials/multi-cluster-apps/replication-scheduling-to-multiple-clusters/)
+- [x] User and developer experience improvement
+  - [x] client-go intergration
+  - [x] kubectl plugin
+  - [x] hack scripts for building, testing, etc.
+- [x] Clusternet CIs Enhancements

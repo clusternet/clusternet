@@ -10,7 +10,7 @@
 
 ----
 
-Managing Your Clusters (including public, private, hybrid, edge, etc) as easily as Visiting the Internet.
+Managing Your Clusters (including public, private, hybrid, edge, etc.) as easily as Visiting the Internet.
 
 Out of the Box.
 
@@ -39,7 +39,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
 
 - Kubernetes Multi-Cluster Management and Governance
     - managing Kubernetes clusters running in cloud providers, such as AWS, Google Cloud, Tencent Cloud, Alibaba Cloud,
-      etc
+      etc.
     - managing on-premise Kubernetes clusters
     - managing any [Certified Kubernetes Distributions](https://www.cncf.io/certification/software-conformance/), such
       as [k3s](https://github.com/k3s-io/k3s)
@@ -52,19 +52,19 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
       from [this tuorial](https://clusternet.io/docs/tutorials/cluster-management/visiting-child-clusters-with-rbac/))
     - cluster auto-labelling based on [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery)
 - Application Coordinations
-    - Scheduling Framework (`in-tree` plugins, `out-of-tree` plugins)
+    - Scheduling **Framework** (`in-tree` plugins, `out-of-tree` plugins)
     - Cross-Cluster Scheduling
         - replication scheduling
         - static dividing scheduling by weight
         - dynamic dividing scheduling by capacity
-          - cluster resource predictor framework for `in-tree` and `out-of-tree` implementations
+          - cluster resource predictor **framework** for `in-tree` and `out-of-tree` implementations
           - various deployment topologies for cluster resource predictors
         - subgroup cluster scheduling
     - Various Resource Types
-        - Kubernetes native objects, such as `Deployment`, `StatefulSet`, etc
+        - Kubernetes native objects, such as `Deployment`, `StatefulSet`, etc.
         - CRDs
         - helm charts, including [OCI-based Helm charts](https://helm.sh/docs/topics/registries/)
-    - Resource interpretation with `in-tree` or `out-of-tree` controller
+    - Resource interpretations with `in-tree` or `out-of-tree` controllers
     - [Setting Overrides](https://clusternet.io/docs/tutorials/multi-cluster-apps/setting-overrides/)
         - two-stage priority based override strategies
         - easy to rollback overrides
@@ -121,5 +121,5 @@ If you want to get participated and become a contributor to Clusternet, please d
 
 A [developer guide](https://clusternet.io/docs/developer-guide/) is ready to help you
 
-- build binaries for all platforms, such as `darwin/amd64`, `linux/amd64`, `linux/arm64`, etc;
-- build docker images for multiple platforms, such as `linux/amd64`, `linux/arm64`, etc;
+- build binaries for all platforms, such as `darwin/amd64`, `linux/amd64`, `linux/arm64`, etc.;
+- build docker images for multiple platforms, such as `linux/amd64`, `linux/arm64`, etc.;
