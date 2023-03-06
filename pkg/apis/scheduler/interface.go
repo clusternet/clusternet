@@ -74,3 +74,8 @@ const (
 	// SubPathUnscheduled specifies the sub path for listing unscheduled replicas
 	SubPathUnscheduled = "/unscheduled"
 )
+
+const (
+	// ClusterIDHeader is the HTTP header name used by replicas predictor
+	ClusterIDHeader = "Cluster-ID"
+)

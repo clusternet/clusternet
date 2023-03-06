@@ -24,10 +24,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -93,7 +95,12 @@ func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *
 		predictorAddress = strings.Replace(predictorAddress, "https://", "https/", 1)
 		predictorAddress = strings.Join([]string{
 			strings.TrimRight(pl.handle.KubeConfig().Host, "/"),
-			fmt.Sprintf("apis/%s/sockets/%s/proxy/%s", proxiesapi.SchemeGroupVersion.String(), mcls.Spec.ClusterID, predictorAddress),
+			fmt.Sprintf(
+				"apis/%s/sockets/%s/proxy/%s",
+				proxiesapi.SchemeGroupVersion.String(),
+				mcls.Spec.ClusterID,
+				predictorAddress,
+			),
 		}, "/")
 	}
 	httpClient.Timeout = time.Second * 32
@@ -104,7 +111,11 @@ func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *
 			continue
 		}
 
-		replica, err2 := predictMaxAcceptableReplicas(httpClient, predictorAddress, feedOrder.ReplicaRequirements)
+		replica, err2 := predictMaxAcceptableReplicas(
+			httpClient,
+			mcls.Spec.ClusterID,
+			predictorAddress,
+			feedOrder.ReplicaRequirements)
 		if err2 != nil {
 			return nil, framework.AsStatus(err2)
 		}
@@ -114,20 +125,28 @@ func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *
 	return
 }
 
-func predictMaxAcceptableReplicas(httpClient *http.Client, address string, require appsapi.ReplicaRequirements) (map[string]int32, error) {
+func predictMaxAcceptableReplicas(httpClient *http.Client, clusterID types.UID, address string,
+	require appsapi.ReplicaRequirements) (map[string]int32, error) {
 	payload, err := json.Marshal(require)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Use the url.JoinPath function in Go 1.19
-	resp, err := httpClient.Post(address+schedulerapi.RootPathReplicas+schedulerapi.SubPathPredict,
-		"application/json",
-		bytes.NewBuffer(payload))
+	urlForReplicasPredicting, err := url.JoinPath(address, schedulerapi.RootPathReplicas, schedulerapi.SubPathPredict)
 	if err != nil {
 		return nil, err
 	}
+	req, err := http.NewRequest("POST", urlForReplicasPredicting, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(schedulerapi.ClusterIDHeader, string(clusterID))
 
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
