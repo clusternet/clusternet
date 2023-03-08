@@ -14,6 +14,8 @@ Managing Your Clusters (including public, private, hybrid, edge, etc.) as easily
 
 Out of the Box.
 
+A CNCF([Cloud Native Computing Foundation](https://cncf.io/)) Sandbox Project.
+
 ----
 
 <div align="center"><img src="https://clusternet.io/images/clusternet-in-a-nutshell.png" style="width:900px;" /></div>
@@ -123,3 +125,7 @@ A [developer guide](https://clusternet.io/docs/developer-guide/) is ready to hel
 
 - build binaries for all platforms, such as `darwin/amd64`, `linux/amd64`, `linux/arm64`, etc.;
 - build docker images for multiple platforms, such as `linux/amd64`, `linux/arm64`, etc.;
+
+---
+
+<div align="center"><img src="https://raw.githubusercontent.com/cncf/artwork/master/other/cncf/horizontal/color/cncf-color.svg" style="width:600px;" /></div>
