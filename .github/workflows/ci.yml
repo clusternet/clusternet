@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 1
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
       - name: Cache go modules and build cache
-        uses: actions/cache@v3.2.6
+        uses: actions/cache@v3.3.0
         with:
           # In order:
           # * Module download cache
@@ -84,7 +84,7 @@ jobs:
       - name: Rebase code
         run: git rebase origin/main
       - name: Cache go modules and build cache
-        uses: actions/cache@v3.2.6
+        uses: actions/cache@v3.3.0
         with:
           # In order:
           # * Module download cache
@@ -137,7 +137,7 @@ jobs:
       - name: Rebase code
         run: git rebase origin/main
       - name: Cache go modules and build cache
-        uses: actions/cache@v3.2.6
+        uses: actions/cache@v3.3.0
         with:
           # In order:
           # * Module download cache
