@@ -117,7 +117,7 @@ type HelmOptions struct {
 	// +kubebuilder:default=300
 	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
 
-	// Wait determines whether the wait operation should be performed after the upgrade is requested.
+	// Wait determines whether the wait operation should be performed after helm install, upgrade or uninstall is requested.
 	//
 	// +optional
 	// +kubebuilder:validation:Type=boolean
