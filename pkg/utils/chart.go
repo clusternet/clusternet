@@ -207,6 +207,9 @@ func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 
 func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {
 	client := action.NewUninstall(cfg)
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
 	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	_, err := client.Run(getReleaseName(hr))
 	if err != nil {
