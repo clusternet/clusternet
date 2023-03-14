@@ -121,7 +121,7 @@ spec:
                 type: string
               wait:
                 description: Wait determines whether the wait operation should be
-                  performed after the upgrade is requested.
+                  performed after helm install, upgrade or uninstall is requested.
                 type: boolean
               waitForJob:
                 description: WaitForJobs determines whether the wait operation for
