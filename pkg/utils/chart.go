@@ -184,8 +184,8 @@ func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	client.MaxHistory = cfg.Releases.MaxHistory // need to rewire it here
 	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	client.Namespace = hr.Spec.TargetNamespace
-	if hr.Spec.Atomic != nil {
-		client.Atomic = *hr.Spec.Atomic
+	if hr.Spec.UpgradeAtomic != nil {
+		client.Atomic = *hr.Spec.UpgradeAtomic
 	}
 	if hr.Spec.Force != nil {
 		client.Force = *hr.Spec.Force
