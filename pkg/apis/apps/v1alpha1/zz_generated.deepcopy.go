@@ -716,6 +716,11 @@ func (in *HelmOptions) DeepCopyInto(out *HelmOptions) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.UpgradeAtomic != nil {
+		in, out := &in.UpgradeAtomic, &out.UpgradeAtomic
+		*out = new(bool)
+		**out = **in
+	}
 	if in.SkipCRDs != nil {
 		in, out := &in.SkipCRDs, &out.SkipCRDs
 		*out = new(bool)
