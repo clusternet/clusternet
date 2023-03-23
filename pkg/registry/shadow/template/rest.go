@@ -489,6 +489,7 @@ func (r *REST) dryRunCreate(ctx context.Context, obj runtime.Object, _ rest.Vali
 		fieldPath := field.NewPath("metadata", "namespace")
 		if r.kind == "Namespace" {
 			fieldPath = field.NewPath("metadata", "name")
+			objNamespace = u.GetName()
 		}
 		if errs := apimachineryvalidation.ValidateNamespaceName(objNamespace, false); len(errs) > 0 {
 			allErrs := field.ErrorList{field.Invalid(fieldPath, objNamespace, strings.Join(errs, ","))}
