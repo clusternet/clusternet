@@ -136,11 +136,17 @@ type HelmOptions struct {
 	// +kubebuilder:validation:Type=boolean
 	Replace *bool `json:"replace,omitempty"`
 
-	// Atomic, if true, for install case, will uninstall failed release, for upgrade case, will roll back on failure.
+	// Atomic, for install case, if true, will uninstall failed release.
 	//
 	// +optional
 	// +kubebuilder:validation:Type=boolean
 	Atomic *bool `json:"atomic,omitempty"`
+
+	// UpgradeAtomic, for upgrade case, if true, will roll back failed release.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	UpgradeAtomic *bool `json:"upgradeAtomic,omitempty"`
 
 	// SkipCRDs skips installing CRDs when install flag is enabled during upgrade
 	//

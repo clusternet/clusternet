@@ -60,8 +60,8 @@ spec:
             description: HelmReleaseSpec defines the spec of HelmRelease
             properties:
               atomic:
-                description: Atomic, if true, for install case, will uninstall failed
-                  release, for upgrade case, will roll back on failure.
+                description: Atomic, for install case, if true, will uninstall failed
+                  release.
                 type: boolean
               chart:
                 description: Chart is the name of a Helm Chart in the Repository.
@@ -123,6 +123,10 @@ spec:
                 description: TimeoutSeconds is the timeout of the chart to be install/upgrade/rollback/uninstall
                 format: int32
                 type: integer
+              upgradeAtomic:
+                description: UpgradeAtomic, for upgrade case, if true, will roll back
+                  failed release.
+                type: boolean
               version:
                 description: ChartVersion is the version of the chart to be deployed.
                   It will be defaulted with current latest version if empty.
