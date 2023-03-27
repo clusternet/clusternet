@@ -73,8 +73,8 @@ generated: controller-gen
 # Example:
 #   make binaries
 #   WHAT=clusternet-agent make binaries
-#   WHAT=clusternet-controller-manager,clusternet-apiserver PLATFORMS=linux/amd64,linux/arm64 make binaries
-#   WHAT=clusternet-apiserver,clusternet-controller-manager,clusternet-agent,clusternet-scheduler PLATFORMS=linux/amd64,linux/arm64 make binaries
+#   WHAT=clusternet-hub,clusternet-agent PLATFORMS=linux/amd64,linux/arm64 make binaries
+#   WHAT=clusternet-hub,clusternet-agent,clusternet-scheduler PLATFORMS=linux/amd64,linux/arm64 make binaries
 #   PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm make binaries
 .PHONY: binaries
 binaries:
