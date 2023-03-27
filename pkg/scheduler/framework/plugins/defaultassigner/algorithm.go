@@ -47,7 +47,7 @@ func DynamicDivideReplicas(sub *appsapi.Subscription, deviations []appsapi.FeedO
 		if err != nil {
 			return *result, err
 		}
-		result.Merge(&r)
+		result.MergeOneFeed(&r)
 	}
 	return *result, nil
 }

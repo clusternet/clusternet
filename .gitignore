@@ -37,3 +37,6 @@ dist
 
 # go vendor
 vendor
+
+# Test
+coverage.out
