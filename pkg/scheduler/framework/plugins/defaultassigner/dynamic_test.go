@@ -280,11 +280,11 @@ func TestDynamicAssigner_Assign(t *testing.T) {
 				},
 			},
 			want: framework.TargetClusters{
-				BindingClusters: []string{"c1", "c2", "c3", "c4"},
+				BindingClusters: []string{"c1", "c2", "c3"},
 				Replicas: map[string][]int32{
-					utils.GetFeedKey(newDeploymentFeed("f1")): {1, 3, 0, 0}, // already scheduled: 4
+					utils.GetFeedKey(newDeploymentFeed("f1")): {1, 3, 0}, // already scheduled: 4
 					utils.GetFeedKey(newServiceFeed("f2")):    {},
-					utils.GetFeedKey(newDeploymentFeed("f3")): {1, 1, 1, 0}, // already scheduled: 3
+					utils.GetFeedKey(newDeploymentFeed("f3")): {1, 1, 1}, // already scheduled: 3
 					utils.GetFeedKey(newServiceFeed("f4")):    {},
 				},
 			},

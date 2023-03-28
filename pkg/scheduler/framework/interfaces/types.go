@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
@@ -97,11 +98,11 @@ func (t *TargetClusters) DeepCopy() *TargetClusters {
 	return obj
 }
 
-func (t *TargetClusters) Merge(b *TargetClusters) {
-	// TODO: use matrix addition to merge
-	// 1. Align t and b using the union of clusters and feeds , no value use 0 fill
-	// 2. Addition t and b which filled
-	// 3. Remove all 0 rows and columns
+// If b.Replicas have feed more then one , use this method, it works good
+// https://github.com/clusternet/clusternet/blob/v0.14.0/pkg/scheduler/framework/interfaces/types.go#L100
+// MergeOneFeed use for merge two TargetClusters when b.Replicas only one feed
+func (t *TargetClusters) MergeOneFeed(b *TargetClusters) {
+	klog.Info("merge one feed : ", b)
 	if b == nil || len(b.BindingClusters) == 0 {
 		return
 	}
@@ -126,25 +127,36 @@ func (t *TargetClusters) Merge(b *TargetClusters) {
 		m[cluster] = i
 	}
 
-	for bi, bCluster := range b.BindingClusters {
-		ti, exist := m[bCluster]
-		if !exist {
-			// this cluster is a new one, we should append
-			t.BindingClusters = append(t.BindingClusters, bCluster)
-			for feed, tReplicas := range t.Replicas {
-				if len(tReplicas) != 0 && len(tReplicas) < len(t.BindingClusters) {
-					t.Replicas[feed] = append(t.Replicas[feed], 0)
-				}
+	// only one feed in b.Replicas, get feed and replicas by loop
+	for feed, replicas := range b.Replicas {
+		if len(replicas) == 0 {
+			if _, isok := t.Replicas[feed]; !isok {
+				t.Replicas[feed] = make([]int32, 0)
 			}
-			ti = len(t.BindingClusters) - 1
-			m[bCluster] = ti
+			return
 		}
-		for feed, bReplicas := range b.Replicas {
-			if len(bReplicas) != 0 {
-				if len(t.Replicas[feed]) == 0 {
-					t.Replicas[feed] = make([]int32, len(b.Replicas[feed]))
+		for bi, cluster := range b.BindingClusters {
+			// same cluster , use b binding cluster index get replica, and assign to t replicas
+			if ti, exist := m[cluster]; exist {
+				if len(t.Replicas[feed]) != len(t.BindingClusters) {
+					t.Replicas[feed] = make([]int32, len(t.BindingClusters))
+					t.Replicas[feed][ti] = replicas[bi]
+					continue
 				}
-				t.Replicas[feed][ti] += bReplicas[bi]
+				t.Replicas[feed][ti] += replicas[bi]
+			} else {
+				// new cluster, add cluster to t binding cluster
+				t.BindingClusters = append(t.BindingClusters, cluster)
+				// add 0 to exist feed but new cluster, if feed is nil, skip it
+				for f := range t.Replicas {
+					if f != feed {
+						if len(t.Replicas[f]) != 0 {
+							t.Replicas[f] = append(t.Replicas[f], 0)
+						}
+					} else {
+						t.Replicas[f] = append(t.Replicas[f], b.Replicas[feed][bi])
+					}
+				}
 			}
 		}
 	}
