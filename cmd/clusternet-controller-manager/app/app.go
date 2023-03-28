@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/options"
 	"github.com/spf13/cobra"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -32,6 +31,7 @@ import (
 	"k8s.io/component-base/term"
 	"k8s.io/klog/v2"
 
+	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/options"
 	_ "github.com/clusternet/clusternet/pkg/features"
 	"github.com/clusternet/clusternet/pkg/version"
 )

@@ -21,10 +21,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app"
-	"github.com/clusternet/clusternet/pkg/utils"
 	"k8s.io/component-base/cli"
 	_ "k8s.io/component-base/logs/json/register" // for JSON log format registration
+
+	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 func main() {
