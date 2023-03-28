@@ -164,7 +164,9 @@ func (cm *ControllerManager) Run(stopCh context.Context) error {
 }
 
 func (cm *ControllerManager) run(ctx context.Context) {
-	cm.controllerContext.StartControllers(ctx, NewControllerInitializers())
+	if err := cm.controllerContext.StartControllers(ctx, NewControllerInitializers()); err != nil {
+		klog.Fatalf("error starting controllers: %v", err)
+	}
 	cm.controllerContext.StartShardInformerFactories(ctx)
 	close(cm.controllerContext.InformersStarted)
 	<-ctx.Done()
