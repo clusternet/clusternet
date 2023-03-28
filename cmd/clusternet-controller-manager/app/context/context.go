@@ -19,9 +19,6 @@ package context
 import (
 	"context"
 
-	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/options"
-	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	"k8s.io/apimachinery/pkg/util/sets"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -31,6 +28,10 @@ import (
 	"k8s.io/klog/v2"
 	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
 	mcsinformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
+
+	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/options"
+	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 )
 
 // ControllerContext defines the context object for controller.

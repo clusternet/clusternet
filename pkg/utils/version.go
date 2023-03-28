@@ -17,9 +17,10 @@ limitations under the License.
 package utils
 
 import (
-	"github.com/clusternet/clusternet/pkg/features"
 	"k8s.io/apimachinery/pkg/util/version"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+
+	"github.com/clusternet/clusternet/pkg/features"
 )
 
 var (
