@@ -359,7 +359,7 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 
 		baseTemplate := &appsapi.Base{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      sub.Name,
+				Name:      fmt.Sprintf("%s-%s", sub.Name, sub.Namespace),
 				Namespace: namespace,
 				Labels: map[string]string{
 					known.ObjectCreatedByLabel: known.ClusternetHubName,
