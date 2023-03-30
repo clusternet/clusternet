@@ -85,7 +85,7 @@ func (c *ServiceImportController) Handle(obj interface{}) (requeueAfter *time.Du
 		utilruntime.HandleError(fmt.Errorf("invalid service import key: %s", key))
 		return nil, nil
 	}
-	si, err := c.serviceImportLister.ServiceImports(namespace).Get(siName)
+	cachedSi, err := c.serviceImportLister.ServiceImports(namespace).Get(siName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("service import '%s' in work queue no longer exists", key))
@@ -93,9 +93,10 @@ func (c *ServiceImportController) Handle(obj interface{}) (requeueAfter *time.Du
 		}
 		return nil, err
 	}
+	si := cachedSi.DeepCopy()
 	siTerminating := si.DeletionTimestamp != nil
-	rawServiceName, _ := si.Labels[known.LabelServiceName]
-	rawServiceNamespace, _ := si.Labels[known.LabelServiceNameSpace]
+	rawServiceName := si.Labels[known.LabelServiceName]
+	rawServiceNamespace := si.Labels[known.LabelServiceNameSpace]
 
 	if !utils.ContainsString(si.Finalizers, known.AppFinalizer) && !siTerminating {
 		si.Finalizers = append(si.Finalizers, known.AppFinalizer)
@@ -267,8 +268,8 @@ func (c *ServiceImportController) Run(ctx context.Context) {
 
 // recycleServiceImport recycle derived service and derived endpoint slices.
 func (c *ServiceImportController) recycleServiceImport(ctx context.Context, si *v1alpha1.ServiceImport) error {
-	rawServiceName, _ := si.Labels[known.LabelServiceName]
-	rawServiceNamespace, _ := si.Labels[known.LabelServiceNameSpace]
+	rawServiceName := si.Labels[known.LabelServiceName]
+	rawServiceNamespace := si.Labels[known.LabelServiceNameSpace]
 	// 1. recycle endpoint slices.
 	if err := c.localk8sClient.DiscoveryV1().EndpointSlices(si.Namespace).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{

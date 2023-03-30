@@ -258,7 +258,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing Globalization %q", key)
 	// Get the Globalization resource with this name
-	glob, err := c.globLister.Get(name)
+	cachedGlob, err := c.globLister.Get(name)
 	// The Globalization resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Globalization %q has been deleted", key)
@@ -269,6 +269,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	// add finalizer
+	glob := cachedGlob.DeepCopy()
 	if !utils.ContainsString(glob.Finalizers, known.AppFinalizer) && glob.DeletionTimestamp == nil {
 		glob.Finalizers = append(glob.Finalizers, known.AppFinalizer)
 		glob, err = c.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(),

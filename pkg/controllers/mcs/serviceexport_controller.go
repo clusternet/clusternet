@@ -86,7 +86,7 @@ func (c *ServiceExportController) Handle(obj interface{}) (requeueAfter *time.Du
 		return nil, nil
 	}
 
-	se, err := c.serviceExportLister.ServiceExports(namespace).Get(seName)
+	cachedSe, err := c.serviceExportLister.ServiceExports(namespace).Get(seName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("service export '%s' in work queue no longer exists", key))
@@ -95,6 +95,7 @@ func (c *ServiceExportController) Handle(obj interface{}) (requeueAfter *time.Du
 		return nil, err
 	}
 
+	se := cachedSe.DeepCopy()
 	seTerminating := se.DeletionTimestamp != nil
 
 	if !utils.ContainsString(se.Finalizers, known.AppFinalizer) && !seTerminating {

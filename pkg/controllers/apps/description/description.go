@@ -338,7 +338,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing Description %q", key)
 	// Get the Description resource with this name
-	desc, err := c.descLister.Descriptions(ns).Get(name)
+	cachedDesc, err := c.descLister.Descriptions(ns).Get(name)
 	// The Description resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Description %q has been deleted", key)
@@ -349,6 +349,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	// add finalizer
+	desc := cachedDesc.DeepCopy()
 	if !utils.ContainsString(desc.Finalizers, known.AppFinalizer) && desc.DeletionTimestamp == nil {
 		desc.Finalizers = append(desc.Finalizers, known.AppFinalizer)
 		desc, err = c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Update(context.TODO(),
