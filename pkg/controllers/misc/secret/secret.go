@@ -240,7 +240,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing Secret %q", key)
 	// Get the Secret resource with this name
-	secret, err := c.secretLister.Secrets(ns).Get(name)
+	cachedSecret, err := c.secretLister.Secrets(ns).Get(name)
 	// The Secret resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Secret %q has been deleted", key)
@@ -251,6 +251,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	// add finalizer
+	secret := cachedSecret.DeepCopy()
 	if !utils.ContainsString(secret.Finalizers, known.AppFinalizer) && secret.DeletionTimestamp == nil {
 		secret.Finalizers = append(secret.Finalizers, known.AppFinalizer)
 		if secret, err = c.kubeclient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(),
