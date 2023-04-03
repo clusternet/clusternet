@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package app
+package controllermanager
 
 import (
 	"context"
@@ -35,18 +35,18 @@ import (
 	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
 	mcsinformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
 
-	controllercontext "github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/context"
-	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/options"
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/controllermanager/approver"
+	controllercontext "github.com/clusternet/clusternet/pkg/controllermanager/context"
+	"github.com/clusternet/clusternet/pkg/controllermanager/deployer"
+	"github.com/clusternet/clusternet/pkg/controllermanager/options"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterlifecycle"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterlifecycle/discovery"
 	"github.com/clusternet/clusternet/pkg/controllers/mcs"
 	"github.com/clusternet/clusternet/pkg/features"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	"github.com/clusternet/clusternet/pkg/hub/approver"
-	"github.com/clusternet/clusternet/pkg/hub/deployer"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
@@ -177,7 +177,7 @@ func NewControllerInitializers() controllercontext.Initializers {
 	initializers["serviceimport"] = startServiceImportController
 	initializers["clusterlifecycle"] = startClusterLifecycleController
 	if utilfeature.DefaultFeatureGate.Enabled(features.Deployer) {
-		initializers["deployer"] = startDeployerControllers
+		initializers["deployer"] = startDeployerController
 	}
 	initializers["clusterdiscovery"] = startClusterDiscoveryController
 	return initializers
@@ -199,7 +199,7 @@ func startCRRApproveController(controllerCtx *controllercontext.ControllerContex
 	return true, nil
 }
 
-func startDeployerControllers(controllerCtx *controllercontext.ControllerContext, ctx context.Context) (bool, error) {
+func startDeployerController(controllerCtx *controllercontext.ControllerContext, ctx context.Context) (bool, error) {
 	deployer, err := deployer.NewDeployer(
 		controllerCtx.KubeConfig.Host,
 		controllerCtx.Opts.LeaderElection.ResourceNamespace,

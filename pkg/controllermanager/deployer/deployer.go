@@ -47,6 +47,9 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/controllermanager/deployer/generic"
+	"github.com/clusternet/clusternet/pkg/controllermanager/deployer/helm"
+	"github.com/clusternet/clusternet/pkg/controllermanager/deployer/localizer"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/aggregatestatus"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/base"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/feedinventory"
@@ -57,9 +60,6 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
-	"github.com/clusternet/clusternet/pkg/hub/deployer/generic"
-	"github.com/clusternet/clusternet/pkg/hub/deployer/helm"
-	"github.com/clusternet/clusternet/pkg/hub/localizer"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
