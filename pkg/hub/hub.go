@@ -26,6 +26,17 @@ import (
 	"strings"
 	"time"
 
+	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/controllers/misc/leasegc"
+	"github.com/clusternet/clusternet/pkg/features"
+	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
+	shadowapiserver "github.com/clusternet/clusternet/pkg/hub/apiserver/shadow"
+	_ "github.com/clusternet/clusternet/pkg/hub/metrics"
+	"github.com/clusternet/clusternet/pkg/hub/options"
+	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 	"github.com/gorilla/mux"
 	"github.com/rancher/remotedialer"
 	coordinationapi "k8s.io/api/coordination/v1"
@@ -36,10 +47,8 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/version"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/client-go/dynamic"
 	kubeinformers "k8s.io/client-go/informers"
 	coordinationinformers "k8s.io/client-go/informers/coordination/v1"
 	"k8s.io/client-go/kubernetes"
@@ -54,25 +63,6 @@ import (
 	"k8s.io/klog/v2"
 	aggregatorclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	aggregatorinformers "k8s.io/kube-aggregator/pkg/client/informers/externalversions"
-	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
-	mcsinformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
-
-	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterlifecycle"
-	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterlifecycle/discovery"
-	"github.com/clusternet/clusternet/pkg/controllers/mcs"
-	"github.com/clusternet/clusternet/pkg/controllers/misc/leasegc"
-	"github.com/clusternet/clusternet/pkg/features"
-	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
-	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	shadowapiserver "github.com/clusternet/clusternet/pkg/hub/apiserver/shadow"
-	"github.com/clusternet/clusternet/pkg/hub/approver"
-	"github.com/clusternet/clusternet/pkg/hub/deployer"
-	_ "github.com/clusternet/clusternet/pkg/hub/metrics"
-	"github.com/clusternet/clusternet/pkg/hub/options"
-	"github.com/clusternet/clusternet/pkg/known"
-	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -93,26 +83,14 @@ type Hub struct {
 	electionClient   *kubernetes.Clientset
 	clusternetClient *clusternet.Clientset
 	clientBuilder    clientbuilder.ControllerClientBuilder
-
-	crrApprover *approver.CRRApprover
-	deployer    *deployer.Deployer
-
-	clusterLifecycle *clusterlifecycle.Controller
-	clusterDiscovery *discovery.Controller
-
-	recorder record.EventRecorder
+	recorder         record.EventRecorder
 
 	socketConnection bool
-	deployerEnabled  bool
-
-	serviceImportEnabled bool
-	serviceImport        *mcs.ServiceImportController
 }
 
 // NewHub returns a new Hub.
 func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	socketConnection := utilfeature.DefaultFeatureGate.Enabled(features.SocketConnection)
-	deployerEnabled := utilfeature.DefaultFeatureGate.Enabled(features.Deployer)
 	config, err := utils.LoadsKubeConfig(&opts.ClientConnection)
 	if err != nil {
 		return nil, err
@@ -125,7 +103,6 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client"))
 	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-client"))
 	electionClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-election-client"))
-	mcsClientSet := mcsclientset.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-mcs-client"))
 	//deployer.broadcaster.StartStructuredLogging(5)
 	broadcaster := record.NewBroadcaster()
 	if kubeClient != nil {
@@ -143,62 +120,12 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	// creates the informer factory
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, known.DefaultResync)
 	clusternetInformerFactory := informers.NewSharedInformerFactory(clusternetClient, known.DefaultResync)
-	mcsInformerFactory := mcsinformers.NewSharedInformerFactory(mcsClientSet, known.DefaultResync)
 
 	aggregatorInformerFactory := aggregatorinformers.NewSharedInformerFactory(aggregatorclient.
 		NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client")), known.DefaultResync)
 
-	approver, err := approver.NewCRRApprover(kubeClient, clusternetClient, clusternetInformerFactory,
-		kubeInformerFactory, socketConnection)
-	if err != nil {
-		return nil, err
-	}
-
-	var d *deployer.Deployer
-	if deployerEnabled {
-		d, err = deployer.NewDeployer(config.Host, opts.LeaderElection.ResourceNamespace, opts.ReservedNamespace,
-			kubeClient, clusternetClient, clusternetInformerFactory, kubeInformerFactory,
-			recorder, opts.AnonymousAuthSupported)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	clusterLifecycle := clusterlifecycle.NewController(clusternetClient, clusternetInformerFactory.Clusters().V1beta1().ManagedClusters(), recorder)
-	var clusterDiscovery *discovery.Controller
-	if len(opts.ClusterAPIKubeconfig) > 0 {
-		clusterAPICfg, err2 := utils.LoadsKubeConfigFromFile(opts.ClusterAPIKubeconfig)
-		if err2 != nil {
-			return nil, err
-		}
-		clusterDiscovery = discovery.NewController(
-			dynamic.NewForConfigOrDie(clusterAPICfg),
-			kubernetes.NewForConfigOrDie(clusterAPICfg),
-			known.DefaultResync,
-		)
-	} else {
-		klog.Warning("will not discovery clusters created by cluster-api providers due to empty kubeconfig path")
-	}
-
-	// get kubernetes server version
-	var ver *version.Info
-	if ver, err = mcsClientSet.Discovery().ServerVersion(); err != nil {
-		return nil, err
-	}
-
-	var serviceImportEnabled bool
-	if serviceImportEnabled, err = utils.MultiClusterServiceEnabled(ver.String()); err != nil {
-		return nil, err
-	}
-
-	var serviceImport *mcs.ServiceImportController
-	if serviceImportEnabled {
-		serviceImport = mcs.NewServiceImportController(kubeClient, kubeInformerFactory.Discovery().V1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
-	}
-
 	hub := &Hub{
 		peerID:                    utilrand.String(5),
-		crrApprover:               approver,
 		options:                   opts,
 		kubeClient:                kubeClient,
 		electionClient:            electionClient,
@@ -208,13 +135,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		kubeInformerFactory:       kubeInformerFactory,
 		aggregatorInformerFactory: aggregatorInformerFactory,
 		socketConnection:          socketConnection,
-		deployer:                  d,
 		recorder:                  recorder,
-		deployerEnabled:           deployerEnabled,
-		clusterLifecycle:          clusterLifecycle,
-		clusterDiscovery:          clusterDiscovery,
-		serviceImportEnabled:      serviceImportEnabled,
-		serviceImport:             serviceImport,
 	}
 	return hub, nil
 }
@@ -245,36 +166,6 @@ func (hub *Hub) Run(ctx context.Context) error {
 		return err
 	}
 
-	// create lease for clusternet-hub controllers
-	controllerLease, err := leaderelection.NewLeaderElector(*utils.NewLeaderElectionConfigWithDefaultValue(
-		curIdentity,
-		hub.options.LeaderElection.ResourceName,
-		hub.options.LeaderElection.ResourceNamespace,
-		hub.options.LeaderElection.LeaseDuration.Duration,
-		hub.options.LeaderElection.RenewDeadline.Duration,
-		hub.options.LeaderElection.RetryPeriod.Duration,
-		hub.electionClient,
-		leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(ctx context.Context) {
-				hub.runControllers(ctx)
-			},
-			OnStoppedLeading: func() {
-				klog.Error("leader election got lost")
-			},
-			OnNewLeader: func(identity string) {
-				// we're notified when new leader elected
-				if identity == curIdentity {
-					// I just got the lock
-					return
-				}
-				klog.Infof("new leader elected: %s", identity)
-			},
-		},
-	))
-	if err != nil {
-		return err
-	}
-
 	// create lease for peer
 	peerLease, err := createPeerLease(
 		peerInfo{
@@ -300,34 +191,6 @@ func (hub *Hub) Run(ctx context.Context) error {
 	config.GenericConfig.SharedInformerFactory.Start(ctx.Done())
 	// no need to start LoopbackSharedInformerFactory since we don't store anything in this apiserver
 	// hub.options.LoopbackSharedInformerFactory.Start(ctx.Done())
-
-	server.GenericAPIServer.AddPostStartHookOrDie("starting-shared-informers-controllers",
-		func(postStartHookContext genericapiserver.PostStartHookContext) error {
-			klog.Infof("starting Clusternet controllers ...")
-			// waits for all started informers' cache got synced
-			hub.kubeInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
-			hub.clusternetInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
-			// TODO: uncomment this when module "k8s.io/apiserver" gets bumped to a higher version.
-			// 		supports k8s.io/apiserver version skew (clusternet/clusternet#137)
-			// config.GenericConfig.SharedInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
-
-			if !hub.options.LeaderElection.LeaderElect {
-				wait.UntilWithContext(ctx, hub.runControllers, 0)
-				klog.Warning("finished without leader elect")
-				return nil
-			}
-
-			go wait.UntilWithContext(ctx, func(ctx context.Context) {
-				controllerLease.Run(ctx)
-			}, 0)
-
-			select {
-			case <-postStartHookContext.StopCh:
-			}
-
-			return nil
-		},
-	)
 
 	server.GenericAPIServer.AddPostStartHookOrDie("start-clusternet-hub-shadowapis",
 		func(postStartHookContext genericapiserver.PostStartHookContext) error {
@@ -425,32 +288,6 @@ func (hub *Hub) Run(ctx context.Context) error {
 	)
 
 	return server.GenericAPIServer.PrepareRun().Run(ctx.Done())
-}
-
-func (hub *Hub) runControllers(ctx context.Context) {
-	go func() {
-		hub.crrApprover.Run(hub.options.Threadiness, ctx.Done())
-	}()
-
-	if hub.deployerEnabled {
-		go func() {
-			hub.deployer.Run(hub.options.Threadiness, ctx.Done())
-		}()
-	}
-
-	if hub.serviceImportEnabled {
-		go func() {
-			hub.serviceImport.Run(ctx)
-		}()
-	}
-
-	go func() {
-		if hub.clusterDiscovery != nil {
-			hub.clusterDiscovery.Run(ctx)
-		}
-	}()
-
-	hub.clusterLifecycle.Run(hub.options.Threadiness, ctx.Done())
 }
 
 func createPeerLease(peer peerInfo, leaderOption componentbaseconfig.LeaderElectionConfiguration,
