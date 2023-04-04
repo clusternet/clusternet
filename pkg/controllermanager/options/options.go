@@ -130,7 +130,7 @@ func (o *ControllerManagerOptions) Validate() error {
 }
 
 // Flags initializes flags by section name.
-func (o *ControllerManagerOptions) Flags(allControllers []string) *cliflag.NamedFlagSets {
+func (o *ControllerManagerOptions) Flags(allControllers, disabledByDefaultControllers []string) *cliflag.NamedFlagSets {
 	fss := &cliflag.NamedFlagSets{}
 	o.SecureServing.AddFlags(fss.FlagSet("secure serving"))
 	o.DebuggingOptions.AddFlags(fss.FlagSet("profiling"))
@@ -145,7 +145,7 @@ func (o *ControllerManagerOptions) Flags(allControllers []string) *cliflag.Named
 	miscfs.StringVar(&o.ClusterAPIKubeconfig, "cluster-api-kubeconfig", o.ClusterAPIKubeconfig, "Path to a kubeconfig file pointing at the management cluster for cluster-api.")
 	miscfs.StringSliceVar(&o.Controllers, "controllers", o.Controllers, fmt.Sprintf(""+
 		"A list of controllers to enable. '*' enables all on-by-default controllers, 'foo' enables the controller "+
-		"named 'foo', '-foo' disables the controller named 'foo'.\nAll controllers: %s",
-		strings.Join(allControllers, ", ")))
+		"named 'foo', '-foo' disables the controller named 'foo'.\nAll controllers: %s\nDisabled-by-default controllers: %s",
+		strings.Join(allControllers, ", "), strings.Join(disabledByDefaultControllers, ", ")))
 	return fss
 }
