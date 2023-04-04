@@ -58,19 +58,9 @@ type HubServerOptions struct {
 	// No tunnel logging by default
 	TunnelLogging bool
 
-	// Whether the anonymous access is allowed by the kube-apiserver,
-	// i.e. flag "--anonymous-auth=true" is set to kube-apiserver.
-	// If enabled, then the deployers in Clusternet will use anonymous when proxying requests to child clusters.
-	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
-	AnonymousAuthSupported bool
-
 	// default namespace to create Manifest in
 	// default to be "clusternet-reserved"
 	ReservedNamespace string
-
-	// threadiness of controller workers
-	// default to be 10
-	Threadiness int
 
 	RecommendedOptions *genericoptions.RecommendedOptions
 
@@ -84,8 +74,6 @@ type HubServerOptions struct {
 	PeerPort int
 	// token used for authentication with peers
 	PeerToken string
-
-	ClusterAPIKubeconfig string
 
 	// Flags hold the parsed CLI flags.
 	Flags *cliflag.NamedFlagSets
@@ -101,13 +89,11 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 	controllerOpts.ClientConnection.Burst = int32(rest.DefaultBurst * 10)
 
 	o := &HubServerOptions{
-		RecommendedOptions:     genericoptions.NewRecommendedOptions("fake", nil),
-		AnonymousAuthSupported: true,
-		ReservedNamespace:      known.ClusternetReservedNamespace,
-		Threadiness:            known.DefaultThreadiness,
-		ControllerOptions:      controllerOpts,
-		PeerPort:               8123,
-		PeerToken:              "Cheugy",
+		RecommendedOptions: genericoptions.NewRecommendedOptions("fake", nil),
+		ReservedNamespace:  known.ClusternetReservedNamespace,
+		ControllerOptions:  controllerOpts,
+		PeerPort:           8123,
+		PeerToken:          "Cheugy",
 	}
 	o.initFlags()
 	return o, nil
@@ -209,10 +195,7 @@ func (o *HubServerOptions) initFlags() {
 
 	miscfs := fss.FlagSet("misc")
 	miscfs.BoolVar(&o.TunnelLogging, "enable-tunnel-logging", o.TunnelLogging, "Enable tunnel logging")
-	miscfs.BoolVar(&o.AnonymousAuthSupported, "anonymous-auth-supported", o.AnonymousAuthSupported, "Whether the anonymous access is allowed by the 'core' kubernetes server")
 	miscfs.StringVar(&o.ReservedNamespace, "reserved-namespace", o.ReservedNamespace, "The default namespace to create Manifest in")
-	miscfs.IntVar(&o.Threadiness, "threadiness", o.Threadiness, "The number of threads to use for controller workers")
-	miscfs.StringVar(&o.ClusterAPIKubeconfig, "cluster-api-kubeconfig", o.ClusterAPIKubeconfig, "Path to a kubeconfig file pointing at the management cluster for cluster-api.")
 
 	utilfeature.DefaultMutableFeatureGate.AddFlag(fss.FlagSet("feature gate"))
 
