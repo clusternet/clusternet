@@ -21,6 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/version"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
@@ -163,13 +164,18 @@ func (cm *ControllerManager) Run(stopCh context.Context) error {
 }
 
 func (cm *ControllerManager) run(ctx context.Context) {
-	if err := cm.controllerContext.StartControllers(ctx, NewControllerInitializers()); err != nil {
+	if err := cm.controllerContext.StartControllers(ctx, NewControllerInitializers(), ControllersDisabledByDefault); err != nil {
 		klog.Fatalf("error starting controllers: %v", err)
 	}
 	cm.controllerContext.StartShardInformerFactories(ctx)
 	close(cm.controllerContext.InformersStarted)
 	<-ctx.Done()
 }
+
+// ControllersDisabledByDefault is the set of controllers which is disabled by default
+var ControllersDisabledByDefault = sets.NewString(
+	"deployer",
+)
 
 func NewControllerInitializers() controllercontext.Initializers {
 	var initializers = make(controllercontext.Initializers)

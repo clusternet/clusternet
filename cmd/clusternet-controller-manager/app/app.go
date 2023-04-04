@@ -96,7 +96,7 @@ func NewControllerManagerCommand(stopCh context.Context) *cobra.Command {
 		},
 	}
 
-	nfs := opts.Flags(controllermanager.NewControllerInitializers().KnownControllerNames())
+	nfs := opts.Flags(controllermanager.NewControllerInitializers().KnownControllerNames(), controllermanager.ControllersDisabledByDefault.List())
 	version.AddVersionFlag(nfs.FlagSet("global"))
 	globalflag.AddGlobalFlags(nfs.FlagSet("global"), cmd.Name(), logs.SkipLoggingConfigurationFlags())
 	fs := cmd.Flags()
