@@ -8,6 +8,7 @@ project.
 ## 2023 H1
 
 - [ ] Cross-cluster HPA (Ongoing)
+- [x] Introduces new component `clusternet-controller-manager`
 - [ ] Introduces de-scheduler for Clusternet
 - [ ] Enhancements on cluster resource predictor framework, such as supporting gRPC, rescheduling pending pods, etc.
 - [ ] Integrations with [Node Resource Interface](https://github.com/containerd/nri/) to address cross-cluster issues, such as service discovery, dns querying, etc.
