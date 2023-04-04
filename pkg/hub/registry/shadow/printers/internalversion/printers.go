@@ -64,8 +64,8 @@ import (
 	"k8s.io/client-go/util/certificate/csr"
 	kubectlstoragehelper "k8s.io/kubectl/pkg/util/storage"
 
-	"github.com/clusternet/clusternet/pkg/registry/shadow/printers"
-	"github.com/clusternet/clusternet/pkg/registry/shadow/printers/util"
+	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers"
+	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
 )
 
 const (

@@ -30,11 +30,11 @@ import (
 
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	proxiesinstall "github.com/clusternet/clusternet/pkg/apis/proxies/install"
-	"github.com/clusternet/clusternet/pkg/exchanger"
 	"github.com/clusternet/clusternet/pkg/features"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
-	socketstorage "github.com/clusternet/clusternet/pkg/registry/proxies/socket"
-	"github.com/clusternet/clusternet/pkg/registry/proxies/socket/subresources"
+	"github.com/clusternet/clusternet/pkg/hub/exchanger"
+	socketstorage "github.com/clusternet/clusternet/pkg/hub/registry/proxies/socket"
+	"github.com/clusternet/clusternet/pkg/hub/registry/proxies/socket/subresources"
 )
 
 var (
