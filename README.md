@@ -3,6 +3,7 @@
 [![GoPkg Widget](https://pkg.go.dev/badge/github.com/clusternet/clusternet.svg)](https://pkg.go.dev/github.com/clusternet/clusternet)
 [![License](https://img.shields.io/github/license/clusternet/clusternet)](https://www.apache.org/licenses/LICENSE-2.0.html)
 ![GoVersion](https://img.shields.io/github/go-mod/go-version/clusternet/clusternet)
+[![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/7185/badge)](https://bestpractices.coreinfrastructure.org/projects/7185)
 [![Go Report Card](https://goreportcard.com/badge/github.com/clusternet/clusternet)](https://goreportcard.com/report/github.com/clusternet/clusternet)
 ![build](https://github.com/clusternet/clusternet/actions/workflows/ci.yml/badge.svg)
 [![Version](https://img.shields.io/github/v/release/clusternet/clusternet)](https://github.com/clusternet/clusternet/releases)
@@ -86,8 +87,8 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
 
 ![](https://clusternet.io/images/clusternet-arch.png)
 
-Clusternet is a lightweight addon that consists of three components, `clusternet-agent`, `clusternet-scheduler`
-and `clusternet-hub`.
+Clusternet is a lightweight addon that consists of four components, `clusternet-agent`, `clusternet-scheduler`,
+`clusternet-controller-manager` and `clusternet-hub`.
 
 Explore the architecture of Clusternet on [clusternet.io](https://clusternet.io/docs/introduction/#architecture).
 
