@@ -27,7 +27,7 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.1.0
-	// Setting on hub and agent side.
+	// Setting on clusternet-hub and clusternet-agent side.
 	SocketConnection featuregate.Feature = "SocketConnection"
 
 	// AppPusher allows deploying applications directly from parent cluster.
@@ -37,29 +37,31 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.2.0
-	// Setting on agent side.
+	// Setting on clusternet-agent side.
 	AppPusher featuregate.Feature = "AppPusher"
 
-	// Deployer indicates whether clusternet-hub works for application managements.
+	// Deployer indicates whether clusternet-controller-manager works for application managements.
 	// The scheduling parts are handled by clusternet-scheduler.
 	//
 	// owner: @dixudx
 	// alpha: v0.2.0
-	// Setting on hub side.
+	// Setting on clusternet-controller-manager side since v0.15.0.
+	// (Setting on clusternet-hub side prior to v0.15.0.)
 	Deployer featuregate.Feature = "Deployer"
 
 	// ShadowAPI provides an apiserver to shadow all the Kubernetes objects, including CRDs.
 	//
 	// owner: @dixudx
 	// alpha: v0.3.0
-	// Setting on hub side.
+	// Setting on clusternet-hub side.
 	ShadowAPI featuregate.Feature = "ShadowAPI"
 
 	// FeedInUseProtection postpones deletion of an object that is being referred as a feed in Subscriptions.
 	//
 	// owner: @dixudx
 	// alpha: v0.4.0
-	// Setting on hub side.
+	// Setting on clusternet-controller-manager side since v0.15.0.
+	// (Setting on clusternet-hub side prior to v0.15.0.)
 	FeedInUseProtection featuregate.Feature = "FeedInUseProtection"
 
 	// Recovery ensures the resources deployed by Clusternet exist persistently in a child cluster.
@@ -68,7 +70,7 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.8.0
-	// Setting on agent side.
+	// Setting on clusternet-agent side.
 	Recovery featuregate.Feature = "Recovery"
 
 	// FeedInventory runs default in-tree registry to parse the schema of a resource, such as Deployment,
@@ -77,7 +79,8 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.9.0
-	// Setting on hub side.
+	// Setting on clusternet-controller-manager side since v0.15.0.
+	// (Setting on clusternet-hub side prior to v0.15.0.)
 	FeedInventory featuregate.Feature = "FeedInventory"
 
 	// Predictor will predictor child cluster resource before scheduling.
@@ -85,7 +88,7 @@ const (
 	//
 	// owner: @yinsenyan
 	// alpha: v0.10.0
-	// Setting on agent side
+	// Setting on clusternet-agent side
 	Predictor featuregate.Feature = "Predictor"
 
 	// MultiClusterService indicates whether we allow service export and service import related controllers
@@ -93,7 +96,7 @@ const (
 	//
 	// owner: @lmxia
 	// alpha: v0.15.0
-	// Setting on hub and agent side.
+	// Setting on clusternet-hub and clusternet-agent side.
 	MultiClusterService featuregate.Feature = "MultiClusterService"
 )
 
