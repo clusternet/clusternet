@@ -29,7 +29,7 @@ import (
 	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
 	mcsinformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
 
-	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/options"
+	"github.com/clusternet/clusternet/pkg/controllermanager/options"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 )
@@ -57,20 +57,20 @@ type ControllerContext struct {
 func (c *ControllerContext) StartControllers(ctx context.Context, initializers Initializers) error {
 	for controllerName, initFn := range initializers {
 		if !c.IsControllerEnabled(controllerName) {
-			klog.Warningf("%q is disabled", controllerName)
+			klog.Warningf("controller %q is disabled", controllerName)
 			continue
 		}
-		klog.V(1).Infof("Starting %q", controllerName)
+		klog.V(1).Infof("Starting controller %q", controllerName)
 		started, err := initFn(c, ctx)
 		if err != nil {
-			klog.Errorf("Error starting %q", controllerName)
+			klog.Errorf("Error starting controller %q", controllerName)
 			return err
 		}
 		if !started {
-			klog.Warningf("Skipping %q", controllerName)
+			klog.Warningf("Skipping controller %q", controllerName)
 			continue
 		}
-		klog.Infof("Started %q", controllerName)
+		klog.Infof("Started controller %q", controllerName)
 	}
 	return nil
 }

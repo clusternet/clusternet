@@ -31,7 +31,8 @@ import (
 	"k8s.io/component-base/term"
 	"k8s.io/klog/v2"
 
-	"github.com/clusternet/clusternet/cmd/clusternet-controller-manager/app/options"
+	"github.com/clusternet/clusternet/pkg/controllermanager"
+	"github.com/clusternet/clusternet/pkg/controllermanager/options"
 	_ "github.com/clusternet/clusternet/pkg/features"
 	"github.com/clusternet/clusternet/pkg/version"
 )
@@ -83,7 +84,7 @@ func NewControllerManagerCommand(stopCh context.Context) *cobra.Command {
 				klog.Exit(err)
 			}
 
-			cm, err2 := NewControllerManager(opts)
+			cm, err2 := controllermanager.NewControllerManager(opts)
 			if err2 != nil {
 				klog.Exit(err2)
 			}
@@ -95,7 +96,7 @@ func NewControllerManagerCommand(stopCh context.Context) *cobra.Command {
 		},
 	}
 
-	nfs := opts.Flags(NewControllerInitializers().KnownControllerNames())
+	nfs := opts.Flags(controllermanager.NewControllerInitializers().KnownControllerNames())
 	version.AddVersionFlag(nfs.FlagSet("global"))
 	globalflag.AddGlobalFlags(nfs.FlagSet("global"), cmd.Name(), logs.SkipLoggingConfigurationFlags())
 	fs := cmd.Flags()
