@@ -174,7 +174,7 @@ func (cm *ControllerManager) run(ctx context.Context) {
 
 // ControllersDisabledByDefault is the set of controllers which is disabled by default
 var ControllersDisabledByDefault = sets.NewString(
-	"deployer",
+	"",
 )
 
 func NewControllerInitializers() controllercontext.Initializers {
