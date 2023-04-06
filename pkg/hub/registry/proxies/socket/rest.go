@@ -27,8 +27,8 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 
 	proxies "github.com/clusternet/clusternet/pkg/apis/proxies/v1alpha1"
-	"github.com/clusternet/clusternet/pkg/exchanger"
 	"github.com/clusternet/clusternet/pkg/features"
+	"github.com/clusternet/clusternet/pkg/hub/exchanger"
 )
 
 const (

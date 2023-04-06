@@ -19,7 +19,7 @@ package metrics
 import (
 	"k8s.io/component-base/metrics/legacyregistry"
 
-	"github.com/clusternet/clusternet/pkg/registry/proxies/socket"
+	"github.com/clusternet/clusternet/pkg/hub/registry/proxies/socket"
 )
 
 func init() {

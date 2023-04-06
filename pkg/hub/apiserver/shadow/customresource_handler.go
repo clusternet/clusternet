@@ -55,8 +55,8 @@ import (
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/template"
 	"github.com/clusternet/clusternet/pkg/known"
-	"github.com/clusternet/clusternet/pkg/registry/shadow/template"
 )
 
 type crdHandler struct {

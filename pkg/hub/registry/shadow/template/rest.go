@@ -49,11 +49,11 @@ import (
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers"
+	printersinternal "github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/internalversion"
+	printerstorage "github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/storage"
+	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
 	"github.com/clusternet/clusternet/pkg/known"
-	"github.com/clusternet/clusternet/pkg/registry/shadow/printers"
-	printersinternal "github.com/clusternet/clusternet/pkg/registry/shadow/printers/internalversion"
-	printerstorage "github.com/clusternet/clusternet/pkg/registry/shadow/printers/storage"
-	"github.com/clusternet/clusternet/pkg/registry/shadow/printers/util"
 )
 
 const (
