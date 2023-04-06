@@ -28,6 +28,8 @@ const (
 	// owner: @dixudx
 	// alpha: v0.1.0
 	// Setting on clusternet-hub and clusternet-agent side.
+	// Also works on clusternet-controller-manager side to indicate whether to add rule "sockets/proxy" to
+	// every dedicated ClusterRole object for child clusters.
 	SocketConnection featuregate.Feature = "SocketConnection"
 
 	// AppPusher allows deploying applications directly from parent cluster.
