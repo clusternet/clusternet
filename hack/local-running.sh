@@ -129,6 +129,10 @@ helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${PARENT_CLUSTER_NAME}" i
   clusternet-scheduler -n clusternet-system --create-namespace clusternet/clusternet-scheduler
 echo "Installing clusternet-scheduler finished"
 
+echo "Installing clusternet-controller-manager..."
+helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${PARENT_CLUSTER_NAME}" install \
+  clusternet-controller-manager -n clusternet-system --create-namespace clusternet/clusternet-controller-manager
+echo "Installing clusternet-controller-manager finished"
 
 echo "Installing clusternet-agent into child1..."
 helm --kubeconfig="${KUBECONFIG_FILE}" --kube-context="${CHILD_1_CLUSTER_NAME}" install \
