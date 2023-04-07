@@ -98,7 +98,7 @@ const (
 	//
 	// owner: @lmxia
 	// alpha: v0.15.0
-	// Setting on clusternet-hub and clusternet-agent side.
+	// Setting on clusternet-controller-manager and clusternet-agent side.
 	MultiClusterService featuregate.Feature = "MultiClusterService"
 )
 
