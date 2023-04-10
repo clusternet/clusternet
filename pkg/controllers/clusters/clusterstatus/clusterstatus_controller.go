@@ -253,13 +253,13 @@ func getNodeStatistics(nodes []*corev1.Node) (nodeStatistics clusterapi.NodeStat
 // get pods num in running conditions and the total pods num in the cluster
 func getPodStatistics(clientset *metricsv.Clientset) *clusterapi.PodStatistics {
 	if clientset == nil {
-		klog.Warningf("empty metris client, will return directly ")
+		klog.Warningf("empty metrics client, will return directly")
 		return nil
 	}
 
 	podMetricsList, err := clientset.MetricsV1beta1().PodMetricses(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		klog.Warningf("failed to list podMetris with err: %v", err.Error)
+		klog.Warningf("failed to list podMetrics with err: %v", err)
 		return nil
 	}
 	podStatistics := &clusterapi.PodStatistics{}
@@ -277,13 +277,13 @@ func getPodStatistics(clientset *metricsv.Clientset) *clusterapi.PodStatistics {
 // get cpu(m) and memory(Mi) used
 func getResourceUsage(clientset *metricsv.Clientset) *clusterapi.ResourceUsage {
 	if clientset == nil {
-		klog.Warningf("empty metris client, will return directly ")
+		klog.Warningf("empty metrics client, will return directly")
 		return nil
 	}
 
 	nodeMetricsList, err := clientset.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		klog.Warningf("failed to list nodeMetris with err: %v", err.Error)
+		klog.Warningf("failed to list nodeMetrics with err: %v", err)
 		return nil
 	}
 	resourceUsage := &clusterapi.ResourceUsage{}
