@@ -43,7 +43,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
-	flowcontrolv1beta2 "k8s.io/api/flowcontrol/v1beta2"
+	flowcontrolv1beta3 "k8s.io/api/flowcontrol/v1beta3"
 	networkingv1 "k8s.io/api/networking/v1"
 	nodev1 "k8s.io/api/node/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -551,9 +551,9 @@ func AddHandlers(h printers.PrintHandler) {
 
 	flowSchemaColumnDefinitions := []metav1.TableColumnDefinition{
 		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
-		{Name: "PriorityLevel", Type: "string", Description: flowcontrolv1beta2.PriorityLevelConfigurationReference{}.SwaggerDoc()["name"]},
-		{Name: "MatchingPrecedence", Type: "string", Description: flowcontrolv1beta2.FlowSchemaSpec{}.SwaggerDoc()["matchingPrecedence"]},
-		{Name: "DistinguisherMethod", Type: "string", Description: flowcontrolv1beta2.FlowSchemaSpec{}.SwaggerDoc()["distinguisherMethod"]},
+		{Name: "PriorityLevel", Type: "string", Description: flowcontrolv1beta3.PriorityLevelConfigurationReference{}.SwaggerDoc()["name"]},
+		{Name: "MatchingPrecedence", Type: "string", Description: flowcontrolv1beta3.FlowSchemaSpec{}.SwaggerDoc()["matchingPrecedence"]},
+		{Name: "DistinguisherMethod", Type: "string", Description: flowcontrolv1beta3.FlowSchemaSpec{}.SwaggerDoc()["distinguisherMethod"]},
 		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
 		{Name: "MissingPL", Type: "string", Description: "references a broken or non-existent PriorityLevelConfiguration"},
 	}
@@ -562,11 +562,11 @@ func AddHandlers(h printers.PrintHandler) {
 
 	priorityLevelColumnDefinitions := []metav1.TableColumnDefinition{
 		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
-		{Name: "Type", Type: "string", Description: flowcontrolv1beta2.PriorityLevelConfigurationSpec{}.SwaggerDoc()["type"]},
-		{Name: "AssuredConcurrencyShares", Type: "string", Description: flowcontrolv1beta2.LimitedPriorityLevelConfiguration{}.SwaggerDoc()["assuredConcurrencyShares"]},
-		{Name: "Queues", Type: "string", Description: flowcontrolv1beta2.QueuingConfiguration{}.SwaggerDoc()["queues"]},
-		{Name: "HandSize", Type: "string", Description: flowcontrolv1beta2.QueuingConfiguration{}.SwaggerDoc()["handSize"]},
-		{Name: "QueueLengthLimit", Type: "string", Description: flowcontrolv1beta2.QueuingConfiguration{}.SwaggerDoc()["queueLengthLimit"]},
+		{Name: "Type", Type: "string", Description: flowcontrolv1beta3.PriorityLevelConfigurationSpec{}.SwaggerDoc()["type"]},
+		{Name: "AssuredConcurrencyShares", Type: "string", Description: flowcontrolv1beta3.LimitedPriorityLevelConfiguration{}.SwaggerDoc()["assuredConcurrencyShares"]},
+		{Name: "Queues", Type: "string", Description: flowcontrolv1beta3.QueuingConfiguration{}.SwaggerDoc()["queues"]},
+		{Name: "HandSize", Type: "string", Description: flowcontrolv1beta3.QueuingConfiguration{}.SwaggerDoc()["handSize"]},
+		{Name: "QueueLengthLimit", Type: "string", Description: flowcontrolv1beta3.QueuingConfiguration{}.SwaggerDoc()["queueLengthLimit"]},
 		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
 	}
 	h.TableHandler(priorityLevelColumnDefinitions, printPriorityLevelConfiguration)
@@ -1297,11 +1297,31 @@ func printIngress(unstruct *unstructured.Unstructured, options printers.Generate
 		className = *obj.Spec.IngressClassName
 	}
 	hosts := formatHosts(obj.Spec.Rules)
-	address := loadBalancerStatusStringer(obj.Status.LoadBalancer, options.Wide)
+	address := ingressLoadBalancerStatusStringer(obj.Status.LoadBalancer, options.Wide)
 	ports := formatPorts(obj.Spec.TLS)
 	createTime := translateTimestampSince(obj.CreationTimestamp)
 	row.Cells = append(row.Cells, obj.Name, className, hosts, address, ports, createTime)
 	return []metav1.TableRow{row}, nil
+}
+
+// ingressLoadBalancerStatusStringer behaves mostly like a string interface and converts the given status to a string.
+// `wide` indicates whether the returned value is meant for --o=wide output. If not, it's clipped to 16 bytes.
+func ingressLoadBalancerStatusStringer(s networkingv1.IngressLoadBalancerStatus, wide bool) string {
+	ingress := s.Ingress
+	result := sets.NewString()
+	for i := range ingress {
+		if ingress[i].IP != "" {
+			result.Insert(ingress[i].IP)
+		} else if ingress[i].Hostname != "" {
+			result.Insert(ingress[i].Hostname)
+		}
+	}
+
+	r := strings.Join(result.List(), ",")
+	if !wide && len(r) > loadBalancerWidth {
+		r = r[0:(loadBalancerWidth-3)] + "..."
+	}
+	return r
 }
 
 func printIngressList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
@@ -2854,7 +2874,7 @@ func printVolumeAttachmentList(unstructList *unstructured.UnstructuredList, opti
 }
 
 func printFlowSchema(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	obj := &flowcontrolv1beta2.FlowSchema{}
+	obj := &flowcontrolv1beta3.FlowSchema{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {
 		return nil, fmt.Errorf("unable to convert unstructured object to FlowSchema %v", err)
 	}
@@ -2870,7 +2890,7 @@ func printFlowSchema(unstruct *unstructured.Unstructured, options printers.Gener
 	}
 	badPLRef := "?"
 	for _, cond := range obj.Status.Conditions {
-		if cond.Type == flowcontrolv1beta2.FlowSchemaConditionDangling {
+		if cond.Type == flowcontrolv1beta3.FlowSchemaConditionDangling {
 			badPLRef = string(cond.Status)
 			break
 		}
@@ -2881,7 +2901,7 @@ func printFlowSchema(unstruct *unstructured.Unstructured, options printers.Gener
 }
 
 func printFlowSchemaList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	list := &flowcontrolv1beta2.FlowSchemaList{}
+	list := &flowcontrolv1beta3.FlowSchemaList{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructList.UnstructuredContent(), list); err != nil {
 		return nil, fmt.Errorf("unable to convert unstructured object to FlowSchemaList %v", err)
 	}
@@ -2954,7 +2974,7 @@ func printStorageVersionList(unstructList *unstructured.UnstructuredList, option
 }
 
 func printPriorityLevelConfiguration(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	obj := &flowcontrolv1beta2.PriorityLevelConfiguration{}
+	obj := &flowcontrolv1beta3.PriorityLevelConfiguration{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {
 		return nil, fmt.Errorf("unable to convert unstructured object to PriorityLevelConfiguration %v", err)
 	}
@@ -2962,25 +2982,25 @@ func printPriorityLevelConfiguration(unstruct *unstructured.Unstructured, option
 		Object: runtime.RawExtension{Object: obj},
 	}
 	name := obj.Name
-	acs := interface{}("<none>")
+	ncs := interface{}("<none>")
 	queues := interface{}("<none>")
 	handSize := interface{}("<none>")
 	queueLengthLimit := interface{}("<none>")
 	if obj.Spec.Limited != nil {
-		acs = obj.Spec.Limited.AssuredConcurrencyShares
+		ncs = obj.Spec.Limited.NominalConcurrencyShares
 		if qc := obj.Spec.Limited.LimitResponse.Queuing; qc != nil {
 			queues = qc.Queues
 			handSize = qc.HandSize
 			queueLengthLimit = qc.QueueLengthLimit
 		}
 	}
-	row.Cells = append(row.Cells, name, string(obj.Spec.Type), acs, queues, handSize, queueLengthLimit, translateTimestampSince(obj.CreationTimestamp))
+	row.Cells = append(row.Cells, name, string(obj.Spec.Type), ncs, queues, handSize, queueLengthLimit, translateTimestampSince(obj.CreationTimestamp))
 
 	return []metav1.TableRow{row}, nil
 }
 
 func printPriorityLevelConfigurationList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	list := &flowcontrolv1beta2.PriorityLevelConfigurationList{}
+	list := &flowcontrolv1beta3.PriorityLevelConfigurationList{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructList.UnstructuredContent(), list); err != nil {
 		return nil, fmt.Errorf("unable to convert unstructured object to PriorityLevelConfigurationList %v", err)
 	}

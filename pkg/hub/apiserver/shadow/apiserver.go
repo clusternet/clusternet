@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	apidiscoveryv2beta1 "k8s.io/api/apidiscovery/v2beta1"
 	autoscalingapiv1 "k8s.io/api/autoscaling/v1"
 	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	apiextensionsv1lister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
@@ -313,7 +314,7 @@ func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *g
 
 		apiGroupVersion.MaxRequestBodyBytes = ss.maxRequestBodyBytes
 
-		r, err := apiGroupVersion.InstallREST(ss.GenericAPIServer.Handler.GoRestfulContainer)
+		discoveryAPIResources, r, err := apiGroupVersion.InstallREST(ss.GenericAPIServer.Handler.GoRestfulContainer)
 		if err != nil && !strings.Contains(err.Error(), "missing parent storage") {
 			// Some subresources for CRDs are implemented with another group, like `kubevirt`.
 			// We just ignore those non-harmful "missing parent storage" errors.
@@ -322,6 +323,28 @@ func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *g
 		}
 
 		resourceInfos = append(resourceInfos, r...)
+
+		if utilfeature.DefaultFeatureGate.Enabled(k8sfeatures.AggregatedDiscoveryEndpoint) {
+			// Aggregated discovery only aggregates resources under /apis
+			if apiPrefix == genericapiserver.APIGroupPrefix {
+				ss.GenericAPIServer.AggregatedDiscoveryGroupManager.AddGroupVersion(
+					groupVersion.Group,
+					apidiscoveryv2beta1.APIVersionDiscovery{
+						Version:   groupVersion.Version,
+						Resources: discoveryAPIResources,
+					},
+				)
+			} else {
+				// There is only one group version for legacy resources, priority can be defaulted to 0.
+				ss.GenericAPIServer.AggregatedLegacyDiscoveryGroupManager.AddGroupVersion(
+					groupVersion.Group,
+					apidiscoveryv2beta1.APIVersionDiscovery{
+						Version:   groupVersion.Version,
+						Resources: discoveryAPIResources,
+					},
+				)
+			}
+		}
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(k8sfeatures.StorageVersionAPI) &&

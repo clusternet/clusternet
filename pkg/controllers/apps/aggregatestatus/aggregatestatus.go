@@ -89,10 +89,13 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 	}
 
 	// Manage the update/delete of Description
-	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: c.updateDescription,
 		DeleteFunc: c.deleteDescription,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

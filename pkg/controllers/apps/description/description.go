@@ -88,19 +88,29 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 	}
 
 	// Manage the addition/update of Description
-	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addDescription,
 		UpdateFunc: c.updateDescription,
 		DeleteFunc: c.deleteDescription,
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	hrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = hrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: c.deleteHelmRelease,
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	helmChartInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = helmChartInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: c.updateHelmChart,
 	})
+	if err != nil {
+		return nil, err
+	}
+
 	return c, nil
 }
 

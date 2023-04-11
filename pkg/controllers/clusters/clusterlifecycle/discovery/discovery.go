@@ -156,7 +156,11 @@ func (c *Controller) Run(ctx context.Context) {
 		})
 
 	clusterInformer := c.capiInformerFactory.ForResource(c.capiGVR).Informer()
-	clusterInformer.AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
+	_, err = clusterInformer.AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
+	if err != nil {
+		klog.Fatalf("failed to add event handler for cluster discovery: %w", err)
+		return
+	}
 
 	// start the informer factory and run the controller
 	c.capiInformerFactory.Start(ctx.Done())
@@ -247,7 +251,7 @@ func createClusterResourceSet(ctx context.Context, namespace, capiVersion string
 				"clusterSelector": map[string]interface{}{
 					"matchExpressions": []interface{}{
 						map[string]interface{}{
-							"key":      capiv1beta1.ClusterLabelName,
+							"key":      capiv1beta1.ClusterNameLabel,
 							"operator": metav1.LabelSelectorOpExists,
 						},
 					},

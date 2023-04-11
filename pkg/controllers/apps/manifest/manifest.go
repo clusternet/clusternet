@@ -93,15 +93,21 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	}
 
 	// Manage the addition/update of Manifest
-	manifestInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := manifestInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addManifest,
 		UpdateFunc: c.updateManifest,
 		DeleteFunc: c.deleteManifest,
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: c.updateBase,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

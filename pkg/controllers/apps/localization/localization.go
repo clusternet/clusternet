@@ -101,11 +101,14 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	}
 
 	// Manage the addition/update of Localization
-	locInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := locInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addLocalization,
 		UpdateFunc: c.updateLocalization,
 		DeleteFunc: c.deleteLocalization,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

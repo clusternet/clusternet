@@ -225,11 +225,14 @@ func startDeployerController(controllerCtx *controllercontext.ControllerContext,
 }
 
 func startClusterLifecycleController(controllerCtx *controllercontext.ControllerContext, ctx context.Context) (bool, error) {
-	clusterLifecycle := clusterlifecycle.NewController(
+	clusterLifecycle, err := clusterlifecycle.NewController(
 		controllerCtx.ClusternetClient,
 		controllerCtx.ClusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
 		controllerCtx.EventRecorder,
 	)
+	if err != nil {
+		return false, err
+	}
 	go clusterLifecycle.Run(controllerCtx.Opts.Threadiness, ctx.Done())
 	return true, nil
 }

@@ -101,11 +101,14 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	}
 
 	// Manage the addition/update of Globalization
-	globInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := globInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addGlobalization,
 		UpdateFunc: c.updateGlobalization,
 		DeleteFunc: c.deleteGlobalization,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

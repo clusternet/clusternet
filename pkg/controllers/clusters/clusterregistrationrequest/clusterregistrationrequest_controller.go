@@ -37,12 +37,6 @@ import (
 	crrsListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 )
 
-const (
-	// InvalidSpec is used as part of the Event 'reason' when a Resource fails
-	// to sync due to the invalid spec.
-	InvalidSpec = "InvalidSpec"
-)
-
 // controllerKind contains the schema.GroupVersionKind for this controller type.
 var controllerKind = clusterapi.SchemeGroupVersion.WithKind("ClusterRegistrationRequest")
 
@@ -81,11 +75,14 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 	}
 
 	// Manage the addition/update of cluster registration requests
-	crrsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := crrsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addCRR,
 		UpdateFunc: c.updateCRR,
 		DeleteFunc: c.deleteCRR,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

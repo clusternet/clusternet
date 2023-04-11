@@ -84,15 +84,21 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	}
 
 	// Manage the addition/update of Base
-	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addBase,
 		UpdateFunc: c.updateBase,
 		DeleteFunc: c.deleteBase,
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: c.deleteDescription,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }
