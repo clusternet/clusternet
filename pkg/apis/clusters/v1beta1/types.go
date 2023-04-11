@@ -300,7 +300,8 @@ type ManagedClusterStatus struct {
 	PredictorAddress string `json:"predictorAddress,omitempty"`
 
 	// PredictorDirectAccess indicates whether the predictor can be accessed directly by clusternet-scheduler
-	PredictorDirectAccess bool `json:"predictorDirectAccess,omitempty"`
+	// +optional
+	PredictorDirectAccess bool `json:"predictorDirectAccess"`
 }
 
 // +genclient
