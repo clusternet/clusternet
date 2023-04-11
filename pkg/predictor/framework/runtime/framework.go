@@ -379,7 +379,7 @@ func (f *frameworkImpl) RunComputePlugins(ctx context.Context, requirements *app
 		for i, pl := range f.computePlugins {
 			replicas, calStatus := f.runComputePlugin(ctx, pl, requirements, nodesInfo[index])
 			if !calStatus.IsSuccess() {
-				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), calStatus.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
 				return
 			}
