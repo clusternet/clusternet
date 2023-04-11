@@ -89,15 +89,21 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	}
 
 	// Manage the addition/update of Subscription
-	subsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := subsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addSubscription,
 		UpdateFunc: c.updateSubscription,
 		DeleteFunc: c.deleteSubscription,
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = baseInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: c.deleteBase,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

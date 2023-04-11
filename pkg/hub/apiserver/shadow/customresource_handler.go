@@ -155,11 +155,15 @@ func (r *crdHandler) SetRootWebService(ws *restful.WebService) {
 		Writes(metav1.APIResourceList{}))
 
 	// start event handler after ws is set
-	r.crdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := r.crdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    r.addCustomResourceDefinition,
 		UpdateFunc: r.updateCustomResourceDefinition,
 		DeleteFunc: r.deleteCustomResourceDefinition,
 	})
+	if err != nil {
+		klog.Fatalf("failed to add event handler for crd: %w", err)
+		return
+	}
 }
 
 func (r *crdHandler) addCustomResourceDefinition(obj interface{}) {

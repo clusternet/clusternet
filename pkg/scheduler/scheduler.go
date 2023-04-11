@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	apiserver "k8s.io/apiserver/pkg/server"
@@ -184,8 +185,8 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 	// register all metrics
 	metrics.Register()
 
-	sched.addAllEventHandlers()
-	return sched, nil
+	err = sched.addAllEventHandlers()
+	return sched, err
 }
 
 // Run begins watching and scheduling. It starts scheduling and blocked until the context is done.
@@ -454,8 +455,11 @@ func (sched *Scheduler) handleSchedulingFailure(fwk framework.Framework, sub *ap
 
 // addAllEventHandlers is a helper function used in tests and in Scheduler
 // to add event handlers for various informers.
-func (sched *Scheduler) addAllEventHandlers() {
-	sched.ClusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+func (sched *Scheduler) addAllEventHandlers() error {
+	errors := []error{}
+
+	_, err := sched.ClusternetInformerFactory.Apps().V1alpha1().Subscriptions().Informer().AddEventHandler(cache.
+		FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch t := obj.(type) {
 			case *appsapi.Subscription:
@@ -504,8 +508,10 @@ func (sched *Scheduler) addAllEventHandlers() {
 			},
 		},
 	})
+	errors = append(errors, err)
 
-	sched.ClusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = sched.ClusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().AddEventHandler(cache.
+		ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			finv := obj.(*appsapi.FeedInventory)
 			sched.SchedulingQueue.Add(klog.KObj(finv).String())
@@ -520,6 +526,7 @@ func (sched *Scheduler) addAllEventHandlers() {
 			sched.SchedulingQueue.Add(klog.KObj(newInventory).String())
 		},
 	})
+	errors = append(errors, err)
 
 	enqueueSubscriptionForClusterFunc := func(newMcls *clusterapi.ManagedCluster, oldMcls *clusterapi.ManagedCluster) {
 		sched.lock.RLock()
@@ -554,7 +561,8 @@ func (sched *Scheduler) addAllEventHandlers() {
 		}
 	}
 
-	sched.ClusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err = sched.ClusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Informer().AddEventHandler(cache.
+		ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			mcls := obj.(*clusterapi.ManagedCluster)
 			if mcls.DeletionTimestamp != nil {
@@ -585,7 +593,9 @@ func (sched *Scheduler) addAllEventHandlers() {
 			enqueueSubscriptionForClusterFunc(nil, mcls)
 		},
 	})
+	errors = append(errors, err)
 
+	return utilerrors.NewAggregate(errors)
 }
 
 func (sched *Scheduler) frameworkForSubscription(sub *appsapi.Subscription) (framework.Framework, error) {

@@ -253,8 +253,12 @@ func (c *ServiceImportController) Run(ctx context.Context) {
 	controller := yacht.NewController("serviceimport").
 		WithCacheSynced(c.serviceImportInformer.Informer().HasSynced, c.endpointSliceInformer.Informer().HasSynced).
 		WithHandlerFunc(c.Handle).WithEnqueueFilterFunc(preFilter)
-	c.serviceImportInformer.Informer().AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
-	c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	_, err := c.serviceImportInformer.Informer().AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
+	if err != nil {
+		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
+		return
+	}
+	_, err = c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			if si, err := c.getServiceImportFromEndpointSlice(obj); err == nil {
 				controller.Enqueue(si)
@@ -262,6 +266,10 @@ func (c *ServiceImportController) Run(ctx context.Context) {
 			return false
 		},
 	})
+	if err != nil {
+		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
+		return
+	}
 
 	controller.Run(ctx)
 }

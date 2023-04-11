@@ -181,9 +181,12 @@ func (c *ServiceExportController) Run(ctx context.Context, parentDedicatedKubeCo
 	controller := yacht.NewController("serviceexport").
 		WithCacheSynced(c.serviceExportInformer.Informer().HasSynced, c.endpointSliceInformer.Informer().HasSynced).
 		WithHandlerFunc(c.Handle)
-	c.serviceExportInformer.Informer().AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
+	_, err := c.serviceExportInformer.Informer().AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
+	if err != nil {
+		return err
+	}
 
-	c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+	_, err = c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			endpointSlice := obj.(*discoveryv1.EndpointSlice)
 			if serviceName, ok := endpointSlice.Labels[discoveryv1.LabelServiceName]; ok {
@@ -211,6 +214,9 @@ func (c *ServiceExportController) Run(ctx context.Context, parentDedicatedKubeCo
 			},
 		},
 	})
+	if err != nil {
+		return err
+	}
 
 	controller.Run(ctx)
 	<-ctx.Done()

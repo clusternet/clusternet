@@ -79,11 +79,14 @@ func NewController(kubeclient kubernetes.Interface, secretInformer coreInformers
 
 	// Manage the addition/update of Secret
 	// here we only focus on Secret "child-cluster-deployer" !!!
-	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addSecret,
 		UpdateFunc: c.updateSecret,
 		DeleteFunc: c.deleteSecret,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

@@ -352,7 +352,7 @@ func refreshingPeers(clientset kubernetes.Interface, selfID, leaseNamespace stri
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 		nil)
 
-	leaseInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+	_, err := leaseInformer.AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			lease := obj.(*coordinationapi.Lease)
 			if strings.HasPrefix(lease.Name, peerLeasePrefix) {
@@ -389,6 +389,10 @@ func refreshingPeers(clientset kubernetes.Interface, selfID, leaseNamespace stri
 			},
 		},
 	})
+	if err != nil {
+		klog.Fatalf("failed to add event handler for hub peer lease: %w", err)
+		return
+	}
 
 	klog.Infof("refreshing peer connections ...")
 	leaseInformer.Run(stopCh)
