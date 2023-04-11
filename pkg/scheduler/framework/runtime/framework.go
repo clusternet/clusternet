@@ -443,7 +443,7 @@ func (f *frameworkImpl) RunPredictPlugins(ctx context.Context, state *framework.
 		for i, pl := range f.predictPlugins {
 			replicas, status2 := f.runPredictPlugin(ctx, pl, state, sub, finv, clusters[index])
 			if !status2.IsSuccess() {
-				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status2.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
 				return
 			}
