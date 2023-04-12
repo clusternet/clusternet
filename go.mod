@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/dixudx/yacht v0.3.0
+	github.com/dixudx/yacht v0.4.0
 	github.com/emicklei/go-restful/v3 v3.9.0
 	github.com/evanphx/json-patch v5.6.0+incompatible
 	github.com/google/go-cmp v0.5.9
