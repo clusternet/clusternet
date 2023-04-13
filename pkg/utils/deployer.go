@@ -38,7 +38,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	pkgruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -633,7 +632,7 @@ func doApplyPatch(
 
 	versionedObject, err := kubectlscheme.Scheme.New(restMapping.GroupVersionKind)
 	switch {
-	case runtime.IsNotRegisteredError(err):
+	case pkgruntime.IsNotRegisteredError(err):
 		// fall back to generic JSON merge patch
 		patchType = types.MergePatchType
 		preconditions := []mergepatch.PreconditionFunc{mergepatch.RequireKeyUnchanged("apiVersion"),
