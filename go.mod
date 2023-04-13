@@ -11,6 +11,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24
+	github.com/pkg/errors v0.9.1
 	github.com/rancher/remotedialer v0.2.6-0.20210318171128-d1ebd5202be4
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.6.1
@@ -129,7 +130,6 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.3-0.20211202183452-c5a74bcca799 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.14.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
