@@ -19,7 +19,6 @@ package utils
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -27,6 +26,7 @@ import (
 	"sync"
 
 	"github.com/mattbaird/jsonpatch"
+	"github.com/pkg/errors"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/registry"
@@ -38,9 +38,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	pkgruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/jsonmergepatch"
+	"k8s.io/apimachinery/pkg/util/mergepatch"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
@@ -48,6 +53,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	kubectlscheme "k8s.io/kubectl/pkg/scheme"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -377,12 +383,24 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
 			continue
 		}
-
 		annotations := resource.GetAnnotations()
 		if annotations == nil {
 			annotations = map[string]string{}
 		}
+		// remove kubectl last-applied-config annotation
+		delete(annotations, corev1.LastAppliedConfigAnnotation)
 		annotations[known.ObjectOwnedByDescriptionAnnotation] = desc.Namespace + "." + desc.Name
+		resource.SetAnnotations(annotations)
+		trimedObject, err := resource.MarshalJSON()
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
+			continue
+		}
+		// add clusternet-agent last-applied-config annotation
+		annotations[known.LastAppliedConfigAnnotation] = string(trimedObject)
 		resource.SetAnnotations(annotations)
 		wg.Add(1)
 		go func(resource *unstructured.Unstructured) {
@@ -543,8 +561,7 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 		}
 		if ResourceNeedResync(resource, curObj, ignoreAdd) {
 			// try to update resource
-			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
-				Update(context.TODO(), resource, metav1.UpdateOptions{})
+			lastError = doApplyPatch(ctx, dynamicClient, restMapper, resource, curObj)
 			if lastError == nil {
 				return true, nil
 			}
@@ -563,8 +580,8 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 				setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
 			}
 			// update with immutable values applied
-			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
-				Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
+			// try to update resource
+			lastError = doApplyPatch(ctx, dynamicClient, restMapper, resource, curObj)
 			if lastError == nil {
 				return true, nil
 			}
@@ -576,6 +593,95 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 		return nil
 	}
 	return lastError
+}
+
+func getOriginalConfiguration(current *unstructured.Unstructured) []byte {
+	annots := current.GetAnnotations()
+	if annots == nil {
+		return nil
+	}
+
+	original, ok := annots[known.LastAppliedConfigAnnotation]
+	if !ok {
+		return nil
+	}
+	return []byte(original)
+}
+
+func doApplyPatch(
+	ctx context.Context,
+	dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
+	target, current *unstructured.Unstructured) error {
+	curData, err := json.Marshal(current)
+	if err != nil {
+		return errors.Wrap(err, "serializing current configuration")
+	}
+	newData, err := json.Marshal(target.Object)
+	if err != nil {
+		return errors.Wrap(err, "serializing target configuration")
+	}
+	originalData := getOriginalConfiguration(current)
+	restMapping, err := restMapper.RESTMapping(target.GroupVersionKind().GroupKind(), target.GroupVersionKind().Version)
+	if err != nil {
+		return errors.Wrap(err, "please check whether the advertised apiserver of current child cluster is accessible")
+	}
+
+	// Refer to the implementation of kubectl patcher
+	var patchType types.PatchType
+	var patch []byte
+	var lookupPatchMeta strategicpatch.LookupPatchMeta
+
+	versionedObject, err := kubectlscheme.Scheme.New(restMapping.GroupVersionKind)
+	switch {
+	case runtime.IsNotRegisteredError(err):
+		// fall back to generic JSON merge patch
+		patchType = types.MergePatchType
+		preconditions := []mergepatch.PreconditionFunc{mergepatch.RequireKeyUnchanged("apiVersion"),
+			mergepatch.RequireKeyUnchanged("kind"), mergepatch.RequireMetadataKeyUnchanged("name")}
+		patch, err = jsonmergepatch.CreateThreeWayJSONMergePatch(originalData, newData, curData, preconditions...)
+		if err != nil {
+			if mergepatch.IsPreconditionFailed(err) {
+				return fmt.Errorf("%s", "At least one of apiVersion, kind and name was changed")
+			}
+			klog.Errorf("create jsonmergepath failed for gvk %s resource %s/%s, err %s",
+				restMapping.GroupVersionKind, target.GetNamespace(), target.GetName(), err.Error())
+			return err
+		}
+	case err != nil:
+		klog.Errorf("getting instance of versioned object for %v, err %s", restMapping.GroupVersionKind, err.Error())
+		return fmt.Errorf("getting instance of versioned object for %v, err %s",
+			restMapping.GroupVersionKind, err.Error())
+	case err == nil:
+		// Compute a three way strategic merge patch to send to server.
+		// TODO: Try to use openapi first if the openapi spec is available
+		patchType = types.StrategicMergePatchType
+		lookupPatchMeta, err = strategicpatch.NewPatchMetaFromStruct(versionedObject)
+		if err != nil {
+			klog.Errorf("get patch meta failed for gvk %s resource %s/%s, err %s",
+				restMapping.GroupVersionKind, target.GetNamespace(), target.GetName(), err.Error())
+			return err
+		}
+		patch, err = strategicpatch.CreateThreeWayMergePatch(originalData, newData, curData, lookupPatchMeta, true)
+		if err != nil {
+			klog.Errorf("create three way merge patch failed for gvk %s resource %s/%s, err %s",
+				restMapping.GroupVersionKind, target.GetNamespace(), target.GetName(), err.Error())
+			return err
+		}
+	}
+
+	if string(patch) == "{}" {
+		return nil
+	}
+	// try to update resource
+	_, err = dynamicClient.Resource(restMapping.Resource).Namespace(target.GetNamespace()).
+		Patch(ctx, target.GetName(), patchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		klog.Errorf("call patch resource %s/%s failed, patch type %s, err %s",
+			target.GetNamespace(), target.GetName(), patchType, err.Error())
+		// return original error
+		return err
+	}
+	return nil
 }
 
 func DeleteResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {

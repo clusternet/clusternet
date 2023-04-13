@@ -28,6 +28,10 @@ const (
 	// This is useful when you want to create a CR, but you don't want to declare a CRD in the parent kube-apiserver.
 	SkipValidatingAnnotation = "apps.clusternet.io/skip-validating"
 
-	//ObjectOwnedByDescriptionAnnotation is the name of an annotation which contains the description of the object owned by
+	// ObjectOwnedByDescriptionAnnotation is the name of an annotation which contains the description of the object owned by
 	ObjectOwnedByDescriptionAnnotation = "apps.clusternet.io/owned-by-description"
+
+	// LastAppliedConfigAnnotation is the annotation used to store the previous
+	// configuration of a resource for use in a three way diff by UpdateApplyAnnotation.
+	LastAppliedConfigAnnotation = "clusternet.io/last-applied-configuration"
 )
