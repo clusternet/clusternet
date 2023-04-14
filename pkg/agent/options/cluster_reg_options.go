@@ -35,6 +35,7 @@ import (
 
 var validateClusterNameRegex = regexp.MustCompile(nameFmt)
 var validateClusterNamespaceRegex = regexp.MustCompile(namespaceFmt)
+var validateServiceAccountTokenRegex = regexp.MustCompile(serviceAccountTokenFmt)
 
 // ClusterRegistrationOptions holds the command-line options about cluster registration
 type ClusterRegistrationOptions struct {
@@ -188,7 +189,7 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 	}
 
 	// once getting registered, expired bootstrap tokens do no harm
-	if !bootstraputil.IsValidBootstrapToken(opts.BootstrapToken) {
+	if !bootstraputil.IsValidBootstrapToken(opts.BootstrapToken) && !validateServiceAccountTokenRegex.MatchString(opts.BootstrapToken) {
 		allErrs = append(allErrs, fmt.Errorf("the bootstrap token %q is invalid", opts.BootstrapToken))
 	}
 
