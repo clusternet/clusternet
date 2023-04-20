@@ -233,7 +233,7 @@ func startClusterLifecycleController(controllerCtx *controllercontext.Controller
 	if err != nil {
 		return false, err
 	}
-	go clusterLifecycle.Run(controllerCtx.Opts.Threadiness, ctx.Done())
+	go clusterLifecycle.Run(controllerCtx.Opts.Threadiness, ctx)
 	return true, nil
 }
 

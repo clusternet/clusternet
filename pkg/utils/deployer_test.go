@@ -19,7 +19,10 @@ package utils
 import (
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 )
 
 func TestResourceNeedResync(t *testing.T) {
@@ -230,6 +233,87 @@ func TestResourceNeedResync(t *testing.T) {
 				t.Errorf("reason must be provided")
 			case gotEqual != tt.wantSync:
 				t.Errorf("Equal = %v, want %v\nreason: %v", gotEqual, tt.wantSync, tt.reason)
+			}
+		})
+	}
+}
+
+func TestClusterHasReadyCondition(t *testing.T) {
+	tests := []struct {
+		name         string
+		mc           *clusterapi.ManagedCluster
+		clusterReady bool
+	}{
+		{
+			mc: &clusterapi.ManagedCluster{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       clusterapi.ManagedClusterSpec{},
+			},
+			clusterReady: true,
+		},
+		{
+			mc: &clusterapi.ManagedCluster{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       clusterapi.ManagedClusterSpec{},
+				Status: clusterapi.ManagedClusterStatus{
+					Conditions: []metav1.Condition{
+						{
+							LastTransitionTime: metav1.Now(),
+							Message:            "managed cluster is ready.",
+							Reason:             "ManagedClusterReady",
+							Status:             metav1.ConditionTrue,
+							Type:               clusterapi.ClusterReady,
+						},
+					},
+				},
+			},
+			clusterReady: true,
+		},
+		{
+			mc: &clusterapi.ManagedCluster{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       clusterapi.ManagedClusterSpec{},
+				Status: clusterapi.ManagedClusterStatus{
+					Conditions: []metav1.Condition{
+						{
+							LastTransitionTime: metav1.Now(),
+							Message:            "managed cluster is in unknown status",
+							Reason:             "ManagedClusterUnknown",
+							Status:             metav1.ConditionUnknown,
+							Type:               clusterapi.ClusterReady,
+						},
+					},
+				},
+			},
+			clusterReady: false,
+		},
+		{
+			mc: &clusterapi.ManagedCluster{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{},
+				Spec:       clusterapi.ManagedClusterSpec{},
+				Status: clusterapi.ManagedClusterStatus{
+					Conditions: []metav1.Condition{
+						{
+							LastTransitionTime: metav1.Now(),
+							Message:            "managed cluster is not ready",
+							Reason:             "ManagedClusterNotReady",
+							Status:             metav1.ConditionFalse,
+							Type:               clusterapi.ClusterReady,
+						},
+					},
+				},
+			},
+			clusterReady: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if isReady := ClusterHasReadyCondition(tt.mc); isReady != tt.clusterReady {
+				t.Errorf("ClusterHasReadyCondition() = %v, want %v", isReady, tt.clusterReady)
 			}
 		})
 	}

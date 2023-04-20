@@ -26,7 +26,6 @@ import (
 )
 
 func TestGetClusterReadyCondition(t *testing.T) {
-	c := Controller{}
 	heartbeatFrequencySeconds := int64(60)
 
 	tests := []struct {
@@ -116,7 +115,7 @@ func TestGetClusterReadyCondition(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ClusterConditionAsserts(t, tt.want, c.generateClusterReadyCondition(tt.input))
+			ClusterConditionAsserts(t, tt.want, generateClusterReadyCondition(tt.input))
 		})
 	}
 }

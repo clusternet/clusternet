@@ -534,9 +534,9 @@ func (sched *Scheduler) addAllEventHandlers() error {
 
 		for key, subscribers := range sched.subscribersMap {
 			for _, subscriber := range subscribers {
-				selector, err := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
-				if err != nil {
-					klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err))
+				selector, err2 := metav1.LabelSelectorAsSelector(subscriber.ClusterAffinity)
+				if err2 != nil {
+					klog.ErrorDepth(5, fmt.Sprintf("failed to parse labelSelector in Subscription %s: %v", key, err2))
 					continue
 				}
 				if newMcls != nil && oldMcls == nil {
