@@ -34,7 +34,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-scheduler
-          image: ghcr.io/clusternet/clusternet-scheduler:v0.15.0
+          image: ghcr.io/clusternet/clusternet-scheduler:v0.15.2
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
