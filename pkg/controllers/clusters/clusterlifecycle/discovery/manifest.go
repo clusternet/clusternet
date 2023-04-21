@@ -174,25 +174,13 @@ subjects:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: clusternet:app:deployer
-rules:
-  - apiGroups: [ "*" ]
-    resources: [ "*" ]
-    verbs: [ "*" ]
-  - nonResourceURLs: [ "*" ]
-    verbs: [ "*" ]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: clusternet:app:deployer
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: clusternet:app:deployer
+  name: cluster-admin
 subjects:
   - kind: ServiceAccount
     name: clusternet-app-deployer
