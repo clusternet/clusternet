@@ -18,24 +18,28 @@ package clusterlifecycle
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/dixudx/yacht"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusterinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
-	clusterlisters "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/known"
+	taintutils "github.com/clusternet/clusternet/pkg/utils/taints"
 )
 
 const (
@@ -45,9 +49,26 @@ const (
 	ClusterNotReadyThreshold = 3
 )
 
+var (
+	// map {ConditionType: {ConditionStatus: TaintKey}}
+	// represents which ConditionType under which ConditionStatus should be
+	// tainted with which TaintKey
+	// for certain ConditionType, there are multiple {ConditionStatus,TaintKey} pairs
+	clusterConditionToTaintKeyStatusMap = map[string]map[metav1.ConditionStatus]string{
+		clusterapi.ClusterReady: {
+			metav1.ConditionFalse:   known.TaintClusterUnschedulable,
+			metav1.ConditionUnknown: known.TaintClusterUnschedulable,
+		},
+	}
+
+	taintKeyToNodeConditionMap = map[string]string{
+		known.TaintClusterUnschedulable: clusterapi.ClusterReady,
+	}
+)
+
 // Controller is a controller that manages cluster's lifecycle
 type Controller struct {
-	clusternetClient clusternetClientSet.Interface
+	clusternetClient clusternetclientset.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -56,203 +77,108 @@ type Controller struct {
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
 
-	clusterLister clusterlisters.ManagedClusterLister
-	clusterSynced cache.InformerSynced
-
-	recorder record.EventRecorder
+	recorder        record.EventRecorder
+	yachtController *yacht.Controller
+	clusterInformer clusterinformers.ManagedClusterInformer
 }
 
-func NewController(clusternetClient clusternetClientSet.Interface,
+func NewController(clusternetClient clusternetclientset.Interface,
 	clusterInformer clusterinformers.ManagedClusterInformer, recorder record.EventRecorder) (*Controller, error) {
 	c := &Controller{
 		clusternetClient: clusternetClient,
 		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ManagedCluster"),
-		clusterLister:    clusterInformer.Lister(),
-		clusterSynced:    clusterInformer.Informer().HasSynced,
 		recorder:         recorder,
+		clusterInformer:  clusterInformer,
 	}
 
-	_, err := clusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addCluster,
-		UpdateFunc: c.updateCluster,
-	})
+	yachtController := yacht.NewController("cluster-lifecycle").
+		WithHandlerFunc(c.handle).
+		WithEnqueueFilterFunc(func(oldObj, newObj interface{}) (bool, error) {
+			// update event
+			if oldObj != nil && newObj != nil {
+				oldMcls := oldObj.(*clusterapi.ManagedCluster)
+				newMcls := newObj.(*clusterapi.ManagedCluster)
+
+				// Decide whether discovery has reported a status change.
+				if equality.Semantic.DeepEqual(oldMcls.Status, newMcls.Status) {
+					klog.V(4).Infof("no updates on the status of ManagedCluster %s, skipping syncing", klog.KObj(oldMcls))
+					return false, nil
+				}
+			}
+			return true, nil
+		})
+
+	// add event handler for ManagedCluster on the addition/update
+	clusterEventHandler := yachtController.DefaultResourceEventHandlerFuncs()
+	clusterEventHandler.DeleteFunc = nil // only care cluster add/update
+	_, err := clusterInformer.Informer().AddEventHandler(clusterEventHandler)
 	if err != nil {
 		return nil, err
 	}
-
+	c.yachtController = yachtController
 	return c, nil
 }
 
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
+func (c *Controller) Run(workers int, ctx context.Context) {
 	defer utilruntime.HandleCrash()
 
 	klog.Infof("Starting cluster lifecycle controller")
 	defer klog.Infof("Shutting down cluster lifecycle controller")
 
-	// Wait for the caches to be synced before starting monitor lifecycle
-	if !cache.WaitForNamedCacheSync("cluster-lifecycle-controller", stopCh, c.clusterSynced) {
-		return
-	}
-
-	klog.V(5).Infof("starting %d worker threads", workers)
-	// Launch workers to process ManagedCluster resources
-	for i := 0; i < workers; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
-	}
-
-	<-stopCh
+	c.yachtController.WithWorkers(workers).Run(ctx)
 }
 
-func (c *Controller) addCluster(obj interface{}) {
-	mcls := obj.(*clusterapi.ManagedCluster)
-	klog.V(4).Infof("adding ManagedCluster %q", klog.KObj(mcls))
-	c.enqueue(mcls)
-}
-
-func (c *Controller) updateCluster(old, cur interface{}) {
-	oldMcls := old.(*clusterapi.ManagedCluster)
-	newMcls := cur.(*clusterapi.ManagedCluster)
-
-	if newMcls.DeletionTimestamp != nil {
-		return
-	}
-
-	// Decide whether discovery has reported a status change.
-	if equality.Semantic.DeepEqual(oldMcls.Status, newMcls.Status) {
-		klog.V(4).Infof("no updates on the status of ManagedCluster %s, skipping syncing", klog.KObj(oldMcls))
-		return
-	}
-
-	klog.V(5).Infof("updating ManagedCluster %q", klog.KObj(oldMcls))
-	c.enqueue(newMcls)
-}
-
-// runWorker is a long-running function that will continually call the
-// processNextWorkItem function in order to read and process a message on the
-// workqueue.
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
-
-// processNextWorkItem will read a single work item off the workqueue and
-// attempt to process it, by calling the syncHandler.
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	// We wrap this block in a func so we can defer c.workqueue.Done.
-	err := func(obj interface{}) error {
-		// We call Done here so the workqueue knows we have finished
-		// processing this item. We also must remember to call Forget if we
-		// do not want this work item being re-queued. For example, we do
-		// not call Forget if a transient error occurs, instead the item is
-		// put back on the workqueue and attempted again after a back-off
-		// period.
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
-		// workqueue.
-		if key, ok = obj.(string); !ok {
-			// As the item in the workqueue is actually invalid, we call
-			// Forget here else we'd go into a loop of attempting to
-			// process a work item that is invalid.
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		// Run the syncHandler, passing it the namespace/name string of the
-		// ManagedCluster resource to be synced.
-		requeueAfter, err := c.syncHandler(key)
-		switch {
-		case err != nil:
-			// Put the item back on the workqueue to handle any transient errors.
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		case requeueAfter > 0:
-			// Put the item back on the workqueue with delay.
-			c.workqueue.Forget(obj)
-			c.workqueue.AddAfter(obj, requeueAfter)
-		default:
-			c.workqueue.Forget(obj)
-		}
-		klog.Infof("successfully synced ManagedCluster %q", key)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-// syncHandler compares the actual state with the desired, and attempts to
-// converge the two. It then updates the Status block of the ManagedCluster resource
-// with the current status of the resource.
-// Duration <=0 means don't need to requeue this obj.
-func (c *Controller) syncHandler(key string) (time.Duration, error) {
-	// If an error occurs during handling, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
-
+func (c *Controller) handle(key interface{}) (requeueAfter *time.Duration, err error) {
 	// Convert the namespace/name string into a distinct namespace and name
-	ns, name, err := cache.SplitMetaNamespaceKey(key)
+	ns, name, err := cache.SplitMetaNamespaceKey(key.(string))
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return time.Duration(0), nil
+		return nil, nil
 	}
 
 	klog.V(4).Infof("start processing ManagedCluster %q", key)
 	// Get the ManagedCluster resource with this name
-	mcls, err := c.clusterLister.ManagedClusters(ns).Get(name)
+	mcls, err := c.clusterInformer.Lister().ManagedClusters(ns).Get(name)
 	// The ManagedCluster resource may no longer exist, in which case we stop processing.
 	if apierrors.IsNotFound(err) {
 		klog.V(2).Infof("ManagedCluster %q has been deleted", key)
-		return time.Duration(0), nil
+		return nil, nil
 	}
 	if err != nil {
-		return time.Duration(0), err
+		return nil, err
+	}
+	if mcls.DeletionTimestamp != nil {
+		klog.V(2).Infof("ManagedCluster %q is being deleted. Skip it", key)
+		return nil, nil
 	}
 
-	err = c.updateClusterCondition(context.TODO(), mcls.DeepCopy())
+	updatedMcls, err := c.updateClusterCondition(context.TODO(), mcls.DeepCopy())
 	if err != nil {
-		return time.Duration(0), err
+		msg := fmt.Sprintf("failed to update conditions of ManagedCluster status: %v", err)
+		klog.WarningDepth(2, msg)
+		c.recorder.Event(mcls, corev1.EventTypeWarning, "FailedUpdatingClusterStatus", msg)
+		return nil, err
 	}
+
+	err = c.updateClusterTaints(context.TODO(), updatedMcls)
+	if err != nil {
+		return nil, err
+	}
+
 	// requeueAfter is the duration that we consider a cluster to be Unknown
 	// the duration is the same as the grace period for cluster monitoring
 	return getClusterMonitorGracePeriod(mcls.Status), nil
 }
 
-// enqueue takes a ManagedCluster resource and converts it into a namespace/name
-// string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than ManagedCluster.
-func (c *Controller) enqueue(cluster *clusterapi.ManagedCluster) {
-	key, err := cache.MetaNamespaceKeyFunc(cluster)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.workqueue.Add(key)
-}
-
-func (c *Controller) updateClusterCondition(ctx context.Context, cluster *clusterapi.ManagedCluster) error {
+func (c *Controller) updateClusterCondition(ctx context.Context, cluster *clusterapi.ManagedCluster) (*clusterapi.ManagedCluster, error) {
 	currentReadyCondition := GetClusterCondition(&cluster.Status, clusterapi.ClusterReady)
-	observedReadyCondition := c.generateClusterReadyCondition(cluster)
+	observedReadyCondition := generateClusterReadyCondition(cluster)
 	if observedReadyCondition == nil || equality.Semantic.DeepEqual(currentReadyCondition, observedReadyCondition) {
-		return nil
+		return nil, nil
 	}
 
-	// update Readyz,Livez,Healthz to false when cluster status is unknown
-	if observedReadyCondition.Status == metav1.ConditionUnknown {
+	// update Readyz,Livez,Healthz to false when cluster status is not ready
+	if observedReadyCondition.Status != metav1.ConditionTrue {
 		cluster.Status.Readyz = false
 		cluster.Status.Livez = false
 		cluster.Status.Healthz = false
@@ -260,19 +186,88 @@ func (c *Controller) updateClusterCondition(ctx context.Context, cluster *cluste
 
 	// TODO: multiple cluster conditions
 	cluster.Status.Conditions = []metav1.Condition{*observedReadyCondition}
-	_, err := c.clusternetClient.ClustersV1beta1().ManagedClusters(cluster.Namespace).UpdateStatus(ctx, cluster, metav1.UpdateOptions{})
-	if err != nil {
-		msg := fmt.Sprintf("failed to update conditions of ManagedCluster status: %v", err)
-		klog.WarningDepth(2, msg)
-		c.recorder.Event(cluster, corev1.EventTypeWarning, "FailedUpdatingClusterStatus", msg)
-		return err
+	return c.clusternetClient.ClustersV1beta1().ManagedClusters(cluster.Namespace).UpdateStatus(ctx,
+		cluster, metav1.UpdateOptions{})
+}
+
+func (c *Controller) updateClusterTaints(ctx context.Context, cluster *clusterapi.ManagedCluster) error {
+	// Map cluster's condition to Taints.
+	var taints []corev1.Taint
+	for _, condition := range cluster.Status.Conditions {
+		if taintMap, found := clusterConditionToTaintKeyStatusMap[condition.Type]; found {
+			if taintKey, found2 := taintMap[condition.Status]; found2 {
+				taints = append(taints, corev1.Taint{
+					Key:    taintKey,
+					Effect: corev1.TaintEffectNoSchedule,
+				})
+			}
+		}
 	}
 
-	return nil
+	// Get exist taints of cluster.
+	clusterTaints := taintutils.TaintSetFilter(cluster.Spec.Taints, func(t *corev1.Taint) bool {
+		// only NoSchedule taints are candidates to be compared with "taints" later
+		if t.Effect != corev1.TaintEffectNoSchedule {
+			return false
+		}
+		// Find unschedulable taint of cluster.
+		if t.Key == known.TaintClusterUnschedulable {
+			return true
+		}
+		// Find cluster condition taints of cluster.
+		_, found := taintKeyToNodeConditionMap[t.Key]
+		return found
+	})
+	taintsToAdd, taintsToDel := taintutils.TaintSetDiff(taints, clusterTaints)
+	// If nothing to add or delete, return true directly.
+	if len(taintsToAdd) == 0 && len(taintsToDel) == 0 {
+		return nil
+	}
+
+	// patch taints
+	return patchClusterTaints(ctx, c.clusternetClient, cluster, taintsToAdd, taintsToDel)
+}
+
+func patchClusterTaints(ctx context.Context, client clusternetclientset.Interface, cluster *clusterapi.ManagedCluster,
+	taintsToAdd, taintsToRemove []*corev1.Taint) error {
+	var err error
+	var newCluster *clusterapi.ManagedCluster
+	for _, taint := range taintsToRemove {
+		newCluster, _, err = taintutils.RemoveTaint(cluster, taint)
+		if err != nil {
+			return err
+		}
+	}
+	for _, taint := range taintsToAdd {
+		newCluster, _, err = taintutils.AddOrUpdateTaint(newCluster, taint)
+		if err != nil {
+			return err
+		}
+	}
+
+	// patch ManagedCluster
+	oldData, err := json.Marshal(cluster)
+	if err != nil {
+		return err
+	}
+	newData, err := json.Marshal(newCluster)
+	if err != nil {
+		return err
+	}
+	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, clusterapi.ManagedCluster{})
+	if err != nil {
+		return err
+	}
+	if len(patchBytes) == 0 {
+		return nil
+	}
+	_, err = client.ClustersV1beta1().ManagedClusters(cluster.Namespace).Patch(ctx, cluster.Name, types.MergePatchType,
+		patchBytes, metav1.PatchOptions{})
+	return err
 }
 
 // generateClusterReadyCondition return cluster unknown condition based on cluster status and grace period.
-func (c *Controller) generateClusterReadyCondition(cluster *clusterapi.ManagedCluster) *metav1.Condition {
+func generateClusterReadyCondition(cluster *clusterapi.ManagedCluster) *metav1.Condition {
 	lastObservedTime := cluster.Status.LastObservedTime
 	probeTimestamp := lastObservedTime
 	if lastObservedTime.IsZero() {
@@ -281,7 +276,7 @@ func (c *Controller) generateClusterReadyCondition(cluster *clusterapi.ManagedCl
 		probeTimestamp = cluster.CreationTimestamp
 	}
 
-	if !metav1.Now().After(probeTimestamp.Add(getClusterMonitorGracePeriod(cluster.Status))) {
+	if !metav1.Now().After(probeTimestamp.Add(*getClusterMonitorGracePeriod(cluster.Status))) {
 		return nil
 	}
 
@@ -319,10 +314,10 @@ func GetClusterCondition(status *clusterapi.ManagedClusterStatus, conditionType 
 }
 
 // getClusterMonitorGracePeriod calculate grace period for cluster monitoring, use DefaultClusterMonitorGracePeriod if HeartbeatFrequencySeconds is undefined.
-func getClusterMonitorGracePeriod(status clusterapi.ManagedClusterStatus) time.Duration {
+func getClusterMonitorGracePeriod(status clusterapi.ManagedClusterStatus) *time.Duration {
 	gracePeriod := DefaultClusterMonitorGracePeriod
 	if status.HeartbeatFrequencySeconds != nil {
 		gracePeriod = time.Second * time.Duration(*status.HeartbeatFrequencySeconds) * ClusterNotReadyThreshold
 	}
-	return gracePeriod
+	return &gracePeriod
 }

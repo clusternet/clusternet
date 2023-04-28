@@ -350,8 +350,16 @@ func servicePorts(svcImport *v1alpha1.ServiceImport) []corev1.ServicePort {
 }
 
 // preFilter filter ServiceImport if has no label known.LabelServiceName and known.LabelServiceNameSpace
-func preFilter(oldObj, _ interface{}) (bool, error) {
-	si := oldObj.(*v1alpha1.ServiceImport)
+func preFilter(oldObj, newObj interface{}) (bool, error) {
+	var si *v1alpha1.ServiceImport
+	if newObj == nil {
+		// Delete
+		si = oldObj.(*v1alpha1.ServiceImport)
+	} else {
+		// Add or Update
+		si = newObj.(*v1alpha1.ServiceImport)
+	}
+
 	if si.Spec.Type != v1alpha1.ClusterSetIP {
 		return false, nil
 	}

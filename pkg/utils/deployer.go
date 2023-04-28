@@ -788,9 +788,18 @@ func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.Man
 		return true
 	}
 
-	for _, condition := range mcls[0].Status.Conditions {
+	return !ClusterHasReadyCondition(mcls[0])
+}
+
+func ClusterHasReadyCondition(mc *clusterapi.ManagedCluster) bool {
+	// in case the conditions are not updated yet
+	if len(mc.Status.Conditions) == 0 {
+		return true
+	}
+
+	for _, condition := range mc.Status.Conditions {
 		if condition.Type == clusterapi.ClusterReady {
-			return condition.Status == metav1.ConditionUnknown
+			return condition.Status == metav1.ConditionTrue
 		}
 	}
 
