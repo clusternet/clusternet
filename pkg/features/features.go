@@ -100,6 +100,13 @@ const (
 	// alpha: v0.15.0
 	// Setting on clusternet-controller-manager and clusternet-agent side.
 	MultiClusterService featuregate.Feature = "MultiClusterService"
+
+	// FailOver will migrate workloads from not-ready clusters to healthy spare clusters.
+	//
+	// owner: @dixudx
+	// alpha: v0.16.0
+	// Setting on clusternet-scheduler side.
+	FailOver featuregate.Feature = "FailOver"
 )
 
 func init() {
@@ -119,4 +126,5 @@ var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	FeedInventory:       {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	Predictor:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	MultiClusterService: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FailOver:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }

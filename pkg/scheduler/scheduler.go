@@ -32,6 +32,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	apiserver "k8s.io/apiserver/pkg/server"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -45,6 +46,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
@@ -576,6 +578,23 @@ func (sched *Scheduler) addAllEventHandlers() error {
 
 			if newMcls.DeletionTimestamp != nil {
 				return
+			}
+
+			if !utils.ClusterHasReadyCondition(newMcls) {
+				if utilfeature.DefaultFeatureGate.Enabled(features.FailOver) {
+					klog.V(4).Infof(
+						"ManagedCluster %s is becoming not ready. Will fail over workloads to other spare clusters.",
+						klog.KObj(newMcls),
+					)
+					enqueueSubscriptionForClusterFunc(nil, oldMcls)
+					return
+				}
+
+				klog.WarningfDepth(4,
+					"Can not fail over workloads running in not ready ManagedCluster %s, "+
+						"due to disabled feature gate %s.",
+					klog.KObj(newMcls), features.FailOver,
+				)
 			}
 
 			// no updates on the labels/taints of ManagedCluster
