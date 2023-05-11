@@ -31,6 +31,7 @@ import (
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/features"
+	"github.com/clusternet/clusternet/pkg/known"
 )
 
 var validateClusterNameRegex = regexp.MustCompile(nameFmt)
@@ -67,6 +68,9 @@ type ClusterRegistrationOptions struct {
 	// e.g LabelAggregateThreshold 0.8  means 80% of work nodes in child clusters labels in common will be aggregated to parent.
 	LabelAggregateThreshold float32
 
+	// LabelAggregatePrefix  specifies the prefix of node label which can be aggregate
+	LabelAggregatePrefix []string
+
 	// TODO: check ca hash
 }
 
@@ -79,6 +83,7 @@ func NewClusterRegistrationOptions() *ClusterRegistrationOptions {
 		ClusterStatusReportFrequency:  metav1.Duration{Duration: DefaultClusterStatusReportFrequency},
 		ClusterStatusCollectFrequency: metav1.Duration{Duration: DefaultClusterStatusCollectFrequency},
 		LabelAggregateThreshold:       0.8,
+		LabelAggregatePrefix:          []string{known.NodeLabelsKeyPrefix},
 	}
 }
 
@@ -109,6 +114,8 @@ func (opts *ClusterRegistrationOptions) AddFlagSets(fss *cliflag.NamedFlagSets) 
 		"Specify the labels for the child cluster, split by `,`")
 	mgmtfs.Float32Var(&opts.LabelAggregateThreshold, LabelAggregateThreshold, opts.LabelAggregateThreshold,
 		"Specifies the threshold of common labels in child cluster nodes should be aggregated to parent")
+	mgmtfs.StringArrayVar(&opts.LabelAggregatePrefix, LabelAggregatePrefix, opts.LabelAggregatePrefix,
+		"Specifies the desired prefixes of node labels to be aggregated")
 
 	mfs := fss.FlagSet("cluster health status")
 	mfs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
