@@ -67,6 +67,9 @@ const (
 
 	// LabelAggregateThreshold 0.8 means 80% of work nodes in child clusters labels in common will be aggregated to parent.
 	LabelAggregateThreshold = "labels-aggregate-threshold"
+
+	// LabelAggregatePrefix means prefix can be aggregate
+	LabelAggregatePrefix = "labels-aggregate-prefix"
 )
 
 // default values
