@@ -28,16 +28,6 @@ metadata:
 type: kubernetes.io/service-account-token
 
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: clusternet-hub-proxy
-  namespace: clusternet-system
-  annotations:
-    kubernetes.io/service-account.name: clusternet-hub-proxy
-type: kubernetes.io/service-account-token
-
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
