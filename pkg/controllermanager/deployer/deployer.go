@@ -359,7 +359,7 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 
 		baseTemplate := &appsapi.Base{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s", sub.Name, sub.Namespace),
+				Name:      sub.Name,
 				Namespace: namespace,
 				Labels: map[string]string{
 					known.ObjectCreatedByLabel: known.ClusternetHubName,
@@ -386,15 +386,20 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 			baseTemplate.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
 		}
 
-		basesToBeDeleted.Delete(klog.KObj(baseTemplate).String())
-		base, err := deployer.syncBase(sub, baseTemplate)
+		newBaseName := fmt.Sprintf("%s-%s", sub.Namespace, sub.Name)
+		base, err := deployer.syncBase(sub, baseTemplate, newBaseName)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(base), err)
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingBase", msg)
+			// if sync base error, all base(new and old name format) need keep exist
+			basesToBeDeleted.Delete(klog.KObj(baseTemplate).String())
+			baseTemplate.Name = newBaseName
+			basesToBeDeleted.Delete(klog.KObj(baseTemplate).String())
 			continue
 		}
+		basesToBeDeleted.Delete(klog.KObj(base).String())
 
 		// populate Localizations for dividing scheduling.
 		err = deployer.populateLocalizations(sub, base, idx)
@@ -414,28 +419,39 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *appsapi.Base) (*appsapi.Base, error) {
-	base, err := deployer.clusternetClient.AppsV1alpha1().Bases(baseTemplate.Namespace).Create(context.TODO(),
-		baseTemplate, metav1.CreateOptions{})
+func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *appsapi.Base, newBaseName string) (result *appsapi.Base, err error) {
+	oldNameBase, err := deployer.baseLister.Bases(baseTemplate.Namespace).Get(baseTemplate.Name)
 	if err == nil {
-		msg := fmt.Sprintf("Base %s is created successfully", klog.KObj(baseTemplate))
-		klog.V(4).Info(msg)
-		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseCreated", msg)
-		return base, nil
+		// get old name base, update it
+		return deployer.updateBase(context.TODO(), sub, baseTemplate, oldNameBase)
 	}
 
-	if !apierrors.IsAlreadyExists(err) {
-		return nil, err
+	if apierrors.IsNotFound(err) {
+		// old name base not found , use new base name
+		baseTemplate.Name = newBaseName
+		newNameBase, err2 := deployer.baseLister.Bases(baseTemplate.Namespace).Get(baseTemplate.Name)
+		if err2 == nil {
+			// get new name base, update it
+			return deployer.updateBase(context.TODO(), sub, baseTemplate, newNameBase)
+		}
+
+		// new name base and old name base both not found, create one with new name format
+		if apierrors.IsNotFound(err2) {
+			return deployer.clusternetClient.AppsV1alpha1().
+				Bases(baseTemplate.Namespace).
+				Create(context.TODO(), baseTemplate, metav1.CreateOptions{})
+		}
+
+		return newNameBase, err2
 	}
 
-	// update it
-	base, err = deployer.baseLister.Bases(baseTemplate.Namespace).Get(baseTemplate.Name)
-	if err != nil {
-		return nil, err
-	}
+	return oldNameBase, err
+}
 
+func (deployer *Deployer) updateBase(ctx context.Context, sub *appsapi.Subscription, baseTemplate, base *appsapi.Base) (*appsapi.Base, error) {
+	// if the base deletion ttimestamp is not nil , return error
 	if base.DeletionTimestamp != nil {
-		return nil, fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(base))
+		return nil, fmt.Errorf("base %s is deleting, will resync later", klog.KObj(base))
 	}
 
 	baseCopy := base.DeepCopy()
@@ -451,14 +467,16 @@ func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *apps
 		baseCopy.Finalizers = append(baseCopy.Finalizers, known.AppFinalizer)
 	}
 
-	base, err = deployer.clusternetClient.AppsV1alpha1().Bases(baseCopy.Namespace).Update(context.TODO(),
-		baseCopy, metav1.UpdateOptions{})
+	updatedBase, err := deployer.clusternetClient.AppsV1alpha1().
+		Bases(baseCopy.Namespace).
+		Update(ctx, baseCopy, metav1.UpdateOptions{})
 	if err == nil {
-		msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(baseCopy))
+		msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(updatedBase))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
+		return updatedBase, nil
 	}
-	return base, err
+	return nil, err
 }
 
 func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) error {
