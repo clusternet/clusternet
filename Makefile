@@ -50,6 +50,7 @@ vet:
 # Run golang lint against code
 .PHONY: lint
 lint: golangci-lint
+	@$(GOLANG_LINT) --version
 	@$(GOLANG_LINT) run
 
 # Run mod tidy against code
@@ -121,7 +122,7 @@ ifeq (, $(shell which golangci-lint))
 	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
 	cd $$GOLANG_LINT_TMP_DIR ;\
 	go mod init tmp ;\
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2 ;\
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint

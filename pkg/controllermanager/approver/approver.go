@@ -547,7 +547,7 @@ func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clien
 	var secret *corev1.Secret
 	var sa *corev1.ServiceAccount
 	var lastError error
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (done bool, err error) {
 		secretName := saName
 		if saTokenAutoGen {
 			// first we get the auto-created secret name from serviceaccount

@@ -72,7 +72,11 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	appDeployerConfig *rest.Config, clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
-	mapper, err := apiutil.NewDynamicRESTMapper(appDeployerConfig, apiutil.WithLazyDiscovery)
+	httpClient, err := rest.HTTPClientFor(appDeployerConfig)
+	if err != nil {
+		return nil, err
+	}
+	mapper, err := apiutil.NewDynamicRESTMapper(appDeployerConfig, httpClient)
 	if err != nil {
 		return nil, err
 	}
