@@ -34,7 +34,6 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
 	schedulercache "github.com/clusternet/clusternet/pkg/scheduler/cache"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/runtime"
@@ -443,10 +442,10 @@ func (g *genericScheduler) subgroupClusters(sub *appsapi.Subscription, clusterSc
 }
 
 // NewGenericScheduler creates a genericScheduler object.
-func NewGenericScheduler(cache schedulercache.Cache) ScheduleAlgorithm {
+func NewGenericScheduler(cache schedulercache.Cache, percentageOfClustersToScore int32) ScheduleAlgorithm {
 	return &genericScheduler{
 		cache:                       cache,
-		percentageOfClustersToScore: schedulerapis.DefaultPercentageOfClustersToScore,
+		percentageOfClustersToScore: percentageOfClustersToScore,
 	}
 }
 

@@ -52,7 +52,7 @@ import (
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/scheduler/algorithm"
-	"github.com/clusternet/clusternet/pkg/scheduler/apis"
+	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
 	schedulercache "github.com/clusternet/clusternet/pkg/scheduler/cache"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins"
@@ -138,6 +138,10 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "clusternet-scheduler"})
 
 	schedulerCache := schedulercache.New(clusternetInformerFactory.Clusters().V1beta1().ManagedClusters().Lister())
+	percentageOfClustersToScore := schedulerapis.DefaultPercentageOfClustersToScore
+	if schedulerOptions.SchedulerConfiguration != nil && schedulerOptions.SchedulerConfiguration.PercentageOfClustersToScore != nil {
+		percentageOfClustersToScore = *schedulerOptions.SchedulerConfiguration.PercentageOfClustersToScore
+	}
 
 	// support out of tree plugins
 	registry := plugins.NewInTreeRegistry()
@@ -155,20 +159,20 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		inventoryLister:           clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Lister(),
 		inventorySynced:           clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().HasSynced,
 		registry:                  registry,
-		scheduleAlgorithm:         algorithm.NewGenericScheduler(schedulerCache),
+		scheduleAlgorithm:         algorithm.NewGenericScheduler(schedulerCache, percentageOfClustersToScore),
 		SchedulingQueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter(), "clusternet-scheduler"),
 		subscribersMap:            make(map[string][]appsapi.Subscriber),
 	}
 
-	var profiles []apis.SchedulerProfile
+	var profiles []schedulerapis.SchedulerProfile
 	if schedulerOptions.SchedulerConfiguration != nil {
 		profiles = schedulerOptions.SchedulerConfiguration.Profiles
 	}
 	//add default profile
 	if len(profiles) == 0 {
-		cfg := &apis.SchedulerConfiguration{}
-		apis.SetDefaultsSchedulerConfiguration(cfg)
-		profiles = append([]apis.SchedulerProfile(nil), cfg.Profiles...)
+		cfg := &schedulerapis.SchedulerConfiguration{}
+		schedulerapis.SetDefaultsSchedulerConfiguration(cfg)
+		profiles = append([]schedulerapis.SchedulerProfile(nil), cfg.Profiles...)
 	}
 	profileMap, err := profile.NewMap(profiles, sched.registry,
 		frameworkruntime.WithEventRecorder(recorder),
