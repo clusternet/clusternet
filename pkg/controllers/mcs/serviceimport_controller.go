@@ -60,12 +60,13 @@ type ServiceImportController struct {
 	serviceImportInformer mcsv1alpha1.ServiceImportInformer
 	endpointSliceInformer discoveryinformerv1.EndpointSliceInformer
 	mcsInformerFactory    mcsInformers.SharedInformerFactory
+	yachtController       *yacht.Controller
 }
 
 func NewServiceImportController(kubeclient kubernetes.Interface, epsInformer discoveryinformerv1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
-	mcsInformerFactory mcsInformers.SharedInformerFactory) *ServiceImportController {
+	mcsInformerFactory mcsInformers.SharedInformerFactory) (*ServiceImportController, error) {
 	siInformer := mcsInformerFactory.Multicluster().V1alpha1().ServiceImports()
-	si := &ServiceImportController{
+	sic := &ServiceImportController{
 		mcsClientset:          mcsClientset,
 		localk8sClient:        kubeclient,
 		serviceImportInformer: siInformer,
@@ -74,7 +75,31 @@ func NewServiceImportController(kubeclient kubernetes.Interface, epsInformer dis
 		endpointSliceInformer: epsInformer,
 		mcsInformerFactory:    mcsInformerFactory,
 	}
-	return si
+
+	// add event handler for ServiceImport
+	yachtcontroller := yacht.NewController("serviceimport").
+		WithCacheSynced(siInformer.Informer().HasSynced, epsInformer.Informer().HasSynced).
+		WithHandlerFunc(sic.Handle).
+		WithEnqueueFilterFunc(preFilter)
+	_, err := siInformer.Informer().AddEventHandler(yachtcontroller.DefaultResourceEventHandlerFuncs())
+	if err != nil {
+		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
+		return nil, err
+	}
+	_, err = epsInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			if si, err2 := sic.getServiceImportFromEndpointSlice(obj); err2 == nil {
+				yachtcontroller.Enqueue(si)
+			}
+			return false
+		},
+	})
+	if err != nil {
+		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
+		return nil, err
+	}
+	sic.yachtController = yachtcontroller
+	return sic, nil
 }
 
 func (c *ServiceImportController) Handle(obj interface{}) (requeueAfter *time.Duration, err error) {
@@ -250,28 +275,7 @@ func (c *ServiceImportController) updateServiceStatus(svcImport *v1alpha1.Servic
 
 func (c *ServiceImportController) Run(ctx context.Context) {
 	c.mcsInformerFactory.Start(ctx.Done())
-	controller := yacht.NewController("serviceimport").
-		WithCacheSynced(c.serviceImportInformer.Informer().HasSynced, c.endpointSliceInformer.Informer().HasSynced).
-		WithHandlerFunc(c.Handle).WithEnqueueFilterFunc(preFilter)
-	_, err := c.serviceImportInformer.Informer().AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
-	if err != nil {
-		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
-		return
-	}
-	_, err = c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			if si, err := c.getServiceImportFromEndpointSlice(obj); err == nil {
-				controller.Enqueue(si)
-			}
-			return false
-		},
-	})
-	if err != nil {
-		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
-		return
-	}
-
-	controller.Run(ctx)
+	c.yachtController.Run(ctx)
 }
 
 // recycleServiceImport recycle derived service and derived endpoint slices.
