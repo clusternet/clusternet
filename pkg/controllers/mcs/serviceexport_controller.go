@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/mcs-api/pkg/apis/v1alpha1"
 	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
 	mcsInformers "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions"
-	mcsv1alpha1 "sigs.k8s.io/mcs-api/pkg/client/informers/externalversions/apis/v1alpha1"
 	alpha1 "sigs.k8s.io/mcs-api/pkg/client/listers/apis/v1alpha1"
 
 	"github.com/clusternet/clusternet/pkg/known"
@@ -51,30 +50,70 @@ func init() {
 }
 
 type ServiceExportController struct {
+	yachtController *yacht.Controller
+
 	//local msc client
 	mcsClientset       *mcsclientset.Clientset
 	parentk8sClient    kubernetes.Interface
 	mcsInformerFactory mcsInformers.SharedInformerFactory
 	// child cluster dedicated namespace
-	dedicatedNamespace    string
-	serviceExportLister   alpha1.ServiceExportLister
-	endpointSlicesLister  discoverylisterv1.EndpointSliceLister
-	serviceExportInformer mcsv1alpha1.ServiceExportInformer
-	endpointSliceInformer discoveryinformerv1.EndpointSliceInformer
+	dedicatedNamespace   string
+	serviceExportLister  alpha1.ServiceExportLister
+	endpointSlicesLister discoverylisterv1.EndpointSliceLister
 }
 
 func NewServiceExportController(epsInformer discoveryinformerv1.EndpointSliceInformer, mcsClientset *mcsclientset.Clientset,
-	mcsInformerFactory mcsInformers.SharedInformerFactory) *ServiceExportController {
+	mcsInformerFactory mcsInformers.SharedInformerFactory) (*ServiceExportController, error) {
 	seInformer := mcsInformerFactory.Multicluster().V1alpha1().ServiceExports()
-	c := &ServiceExportController{
-		mcsClientset:          mcsClientset,
-		mcsInformerFactory:    mcsInformerFactory,
-		endpointSlicesLister:  epsInformer.Lister(),
-		serviceExportLister:   seInformer.Lister(),
-		serviceExportInformer: seInformer,
-		endpointSliceInformer: epsInformer,
+	sec := &ServiceExportController{
+		mcsClientset:         mcsClientset,
+		mcsInformerFactory:   mcsInformerFactory,
+		endpointSlicesLister: epsInformer.Lister(),
+		serviceExportLister:  seInformer.Lister(),
 	}
-	return c
+
+	// add event handler
+	yachtcontroller := yacht.NewController("serviceexport").
+		WithCacheSynced(seInformer.Informer().HasSynced, epsInformer.Informer().HasSynced).
+		WithHandlerFunc(sec.Handle)
+	_, err := seInformer.Informer().AddEventHandler(yachtcontroller.DefaultResourceEventHandlerFuncs())
+	if err != nil {
+		return nil, err
+	}
+	_, err = epsInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			endpointSlice := obj.(*discoveryv1.EndpointSlice)
+			if serviceName, ok := endpointSlice.Labels[discoveryv1.LabelServiceName]; ok {
+				if _, err2 := sec.serviceExportLister.ServiceExports(endpointSlice.Namespace).Get(
+					serviceName); err2 == nil {
+					return true
+				}
+			}
+			return false
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				if se, err2 := sec.getServiceExportFromEndpointSlice(obj); err2 == nil {
+					yachtcontroller.Enqueue(se)
+				}
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				if se, err2 := sec.getServiceExportFromEndpointSlice(newObj); err2 == nil {
+					yachtcontroller.Enqueue(se)
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				if se, err2 := sec.getServiceExportFromEndpointSlice(obj); err2 == nil {
+					yachtcontroller.Enqueue(se)
+				}
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	sec.yachtController = yachtcontroller
+	return sec, nil
 }
 
 func (c *ServiceExportController) Handle(obj interface{}) (requeueAfter *time.Duration, err error) {
@@ -178,48 +217,7 @@ func (c *ServiceExportController) Run(ctx context.Context, parentDedicatedKubeCo
 	parentClient := kubernetes.NewForConfigOrDie(parentDedicatedKubeConfig)
 	c.parentk8sClient = parentClient
 
-	controller := yacht.NewController("serviceexport").
-		WithCacheSynced(c.serviceExportInformer.Informer().HasSynced, c.endpointSliceInformer.Informer().HasSynced).
-		WithHandlerFunc(c.Handle)
-	_, err := c.serviceExportInformer.Informer().AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
-	if err != nil {
-		return err
-	}
-
-	_, err = c.endpointSliceInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			endpointSlice := obj.(*discoveryv1.EndpointSlice)
-			if serviceName, ok := endpointSlice.Labels[discoveryv1.LabelServiceName]; ok {
-				if _, err := c.serviceExportLister.ServiceExports(endpointSlice.Namespace).Get(serviceName); err == nil {
-					return true
-				}
-			}
-			return false
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				if se, err := c.getServiceExportFromEndpointSlice(obj); err == nil {
-					controller.Enqueue(se)
-				}
-			},
-			UpdateFunc: func(oldObj, newObj interface{}) {
-				if se, err := c.getServiceExportFromEndpointSlice(newObj); err == nil {
-					controller.Enqueue(se)
-				}
-			},
-			DeleteFunc: func(obj interface{}) {
-				if se, err := c.getServiceExportFromEndpointSlice(obj); err == nil {
-					controller.Enqueue(se)
-				}
-			},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	controller.Run(ctx)
-	<-ctx.Done()
+	c.yachtController.Run(ctx)
 	return nil
 }
 

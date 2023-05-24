@@ -248,12 +248,16 @@ func startServiceImportController(controllerCtx *controllercontext.ControllerCon
 		return false, err
 	}
 	if serviceImportEnabled {
-		go mcs.NewServiceImportController(
+		sic, err2 := mcs.NewServiceImportController(
 			controllerCtx.KubeClient,
 			controllerCtx.KubeInformerFactory.Discovery().V1().EndpointSlices(),
 			controllerCtx.McsClient,
 			controllerCtx.McsInformerFactory,
-		).Run(ctx)
+		)
+		if err2 != nil {
+			return false, err2
+		}
+		go sic.Run(ctx)
 	}
 	return true, nil
 }

@@ -170,7 +170,11 @@ func NewAgent(opts *options.AgentOptions) (*Agent, error) {
 
 	var serviceExportController *mcs.ServiceExportController
 	if serviceExportEnabled {
-		serviceExportController = mcs.NewServiceExportController(kubeInformerFactory.Discovery().V1().EndpointSlices(), mcsClientSet, mcsInformerFactory)
+		serviceExportController, err = mcs.NewServiceExportController(kubeInformerFactory.Discovery().V1().
+			EndpointSlices(), mcsClientSet, mcsInformerFactory)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	agent := &Agent{
