@@ -37,6 +37,16 @@ type SchedulerConfiguration struct {
 	// scheduler name. subscription that don't specify any scheduler name are scheduled
 	// with the "default" profile, if present here.
 	Profiles []SchedulerProfile `yaml:"profiles,omitempty"`
+
+	// PercentageOfClustersToScore is the percentage of all clusters that once found feasible
+	// for running a subscription, the scheduler stops its search for more feasible clusters.
+	// This helps improve scheduler's performance. Scheduler always tries to find
+	// at least "minFeasibleClustersToFind" feasible clusters no matter what the value of this flag is.
+	// Example: if the total size is 500 clusters and the value of this flag is 30,
+	// then scheduler stops finding further feasible clusters once it finds 150 feasible clusters.
+	// When the value is 0, default percentage (5%--50% based on the size of the clusters) of the
+	// clusters will be scored. It is overridden by profile level PercentageOfClustersToScore.
+	PercentageOfClustersToScore *int32 `json:"percentageOfClustersToScore,omitempty"`
 }
 
 // SchedulerProfile is a scheduling profile.
@@ -173,7 +183,7 @@ const (
 	// DefaultPercentageOfClustersToScore defines the percentage of clusters of all clusters
 	// that once found feasible, the scheduler stops looking for more clusters.
 	// A value of 0 means adaptive, meaning the scheduler figures out a proper default.
-	DefaultPercentageOfClustersToScore = 0
+	DefaultPercentageOfClustersToScore = int32(0)
 
 	// MaxCustomPriorityScore is the max score UtilizationShapePoint expects.
 	MaxCustomPriorityScore int64 = 10
