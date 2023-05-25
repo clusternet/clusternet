@@ -103,7 +103,7 @@ Try our [interactive tutorials](https://clusternet.io/docs/tutorials/) that help
 some basic Clusternet features.
 
 If you want to use [client-go](https://github.com/kubernetes/client-go) to interact with Clusternet, we provide a
-wrapper for easy intergration. You can
+wrapper for easy integration. You can
 follow [demo.go](https://github.com/clusternet/clusternet/blob/main/examples/clientgo/demo.go) for a quick start.
 
 To use Clusternet APIs and CRDs as a module, please add [github.com/clusternet/apis](https://github.com/clusternet/apis)
