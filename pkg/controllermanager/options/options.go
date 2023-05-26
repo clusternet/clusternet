@@ -73,7 +73,7 @@ type ControllerManagerOptions struct {
 
 // NewControllerManagerOptions creates a new *options with sane defaults
 func NewControllerManagerOptions() (*ControllerManagerOptions, error) {
-	controllerOptions, err := utils.NewControllerOptions("clusternet-hub", known.ClusternetSystemNamespace)
+	controllerOptions, err := utils.NewControllerOptions("clusternet-controller-manager", known.ClusternetSystemNamespace)
 	if err != nil {
 		return nil, err
 	}
