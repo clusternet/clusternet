@@ -53,7 +53,7 @@ project.
 - [x] Support for more Kubernetes versions
 - [x] [Replication scheduling](https://clusternet.io/docs/tutorials/multi-cluster-apps/replication-scheduling-to-multiple-clusters/)
 - [x] User and developer experience improvement
-  - [x] client-go intergration
+  - [x] client-go integration
   - [x] kubectl plugin
   - [x] hack scripts for building, testing, etc.
 - [x] Clusternet CIs Enhancements
