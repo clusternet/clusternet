@@ -174,7 +174,7 @@ func (c *Controller) updateClusterCondition(ctx context.Context, cluster *cluste
 	currentReadyCondition := GetClusterCondition(&cluster.Status, clusterapi.ClusterReady)
 	observedReadyCondition := generateClusterReadyCondition(cluster)
 	if observedReadyCondition == nil || equality.Semantic.DeepEqual(currentReadyCondition, observedReadyCondition) {
-		return nil, nil
+		return cluster, nil
 	}
 
 	// update Readyz,Livez,Healthz to false when cluster status is not ready
@@ -231,7 +231,7 @@ func (c *Controller) updateClusterTaints(ctx context.Context, cluster *clusterap
 func patchClusterTaints(ctx context.Context, client clusternetclientset.Interface, cluster *clusterapi.ManagedCluster,
 	taintsToAdd, taintsToRemove []*corev1.Taint) error {
 	var err error
-	var newCluster *clusterapi.ManagedCluster
+	var newCluster *clusterapi.ManagedCluster = cluster
 	for _, taint := range taintsToRemove {
 		newCluster, _, err = taintutils.RemoveTaint(cluster, taint)
 		if err != nil {
