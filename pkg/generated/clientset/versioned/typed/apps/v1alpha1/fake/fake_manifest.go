@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeManifests struct {
 	ns   string
 }
 
-var manifestsResource = schema.GroupVersionResource{Group: "apps.clusternet.io", Version: "v1alpha1", Resource: "manifests"}
+var manifestsResource = v1alpha1.SchemeGroupVersion.WithResource("manifests")
 
-var manifestsKind = schema.GroupVersionKind{Group: "apps.clusternet.io", Version: "v1alpha1", Kind: "Manifest"}
+var manifestsKind = v1alpha1.SchemeGroupVersion.WithKind("Manifest")
 
 // Get takes name of the manifest, and returns the corresponding manifest object, and an error if there is any.
 func (c *FakeManifests) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Manifest, err error) {
@@ -121,6 +123,28 @@ func (c *FakeManifests) DeleteCollection(ctx context.Context, opts v1.DeleteOpti
 func (c *FakeManifests) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Manifest, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(manifestsResource, c.ns, name, pt, data, subresources...), &v1alpha1.Manifest{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Manifest), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied manifest.
+func (c *FakeManifests) Apply(ctx context.Context, manifest *appsv1alpha1.ManifestApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Manifest, err error) {
+	if manifest == nil {
+		return nil, fmt.Errorf("manifest provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, err
+	}
+	name := manifest.Name
+	if name == nil {
+		return nil, fmt.Errorf("manifest.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(manifestsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.Manifest{})
 
 	if obj == nil {
 		return nil, err

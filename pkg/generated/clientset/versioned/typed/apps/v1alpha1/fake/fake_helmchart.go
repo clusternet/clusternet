@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeHelmCharts struct {
 	ns   string
 }
 
-var helmchartsResource = schema.GroupVersionResource{Group: "apps.clusternet.io", Version: "v1alpha1", Resource: "helmcharts"}
+var helmchartsResource = v1alpha1.SchemeGroupVersion.WithResource("helmcharts")
 
-var helmchartsKind = schema.GroupVersionKind{Group: "apps.clusternet.io", Version: "v1alpha1", Kind: "HelmChart"}
+var helmchartsKind = v1alpha1.SchemeGroupVersion.WithKind("HelmChart")
 
 // Get takes name of the helmChart, and returns the corresponding helmChart object, and an error if there is any.
 func (c *FakeHelmCharts) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.HelmChart, err error) {
@@ -133,6 +135,51 @@ func (c *FakeHelmCharts) DeleteCollection(ctx context.Context, opts v1.DeleteOpt
 func (c *FakeHelmCharts) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.HelmChart, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(helmchartsResource, c.ns, name, pt, data, subresources...), &v1alpha1.HelmChart{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.HelmChart), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied helmChart.
+func (c *FakeHelmCharts) Apply(ctx context.Context, helmChart *appsv1alpha1.HelmChartApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmChart, err error) {
+	if helmChart == nil {
+		return nil, fmt.Errorf("helmChart provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(helmChart)
+	if err != nil {
+		return nil, err
+	}
+	name := helmChart.Name
+	if name == nil {
+		return nil, fmt.Errorf("helmChart.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(helmchartsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.HelmChart{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.HelmChart), err
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *FakeHelmCharts) ApplyStatus(ctx context.Context, helmChart *appsv1alpha1.HelmChartApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmChart, err error) {
+	if helmChart == nil {
+		return nil, fmt.Errorf("helmChart provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(helmChart)
+	if err != nil {
+		return nil, err
+	}
+	name := helmChart.Name
+	if name == nil {
+		return nil, fmt.Errorf("helmChart.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(helmchartsResource, c.ns, *name, types.ApplyPatchType, data, "status"), &v1alpha1.HelmChart{})
 
 	if obj == nil {
 		return nil, err
