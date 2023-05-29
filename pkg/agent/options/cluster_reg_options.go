@@ -127,7 +127,7 @@ func (opts *ClusterRegistrationOptions) AddFlagSets(fss *cliflag.NamedFlagSets) 
 
 // Complete completes all the required options.
 func (opts *ClusterRegistrationOptions) Complete() []error {
-	allErrs := []error{}
+	var allErrs []error
 
 	opts.ClusterName = strings.TrimSpace(opts.ClusterName)
 	opts.ClusterNamePrefix = strings.TrimSpace(opts.ClusterNamePrefix)
@@ -137,7 +137,7 @@ func (opts *ClusterRegistrationOptions) Complete() []error {
 
 // Validate validates all the required options.
 func (opts *ClusterRegistrationOptions) Validate() []error {
-	allErrs := []error{}
+	var allErrs []error
 
 	if len(opts.ParentURL) == 0 {
 		klog.Exitf("please specify a parent cluster url by flag --%s", ClusterRegistrationURL)
