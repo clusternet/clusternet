@@ -78,7 +78,7 @@ func (opts *AgentOptions) Config() error {
 
 // Complete completes all the required options.
 func (opts *AgentOptions) Complete() error {
-	allErrs := []error{}
+	var allErrs []error
 
 	// complete cluster registration options
 	errs := opts.ClusterRegistrationOptions.Complete()
@@ -99,7 +99,7 @@ func (opts *AgentOptions) Complete() error {
 
 // Validate validates all the required options.
 func (opts *AgentOptions) Validate() error {
-	allErrs := []error{}
+	var allErrs []error
 
 	// validate cluster registration options
 	errs := opts.ClusterRegistrationOptions.Validate()
