@@ -38,11 +38,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: FeedInventorySpec defines the desired state of FeedInventory
+            description: FeedInventorySpec defines the desired state of FeedInventory.
             properties:
               feeds:
                 items:
-                  description: FeedOrder defines an abstract representation of a feed.
+                  description: FeedOrder defines the scheduling requirements of a
+                    Feed.
                   properties:
                     apiVersion:
                       description: APIVersion defines the versioned schema of this

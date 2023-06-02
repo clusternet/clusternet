@@ -35,12 +35,12 @@ type FeedInventory struct {
 	Spec FeedInventorySpec `json:"spec"`
 }
 
-// FeedInventorySpec defines the desired state of FeedInventory
+// FeedInventorySpec defines the desired state of FeedInventory.
 type FeedInventorySpec struct {
 	Feeds []FeedOrder `json:"feeds"`
 }
 
-// FeedOrder defines an abstract representation of a feed.
+// FeedOrder defines the scheduling requirements of a Feed.
 type FeedOrder struct {
 	Feed `json:",inline"`
 
