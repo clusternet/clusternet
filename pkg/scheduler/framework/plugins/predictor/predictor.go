@@ -43,8 +43,13 @@ import (
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
 )
 
-// Name is the name of the plugin used in the plugin registry and configurations.
-const Name = names.Predictor
+const (
+	// Name is the name of the plugin used in the plugin registry and configurations.
+	Name = names.Predictor
+
+	// DefaultTimeout is the default timeout for a predictor request.
+	DefaultTimeout = time.Second * 20
+)
 
 var _ framework.PredictPlugin = &Predictor{}
 
@@ -64,8 +69,13 @@ func (pl *Predictor) Name() string {
 }
 
 // Predict invoked by scheduler predictor plugin
-func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *appsapi.Subscription, finv *appsapi.FeedInventory,
-	mcls *clusterapi.ManagedCluster) (feedReplicas framework.FeedReplicas, s *framework.Status) {
+func (pl *Predictor) Predict(
+	ctx context.Context,
+	_ *framework.CycleState,
+	_ *appsapi.Subscription,
+	finv *appsapi.FeedInventory,
+	mcls *clusterapi.ManagedCluster,
+) (feedReplicas framework.FeedReplicas, s *framework.Status) {
 	if !mcls.Status.PredictorEnabled {
 		return nil, framework.NewStatus(framework.Skip, "predictor is disabled")
 	}
@@ -103,7 +113,7 @@ func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *
 			),
 		}, "/")
 	}
-	httpClient.Timeout = time.Second * 32
+	httpClient.Timeout = DefaultTimeout
 
 	for _, feedOrder := range finv.Spec.Feeds {
 		if feedOrder.DesiredReplicas == nil {
@@ -112,6 +122,7 @@ func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *
 		}
 
 		replica, err2 := predictMaxAcceptableReplicas(
+			ctx,
 			httpClient,
 			mcls.Spec.ClusterID,
 			predictorAddress,
@@ -125,8 +136,13 @@ func (pl *Predictor) Predict(_ context.Context, state *framework.CycleState, _ *
 	return
 }
 
-func predictMaxAcceptableReplicas(httpClient *http.Client, clusterID types.UID, address string,
-	require appsapi.ReplicaRequirements) (map[string]int32, error) {
+func predictMaxAcceptableReplicas(
+	ctx context.Context,
+	httpClient *http.Client,
+	clusterID types.UID,
+	address string,
+	require appsapi.ReplicaRequirements,
+) (map[string]int32, error) {
 	payload, err := json.Marshal(require)
 	if err != nil {
 		return nil, err
@@ -136,7 +152,7 @@ func predictMaxAcceptableReplicas(httpClient *http.Client, clusterID types.UID, 
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", urlForReplicasPredicting, bytes.NewBuffer(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", urlForReplicasPredicting, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, err
 	}
