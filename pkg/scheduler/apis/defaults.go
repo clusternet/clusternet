@@ -17,6 +17,8 @@ limitations under the License.
 package apis
 
 import (
+	utilpointer "k8s.io/utils/pointer"
+
 	"github.com/clusternet/clusternet/pkg/apis/scheduler"
 )
 
@@ -29,6 +31,14 @@ func SetDefaultsSchedulerConfiguration(obj *SchedulerConfiguration) {
 	// Validation will ensure that every profile has a non-empty unique name.
 	if len(obj.Profiles) == 1 && obj.Profiles[0].SchedulerName == "" {
 		obj.Profiles[0].SchedulerName = scheduler.DefaultSchedulerName
+	}
+
+	if obj.PercentageOfClustersToScore == nil {
+		obj.PercentageOfClustersToScore = utilpointer.Int32(DefaultPercentageOfClustersToScore)
+	}
+
+	if obj.PercentageOfClustersToTolerate == nil {
+		obj.PercentageOfClustersToTolerate = utilpointer.Int32(DefaultPercentageOfClustersToTolerate)
 	}
 
 	// Add the default set of plugins and apply the configuration.

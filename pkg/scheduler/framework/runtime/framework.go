@@ -22,11 +22,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -34,6 +36,7 @@ import (
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	schedulerapis "github.com/clusternet/clusternet/pkg/scheduler/apis"
@@ -100,6 +103,8 @@ type frameworkImpl struct {
 	// Indicates that RunFilterPlugins should accumulate all failed statuses and not return
 	// after the first failure.
 	runAllFilters bool
+
+	percentageOfClustersToTolerate int32
 }
 
 // extensionPoint encapsulates desired and applied set of plugins at a specific extension
@@ -141,6 +146,8 @@ type frameworkOptions struct {
 	runAllFilters   bool
 	parallelizer    parallelize.Parallelizer
 	metricsRecorder *metricsRecorder
+
+	percentageOfClustersToTolerate int32
 }
 
 // Option for the frameworkImpl.
@@ -196,10 +203,18 @@ func WithParallelism(parallelism int) Option {
 	}
 }
 
+// WithPercentageOfClustersToTolerate sets percentage of clusters to be tolerated for predicting failures.
+func WithPercentageOfClustersToTolerate(percentageOfClustersToTolerate int32) Option {
+	return func(o *frameworkOptions) {
+		o.percentageOfClustersToTolerate = percentageOfClustersToTolerate
+	}
+}
+
 func defaultFrameworkOptions() frameworkOptions {
 	return frameworkOptions{
-		metricsRecorder: newMetricsRecorder(1000, time.Second),
-		parallelizer:    parallelize.NewParallelizer(parallelize.DefaultParallelism),
+		metricsRecorder:                newMetricsRecorder(1000, time.Second),
+		parallelizer:                   parallelize.NewParallelizer(parallelize.DefaultParallelism),
+		percentageOfClustersToTolerate: schedulerapis.DefaultPercentageOfClustersToTolerate,
 	}
 }
 
@@ -213,17 +228,18 @@ func NewFramework(r Registry, profile *schedulerapis.SchedulerProfile, opts ...O
 	}
 
 	f := &frameworkImpl{
-		scorePluginWeight:    make(map[string]int),
-		waitingSubscriptions: newWaitingSubscriptionsMap(),
-		clientSet:            options.clientSet,
-		kubeConfig:           options.kubeConfig,
-		eventRecorder:        options.eventRecorder,
-		informerFactory:      options.informerFactory,
-		metricsRecorder:      options.metricsRecorder,
-		runAllFilters:        options.runAllFilters,
-		parallelizer:         options.parallelizer,
-		profileName:          "default",
-		cache:                options.cache,
+		scorePluginWeight:              make(map[string]int),
+		waitingSubscriptions:           newWaitingSubscriptionsMap(),
+		clientSet:                      options.clientSet,
+		kubeConfig:                     options.kubeConfig,
+		eventRecorder:                  options.eventRecorder,
+		informerFactory:                options.informerFactory,
+		metricsRecorder:                options.metricsRecorder,
+		runAllFilters:                  options.runAllFilters,
+		parallelizer:                   options.parallelizer,
+		profileName:                    "default",
+		cache:                          options.cache,
+		percentageOfClustersToTolerate: options.percentageOfClustersToTolerate,
 	}
 
 	if r == nil {
@@ -438,14 +454,27 @@ func (f *frameworkImpl) RunPredictPlugins(ctx context.Context, state *framework.
 	ctx, cancel := context.WithCancel(ctx)
 	errCh := parallelize.NewErrorChannel()
 
+	tolerations := int32(0)
+	totalTolerations := int32(len(clusters)) * f.percentageOfClustersToTolerate
+	tolerateFeasibleClusters := utilfeature.DefaultFeatureGate.Enabled(features.FeasibleClustersToleration)
+
 	// Run Predict method for each cluster in parallel.
 	f.Parallelizer().Until(ctx, len(clusters), func(index int) {
 		for i, pl := range f.predictPlugins {
 			replicas, status2 := f.runPredictPlugin(ctx, pl, state, sub, finv, clusters[index])
 			if !status2.IsSuccess() {
-				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status2.AsError())
-				errCh.SendErrorWithCancel(err, cancel)
-				return
+				if tolerateFeasibleClusters {
+					atomic.AddInt32(&tolerations, 1)
+				}
+
+				if !tolerateFeasibleClusters || tolerations > totalTolerations {
+					err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status2.AsError())
+					errCh.SendErrorWithCancel(err, cancel)
+					return
+				}
+
+				// set nil FeedReplicas to this failed or unresponsive cluster
+				replicas = make(framework.FeedReplicas, len(finv.Spec.Feeds))
 			}
 			if i == 0 {
 				// First plugin, just set the replicas.
