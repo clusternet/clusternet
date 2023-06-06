@@ -8,6 +8,7 @@
 ![build](https://github.com/clusternet/clusternet/actions/workflows/ci.yml/badge.svg)
 [![Version](https://img.shields.io/github/v/release/clusternet/clusternet)](https://github.com/clusternet/clusternet/releases)
 [![codecov](https://codecov.io/gh/clusternet/clusternet/branch/main/graph/badge.svg)](https://codecov.io/gh/clusternet/clusternet)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fclusternet%2Fclusternet.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fclusternet%2Fclusternet?ref=badge_shield)
 
 ----
 
@@ -130,3 +131,7 @@ A [developer guide](https://clusternet.io/docs/developer-guide/) is ready to hel
 ---
 
 <div align="center"><img src="https://raw.githubusercontent.com/cncf/artwork/master/other/cncf/horizontal/color/cncf-color.svg" style="width:600px;" /></div>
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fclusternet%2Fclusternet.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fclusternet%2Fclusternet?ref=badge_large)
