@@ -23,22 +23,25 @@ import (
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/apiserver/pkg/server/routes"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/component-base/configz"
 	"k8s.io/component-base/logs"
+	"k8s.io/component-base/metrics/features"
 	"k8s.io/component-base/metrics/legacyregistry"
+	"k8s.io/component-base/metrics/prometheus/slis"
 	controllermanageroptions "k8s.io/controller-manager/options"
 )
 
 // NewHealthzAndMetricsHandler creates a healthz server from the config, and will also
 // embed the metrics handler.
-func NewHealthzAndMetricsHandler(debuggingOptions *controllermanageroptions.DebuggingOptions, checks ...healthz.HealthChecker) http.Handler {
-	pathRecorderMux := mux.NewPathRecorderMux("clusternet-scheduler")
+func NewHealthzAndMetricsHandler(name string, debuggingOptions *controllermanageroptions.DebuggingOptions, checks ...healthz.HealthChecker) http.Handler {
+	pathRecorderMux := mux.NewPathRecorderMux(name)
 	healthz.InstallHandler(pathRecorderMux, checks...)
-	configz.InstallHandler(pathRecorderMux) // TODO
+	configz.InstallHandler(pathRecorderMux)
 	pathRecorderMux.Handle("/metrics", legacyregistry.HandlerWithReset())
-	//if utilfeature.DefaultFeatureGate.Enabled(features.ComponentSLIs) {
-	//	slis.SLIMetricsWithReset{}.Install(pathRecorderMux)
-	//}
+	if utilfeature.DefaultFeatureGate.Enabled(features.ComponentSLIs) {
+		slis.SLIMetricsWithReset{}.Install(pathRecorderMux)
+	}
 	if debuggingOptions.EnableProfiling {
 		routes.Profiling{}.Install(pathRecorderMux)
 		if debuggingOptions.EnableContentionProfiling {

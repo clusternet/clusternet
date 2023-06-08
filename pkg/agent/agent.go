@@ -212,7 +212,11 @@ func (agent *Agent) Run(ctx context.Context) error {
 	}
 	// Start up the metrics and healthz server.
 	if agent.SecureServing != nil {
-		handler := controllermanagerapp.BuildHandlerChain(utils.NewHealthzAndMetricsHandler(agent.agentOptions.DebuggingOptions), nil, nil)
+		handler := controllermanagerapp.BuildHandlerChain(
+			utils.NewHealthzAndMetricsHandler("clusternet-agent", agent.agentOptions.DebuggingOptions),
+			nil,
+			nil,
+		)
 		if _, _, err = agent.SecureServing.Serve(handler, 0, ctx.Done()); err != nil {
 			// fail early for secure handlers, removing the old error loop from above
 			return fmt.Errorf("failed to start secure server: %v", err)

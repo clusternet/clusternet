@@ -206,7 +206,11 @@ func (sched *Scheduler) Run(ctx context.Context) error {
 	}
 	// Start up the metrics and healthz server.
 	if sched.SecureServing != nil {
-		handler := controllermanagerapp.BuildHandlerChain(utils.NewHealthzAndMetricsHandler(sched.schedulerOptions.DebuggingOptions), nil, nil)
+		handler := controllermanagerapp.BuildHandlerChain(
+			utils.NewHealthzAndMetricsHandler("clusternet-scheduler", sched.schedulerOptions.DebuggingOptions),
+			nil,
+			nil,
+		)
 		if _, _, err = sched.SecureServing.Serve(handler, 0, ctx.Done()); err != nil {
 			// fail early for secure handlers, removing the old error loop from above
 			return fmt.Errorf("failed to start secure server: %v", err)
