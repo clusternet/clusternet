@@ -96,7 +96,7 @@ func (d *Deployer) Run(
 	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet, d.systemNamespace, d.saTokenAutoGen)
 
 	// creating credentials to parent cluster is also required in the pull mode,
-	// because the cleaning of redundant objects in the description is performed in the hub
+	// because the cleaning of redundant objects in the description is performed by clusternet-controller-manager
 	klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
 	createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
 
