@@ -164,14 +164,21 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		subscribersMap:            make(map[string][]appsapi.Subscriber),
 	}
 
+	var percentageOfClustersToTolerate int32
 	var profiles []schedulerapis.SchedulerProfile
 	if schedulerOptions.SchedulerConfiguration != nil {
 		profiles = schedulerOptions.SchedulerConfiguration.Profiles
+		if schedulerOptions.SchedulerConfiguration.PercentageOfClustersToTolerate != nil {
+			percentageOfClustersToTolerate = *schedulerOptions.SchedulerConfiguration.PercentageOfClustersToTolerate
+		}
 	}
 	//add default profile
 	if len(profiles) == 0 {
 		cfg := &schedulerapis.SchedulerConfiguration{}
 		schedulerapis.SetDefaultsSchedulerConfiguration(cfg)
+		if cfg.PercentageOfClustersToTolerate != nil {
+			percentageOfClustersToTolerate = *cfg.PercentageOfClustersToTolerate
+		}
 		profiles = append([]schedulerapis.SchedulerProfile(nil), cfg.Profiles...)
 	}
 	profileMap, err := profile.NewMap(profiles, sched.registry,
@@ -182,6 +189,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		frameworkruntime.WithKubeConfig(clientConfig),
 		frameworkruntime.WithParallelism(parallelize.DefaultParallelism),
 		frameworkruntime.WithRunAllFilters(false),
+		frameworkruntime.WithPercentageOfClustersToTolerate(percentageOfClustersToTolerate),
 	)
 	if err != nil {
 		return nil, err
