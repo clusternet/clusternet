@@ -19,6 +19,7 @@ package generic
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -67,6 +68,14 @@ type Deployer struct {
 	// If enabled, then the deployers in Clusternet will use anonymous when proxying requests to child clusters.
 	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
 	anonymousAuthSupported bool
+
+	// dcs store child cluster dynamic client in cache.
+	dcs sync.Map
+}
+
+type DynamicClient struct {
+	dynamic.Interface
+	meta.RESTMapper
 }
 
 func NewDeployer(apiserverURL, systemNamespace string, clusternetClient *clusternetclientset.Clientset,
@@ -158,6 +167,16 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 }
 
 func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.Interface, meta.RESTMapper, error) {
+	if dc, ok := deployer.dcs.Load(desc.Labels[known.ClusterIDLabel]); ok {
+		if client, ok := (dc).(DynamicClient); ok {
+			klog.V(6).Infof("Get description %s's dynamic client form cache", klog.KObj(desc))
+			return client.Interface, client.RESTMapper, nil
+		} else {
+			klog.Errorf("Get description %s's dynamic client from cache error, renew one", klog.KObj(desc))
+		}
+	}
+	klog.V(6).Infof("New description %s's dynamic client and store in cache", klog.KObj(desc))
+
 	config, kubeQPS, kubeBurst, err := utils.GetChildClusterConfig(
 		deployer.secretLister,
 		deployer.clusterLister,
@@ -190,6 +209,10 @@ func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.I
 	if err != nil {
 		return nil, nil, err
 	}
+	deployer.dcs.Store(desc.Labels[known.ClusterIDLabel], DynamicClient{
+		Interface:  dynamicClient,
+		RESTMapper: discoveryRESTMapper,
+	})
 
 	return dynamicClient, discoveryRESTMapper, nil
 
