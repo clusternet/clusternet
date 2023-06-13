@@ -255,6 +255,18 @@ type ManagedClusterStatus struct {
 	// +optional
 	UseSocket bool `json:"useSocket,omitempty"`
 
+	// KubeQPS controls the number of queries per second allowed for this connection.
+	// Used by deployer in Clusternet to control the qps to current child cluster.
+	//
+	// +optional
+	KubeQPS float32 `json:"kubeQPS,omitempty"`
+
+	// KubeBurst allows extra queries to accumulate when a client is exceeding its rate.
+	// Used by deployer in Clusternet to control the burst to current child cluster.
+	//
+	// +optional
+	KubeBurst int32 `json:"kubeBurst,omitempty"`
+
 	// Allocatable is the sum of allocatable resources for nodes in the cluster
 	// +optional
 	Allocatable corev1.ResourceList `json:"allocatable,omitempty"`

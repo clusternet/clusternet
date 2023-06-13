@@ -48,6 +48,9 @@ type Deployer struct {
 	// clusternet client to parent cluster
 	clusternetClient *clusternetclientset.Clientset
 
+	kubeQPS   float32
+	kubeBurst int32
+
 	deployConfig *clientcmdapi.Config
 
 	hrLister   applisters.HelmReleaseLister
@@ -60,16 +63,26 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool, parentKubeClient *kubernetes.Clientset,
-	childKubeClient *kubernetes.Clientset, clusternetClient *clusternetclientset.Clientset, deployConfig *clientcmdapi.Config,
-	clusternetInformerFactory clusternetinformers.SharedInformerFactory, recorder record.EventRecorder) (*Deployer, error) {
-
+func NewDeployer(
+	syncMode clusterapi.ClusterSyncMode,
+	appPusherEnabled bool,
+	parentKubeClient *kubernetes.Clientset,
+	childKubeClient *kubernetes.Clientset,
+	clusternetClient *clusternetclientset.Clientset,
+	deployConfig *clientcmdapi.Config,
+	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
+	recorder record.EventRecorder,
+	kubeQPS float32,
+	kubeBurst int32,
+) (*Deployer, error) {
 	deployer := &Deployer{
 		syncMode:         syncMode,
 		appPusherEnabled: appPusherEnabled,
 		parentKubeClient: parentKubeClient,
 		childKubeClient:  childKubeClient,
 		clusternetClient: clusternetClient,
+		kubeQPS:          kubeQPS,
+		kubeBurst:        kubeBurst,
 		deployConfig:     deployConfig,
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
 		hrSynced:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer().HasSynced,
@@ -112,9 +125,16 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	deployCtx, err := utils.NewDeployContext(deployer.deployConfig, &clientcmd.ConfigOverrides{Context: clientcmdapi.Context{
-		Namespace: hr.Spec.TargetNamespace,
-	}})
+	deployCtx, err := utils.NewDeployContext(
+		deployer.deployConfig,
+		&clientcmd.ConfigOverrides{
+			Context: clientcmdapi.Context{
+				Namespace: hr.Spec.TargetNamespace,
+			},
+		},
+		deployer.kubeQPS,
+		deployer.kubeBurst,
+	)
 	if err != nil {
 		return err
 	}

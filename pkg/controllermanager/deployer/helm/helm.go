@@ -443,16 +443,29 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister,
-		hr.Namespace, hr.Labels[known.ClusterIDLabel], deployer.apiserverURL, deployer.systemNamespace,
-		deployer.anonymousAuthSupported)
+	config, kubeQPS, kubeBurst, err := utils.GetChildClusterConfig(
+		deployer.secretLister,
+		deployer.clusterLister,
+		hr.Namespace,
+		hr.Labels[known.ClusterIDLabel],
+		deployer.apiserverURL,
+		deployer.systemNamespace,
+		deployer.anonymousAuthSupported,
+	)
 	if err != nil {
 		return err
 	}
 
-	deployCtx, err := utils.NewDeployContext(config, &clientcmd.ConfigOverrides{Context: clientcmdapi.Context{
-		Namespace: hr.Spec.TargetNamespace,
-	}})
+	deployCtx, err := utils.NewDeployContext(
+		config,
+		&clientcmd.ConfigOverrides{
+			Context: clientcmdapi.Context{
+				Namespace: hr.Spec.TargetNamespace,
+			},
+		},
+		kubeQPS,
+		kubeBurst,
+	)
 	if err != nil {
 		return err
 	}

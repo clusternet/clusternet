@@ -59,10 +59,13 @@ type Controller struct {
 	nodeSynced         cache.InformerSynced
 	podLister          corev1lister.PodLister
 	podSynced          cache.InformerSynced
+	kubeQPS            float32
+	kubeBurst          int32
 
-	predictorEnable         bool
-	predictorAddress        string
-	predictorDirectAccess   bool
+	predictorEnable       bool
+	predictorAddress      string
+	predictorDirectAccess bool
+
 	labelAggregateThreshold float32
 }
 
@@ -76,6 +79,8 @@ func NewController(
 	collectingPeriod metav1.Duration,
 	heartbeatFrequency metav1.Duration,
 	labelAggregateThreshold float32,
+	kubeQPS float32,
+	kubeBurst int32,
 ) *Controller {
 	return &Controller{
 		kubeClient:              kubeClient,
@@ -91,6 +96,8 @@ func NewController(
 		useMetricsServer:        useMetricsServer,
 		predictorAddress:        predictorAddress,
 		predictorDirectAccess:   predictorDirectAccess,
+		kubeQPS:                 kubeQPS,
+		kubeBurst:               kubeBurst,
 		nodeLister:              kubeInformerFactory.Core().V1().Nodes().Lister(),
 		nodeSynced:              kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
 		podLister:               kubeInformerFactory.Core().V1().Pods().Lister(),
@@ -150,6 +157,7 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	status.Healthz = c.getHealthStatus(ctx, "/healthz")
 	status.Livez = c.getHealthStatus(ctx, "/livez")
 	status.Readyz = c.getHealthStatus(ctx, "/readyz")
+
 	status.AppPusher = &c.appPusherEnabled
 	status.UseSocket = c.useSocket
 
@@ -157,11 +165,17 @@ func (c *Controller) collectingClusterStatus(ctx context.Context) {
 		status.PodStatistics = getPodStatistics(c.metricClientset)
 		status.ResourceUsage = getResourceUsage(c.metricClientset)
 	}
-	status.HeartbeatFrequencySeconds = utilpointer.Int64Ptr(int64(c.heartbeatFrequency.Seconds()))
+
+	status.HeartbeatFrequencySeconds = utilpointer.Int64(int64(c.heartbeatFrequency.Seconds()))
 	status.Conditions = []metav1.Condition{c.getCondition(status)}
+
+	status.KubeQPS = c.kubeQPS
+	status.KubeBurst = c.kubeBurst
+
 	status.PredictorEnabled = c.predictorEnable
 	status.PredictorAddress = c.predictorAddress
 	status.PredictorDirectAccess = c.predictorDirectAccess
+
 	c.setClusterStatus(status)
 }
 
