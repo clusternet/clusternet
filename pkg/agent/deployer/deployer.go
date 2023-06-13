@@ -105,10 +105,6 @@ func (d *Deployer) Run(
 	if err != nil {
 		return err
 	}
-	childKubeClient, err := kubernetes.NewForConfig(appDeployerConfig)
-	if err != nil {
-		return err
-	}
 
 	// setup broadcaster and event recorder in parent cluster
 	broadcaster := record.NewBroadcaster()
@@ -133,20 +129,27 @@ func (d *Deployer) Run(
 	if err != nil {
 		return err
 	}
-	deployConfig := utils.CreateKubeConfigWithToken(d.childAPIServerURL,
-		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey])
+	deployCtx, err := utils.NewDeployContext(
+		utils.CreateKubeConfigWithToken(
+			d.childAPIServerURL,
+			string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+			appDeployerSecret.Data[corev1.ServiceAccountRootCAKey],
+		),
+		kubeQPS,
+		kubeBurst,
+	)
+	if err != nil {
+		return err
+	}
+
 	helmDeployer, err := helm.NewDeployer(
 		d.syncMode,
 		d.appPusherEnabled,
 		parentClientSet,
-		childKubeClient,
 		clusternetclient,
-		deployConfig,
+		deployCtx,
 		clusternetInformerFactory,
 		parentRecorder,
-		kubeQPS,
-		kubeBurst,
 	)
 	if err != nil {
 		return err

@@ -270,13 +270,8 @@ type DeployContext struct {
 	restMapper               meta.RESTMapper
 }
 
-func NewDeployContext(
-	config *clientcmdapi.Config,
-	overrides *clientcmd.ConfigOverrides,
-	kubeQPS float32,
-	kubeBurst int32,
-) (*DeployContext, error) {
-	clientConfig := clientcmd.NewDefaultClientConfig(*config, overrides)
+func NewDeployContext(config *clientcmdapi.Config, kubeQPS float32, kubeBurst int32) (*DeployContext, error) {
+	clientConfig := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{})
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error while creating DeployContext: %v", err)

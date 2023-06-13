@@ -118,6 +118,10 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	clusternetClient *clusternetclientset.Clientset,
 	hrLister applisters.HelmReleaseLister, descLister applisters.DescriptionLister,
 	hr *appsapi.HelmRelease, recorder record.EventRecorder) error {
+	if deployCtx == nil {
+		return fmt.Errorf("found nil DeployContext")
+	}
+
 	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
 
 	registryClient, err := registry.NewClient(

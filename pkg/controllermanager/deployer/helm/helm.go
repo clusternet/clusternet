@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,8 +35,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -89,6 +88,8 @@ type Deployer struct {
 	// If enabled, then the deployers in Clusternet will use anonymous when proxying requests to child clusters.
 	// If not, serviceaccount "clusternet-hub-proxy" will be used instead.
 	anonymousAuthSupported bool
+
+	deployContextMap sync.Map
 }
 
 func NewDeployer(apiserverURL, systemNamespace string,
@@ -443,33 +444,10 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	config, kubeQPS, kubeBurst, err := utils.GetChildClusterConfig(
-		deployer.secretLister,
-		deployer.clusterLister,
-		hr.Namespace,
-		hr.Labels[known.ClusterIDLabel],
-		deployer.apiserverURL,
-		deployer.systemNamespace,
-		deployer.anonymousAuthSupported,
-	)
+	deployCtx, err := deployer.getDeployContext(hr)
 	if err != nil {
 		return err
 	}
-
-	deployCtx, err := utils.NewDeployContext(
-		config,
-		&clientcmd.ConfigOverrides{
-			Context: clientcmdapi.Context{
-				Namespace: hr.Spec.TargetNamespace,
-			},
-		},
-		kubeQPS,
-		kubeBurst,
-	)
-	if err != nil {
-		return err
-	}
-
 	return utils.ReconcileHelmRelease(context.TODO(), deployCtx, deployer.kubeClient, deployer.clusternetClient,
 		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
 }
@@ -505,4 +483,31 @@ func (deployer *Deployer) handleSecret(secret *corev1.Secret) error {
 			fmt.Sprintf("failed to remove finalizer %s from Secrets %s: %v", known.AppFinalizer, klog.KObj(secretCopy), err))
 	}
 	return err
+}
+
+// getDeployContext will cache utils.DeployContext.
+func (deployer *Deployer) getDeployContext(hr *appsapi.HelmRelease) (*utils.DeployContext, error) {
+	deployCtx, ok := deployer.deployContextMap.Load(hr.Labels[known.ClusterIDLabel])
+	if ok {
+		return deployCtx.(*utils.DeployContext), nil
+	}
+
+	config, kubeQPS, kubeBurst, err := utils.GetChildClusterConfig(
+		deployer.secretLister,
+		deployer.clusterLister,
+		hr.Namespace,
+		hr.Labels[known.ClusterIDLabel],
+		deployer.apiserverURL,
+		deployer.systemNamespace,
+		deployer.anonymousAuthSupported,
+	)
+	if err != nil {
+		return nil, err
+	}
+	deployCtx, err = utils.NewDeployContext(config, kubeQPS, kubeBurst)
+	if err != nil {
+		return nil, err
+	}
+	deployer.deployContextMap.Store(hr.Labels[known.ClusterIDLabel], deployCtx)
+	return deployCtx.(*utils.DeployContext), nil
 }
