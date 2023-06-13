@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-CRD_OPTIONS ?= "crd:crdVersions=v1"
+CRD_OPTIONS ?= "crd:crdVersions=v1,allowDangerousTypes=true"
 
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:

@@ -70,8 +70,15 @@ func NewDeployer(syncMode, childAPIServerURL, systemNamespace string, saTokenAut
 	}
 }
 
-func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Config, childKubeClientSet kubernetes.Interface,
-	dedicatedNamespace *string, clusterID *types.UID, workers int) error {
+func (d *Deployer) Run(
+	ctx context.Context,
+	parentDedicatedKubeConfig *rest.Config,
+	childKubeClientSet kubernetes.Interface,
+	dedicatedNamespace *string,
+	clusterID *types.UID, workers int,
+	kubeQPS float32,
+	kubeBurst int32,
+) error {
 	klog.Infof("starting deployer ...")
 
 	// in case the dedicated kubeconfig get changed when leader election gets lost,
@@ -95,10 +102,6 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	appDeployerConfig, err := utils.GenerateKubeConfigFromToken(d.childAPIServerURL,
 		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
 		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey], 1)
-	if err != nil {
-		return err
-	}
-	childKubeClient, err := kubernetes.NewForConfig(appDeployerConfig)
 	if err != nil {
 		return err
 	}
@@ -126,11 +129,28 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	if err != nil {
 		return err
 	}
-	deployConfig := utils.CreateKubeConfigWithToken(d.childAPIServerURL,
-		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey])
-	helmDeployer, err := helm.NewDeployer(d.syncMode, d.appPusherEnabled, parentClientSet, childKubeClient,
-		clusternetclient, deployConfig, clusternetInformerFactory, parentRecorder)
+	deployCtx, err := utils.NewDeployContext(
+		utils.CreateKubeConfigWithToken(
+			d.childAPIServerURL,
+			string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+			appDeployerSecret.Data[corev1.ServiceAccountRootCAKey],
+		),
+		kubeQPS,
+		kubeBurst,
+	)
+	if err != nil {
+		return err
+	}
+
+	helmDeployer, err := helm.NewDeployer(
+		d.syncMode,
+		d.appPusherEnabled,
+		parentClientSet,
+		clusternetclient,
+		deployCtx,
+		clusternetInformerFactory,
+		parentRecorder,
+	)
 	if err != nil {
 		return err
 	}

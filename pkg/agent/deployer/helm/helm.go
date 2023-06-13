@@ -21,8 +21,6 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
@@ -43,12 +41,10 @@ type Deployer struct {
 
 	// kube client to parent cluster
 	parentKubeClient *kubernetes.Clientset
-	// kube client to current child cluster (with credentials in ServiceAccount "clusternet-app-deployer")
-	childKubeClient *kubernetes.Clientset
 	// clusternet client to parent cluster
 	clusternetClient *clusternetclientset.Clientset
 
-	deployConfig *clientcmdapi.Config
+	deployCtx *utils.DeployContext
 
 	hrLister   applisters.HelmReleaseLister
 	hrSynced   cache.InformerSynced
@@ -60,17 +56,21 @@ type Deployer struct {
 	recorder record.EventRecorder
 }
 
-func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool, parentKubeClient *kubernetes.Clientset,
-	childKubeClient *kubernetes.Clientset, clusternetClient *clusternetclientset.Clientset, deployConfig *clientcmdapi.Config,
-	clusternetInformerFactory clusternetinformers.SharedInformerFactory, recorder record.EventRecorder) (*Deployer, error) {
-
+func NewDeployer(
+	syncMode clusterapi.ClusterSyncMode,
+	appPusherEnabled bool,
+	parentKubeClient *kubernetes.Clientset,
+	clusternetClient *clusternetclientset.Clientset,
+	deployCtx *utils.DeployContext,
+	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
+	recorder record.EventRecorder,
+) (*Deployer, error) {
 	deployer := &Deployer{
 		syncMode:         syncMode,
 		appPusherEnabled: appPusherEnabled,
 		parentKubeClient: parentKubeClient,
-		childKubeClient:  childKubeClient,
 		clusternetClient: clusternetClient,
-		deployConfig:     deployConfig,
+		deployCtx:        deployCtx,
 		hrLister:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Lister(),
 		hrSynced:         clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer().HasSynced,
 		descLister:       clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
@@ -112,13 +112,14 @@ func (deployer *Deployer) handleHelmRelease(hr *appsapi.HelmRelease) error {
 		return nil
 	}
 
-	deployCtx, err := utils.NewDeployContext(deployer.deployConfig, &clientcmd.ConfigOverrides{Context: clientcmdapi.Context{
-		Namespace: hr.Spec.TargetNamespace,
-	}})
-	if err != nil {
-		return err
-	}
-
-	return utils.ReconcileHelmRelease(context.TODO(), deployCtx, deployer.parentKubeClient, deployer.clusternetClient,
-		deployer.hrLister, deployer.descLister, hr, deployer.recorder)
+	return utils.ReconcileHelmRelease(
+		context.TODO(),
+		deployer.deployCtx,
+		deployer.parentKubeClient,
+		deployer.clusternetClient,
+		deployer.hrLister,
+		deployer.descLister,
+		hr,
+		deployer.recorder,
+	)
 }

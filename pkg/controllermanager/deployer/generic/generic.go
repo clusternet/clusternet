@@ -158,9 +158,15 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 }
 
 func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.Interface, meta.RESTMapper, error) {
-	config, err := utils.GetChildClusterConfig(deployer.secretLister, deployer.clusterLister,
-		desc.Namespace, desc.Labels[known.ClusterIDLabel], deployer.apiserverURL, deployer.systemNamespace,
-		deployer.anonymousAuthSupported)
+	config, kubeQPS, kubeBurst, err := utils.GetChildClusterConfig(
+		deployer.secretLister,
+		deployer.clusterLister,
+		desc.Namespace,
+		desc.Labels[known.ClusterIDLabel],
+		deployer.apiserverURL,
+		deployer.systemNamespace,
+		deployer.anonymousAuthSupported,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -170,8 +176,8 @@ func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.I
 	if err != nil {
 		return nil, nil, err
 	}
-	restConfig.QPS = 5
-	restConfig.Burst = 10
+	restConfig.QPS = kubeQPS
+	restConfig.Burst = int(kubeBurst)
 
 	kubeclient, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {

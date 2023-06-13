@@ -290,12 +290,16 @@ func (agent *Agent) run(ctx context.Context) {
 	}, time.Duration(0))
 
 	go wait.UntilWithContext(ctx, func(ctx context.Context) {
-		if err := agent.deployer.Run(ctx,
+		if err := agent.deployer.Run(
+			ctx,
 			agent.parentDedicatedKubeConfig,
 			agent.childKubeClientSet,
 			agent.DedicatedNamespace,
 			agent.ClusterID,
-			defaultThreadiness); err != nil {
+			defaultThreadiness,
+			agent.agentOptions.ClientConnection.QPS,
+			agent.agentOptions.ClientConnection.Burst,
+		); err != nil {
 			klog.Error(err)
 		}
 	}, time.Duration(0))

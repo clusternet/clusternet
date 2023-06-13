@@ -75,6 +75,8 @@ func NewStatusManager(
 			opts.ClusterRegistrationOptions.ClusterStatusCollectFrequency,
 			opts.ClusterRegistrationOptions.ClusterStatusReportFrequency,
 			opts.ClusterRegistrationOptions.LabelAggregateThreshold,
+			opts.ClientConnection.QPS,
+			opts.ClientConnection.Burst,
 		),
 		labelAggregatePrefix: opts.ClusterRegistrationOptions.LabelAggregatePrefix,
 	}

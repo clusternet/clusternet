@@ -229,6 +229,17 @@ spec:
               k8sVersion:
                 description: k8sVersion is the Kubernetes version of the cluster
                 type: string
+              kubeBurst:
+                description: KubeBurst allows extra queries to accumulate when a client
+                  is exceeding its rate. Used by deployer in Clusternet to control
+                  the burst to current child cluster.
+                format: int32
+                type: integer
+              kubeQPS:
+                description: KubeQPS controls the number of queries per second allowed
+                  for this connection. Used by deployer in Clusternet to control the
+                  qps to current child cluster.
+                type: number
               lastObservedTime:
                 description: lastObservedTime is the time when last status from the
                   series was seen before last heartbeat. RFC 3339 date and time at
