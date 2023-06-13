@@ -154,21 +154,12 @@ func LoadsKubeConfigFromFile(fileName string) (*rest.Config, error) {
 }
 
 // GenerateKubeConfigFromToken composes a kubeconfig from token
-func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRate int) (*rest.Config, error) {
+func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte) (*rest.Config, error) {
 	clientConfig := CreateKubeConfigWithToken(serverURL, token, caCert)
 	config, err := clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
-
-	if flowRate < 0 {
-		flowRate = 1
-	}
-
-	// here we magnify the default qps and burst in client-go
-	config.QPS = rest.DefaultQPS * float32(flowRate)
-	config.Burst = rest.DefaultBurst * flowRate
-
 	return config, nil
 }
 

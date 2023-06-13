@@ -361,8 +361,11 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 						agent.agentOptions.ClusterRegistrationOptions.ParentURL)
 					klog.Warningf("will try to re-register current cluster")
 				} else {
-					parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.agentOptions.ClusterRegistrationOptions.ParentURL,
-						string(secret.Data[corev1.ServiceAccountTokenKey]), secret.Data[corev1.ServiceAccountRootCAKey], 2)
+					parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(
+						agent.agentOptions.ClusterRegistrationOptions.ParentURL,
+						string(secret.Data[corev1.ServiceAccountTokenKey]),
+						secret.Data[corev1.ServiceAccountRootCAKey],
+					)
 					if err == nil {
 						agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
 					}
@@ -481,7 +484,7 @@ func (agent *Agent) getBootstrapKubeConfigForParentCluster() (*rest.Config, erro
 		agent.agentOptions.ClusterRegistrationOptions.ParentURL,
 		agent.agentOptions.ClusterRegistrationOptions.BootstrapToken,
 		nil,
-		1)
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
@@ -519,8 +522,11 @@ func (agent *Agent) waitingForApproval(ctx context.Context, client clusternetcli
 			*agent.ClusterID, agent.agentOptions.ClusterRegistrationOptions.ClusterName)
 	}, known.DefaultRetryPeriod, 0.4, true)
 
-	parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(agent.agentOptions.ClusterRegistrationOptions.ParentURL,
-		string(crr.Status.DedicatedToken), crr.Status.CACertificate, 2)
+	parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(
+		agent.agentOptions.ClusterRegistrationOptions.ParentURL,
+		string(crr.Status.DedicatedToken),
+		crr.Status.CACertificate,
+	)
 	if err != nil {
 		return err
 	}

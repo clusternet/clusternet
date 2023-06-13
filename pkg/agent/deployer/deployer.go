@@ -99,13 +99,6 @@ func (d *Deployer) Run(
 		createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
 	}
 
-	appDeployerConfig, err := utils.GenerateKubeConfigFromToken(d.childAPIServerURL,
-		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey], 1)
-	if err != nil {
-		return err
-	}
-
 	// setup broadcaster and event recorder in parent cluster
 	broadcaster := record.NewBroadcaster()
 	klog.Infof("sending events to parent apiserver")
@@ -124,11 +117,22 @@ func (d *Deployer) Run(
 	clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
 	clusternetInformerFactory.Start(ctx.Done())
 
+	appDeployerConfig, err := utils.GenerateKubeConfigFromToken(
+		d.childAPIServerURL,
+		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey],
+	)
+	if err != nil {
+		return err
+	}
+	appDeployerConfig.QPS = kubeQPS
+	appDeployerConfig.Burst = int(kubeBurst)
 	genericDeployer, err := generic.NewDeployer(d.syncMode, d.appPusherEnabled, appDeployerConfig,
 		clusternetclient, clusternetInformerFactory, parentRecorder)
 	if err != nil {
 		return err
 	}
+
 	deployCtx, err := utils.NewDeployContext(
 		utils.CreateKubeConfigWithToken(
 			d.childAPIServerURL,
@@ -141,7 +145,6 @@ func (d *Deployer) Run(
 	if err != nil {
 		return err
 	}
-
 	helmDeployer, err := helm.NewDeployer(
 		d.syncMode,
 		d.appPusherEnabled,
