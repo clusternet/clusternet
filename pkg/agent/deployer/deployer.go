@@ -94,10 +94,11 @@ func (d *Deployer) Run(
 
 	// make sure deployer gets initialized before we go next
 	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet, d.systemNamespace, d.saTokenAutoGen)
-	if d.appPusherEnabled && d.syncMode != clusterapi.Pull {
-		klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
-		createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
-	}
+
+	// creating credentials to parent cluster is also required in the pull mode,
+	// because the cleaning of redundant objects in the description is performed in the hub
+	klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
+	createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
 
 	// setup broadcaster and event recorder in parent cluster
 	broadcaster := record.NewBroadcaster()

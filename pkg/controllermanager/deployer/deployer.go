@@ -892,10 +892,11 @@ func (deployer *Deployer) syncDescriptions(base *appsapi.Base, desc *appsapi.Des
 			// Here we only need to focus on generic deployer.
 			pruneCtx, cancel := context.WithCancel(context.TODO())
 			go wait.JitterUntilWithContext(pruneCtx, func(ctx context.Context) {
-				if err := deployer.genericDeployer.PruneFeedsInDescription(ctx, curDesc.DeepCopy(), desc.DeepCopy()); err == nil {
-					cancel()
+				if err := deployer.genericDeployer.PruneFeedsInDescription(ctx, curDesc.DeepCopy(), desc.DeepCopy()); err != nil {
+					klog.Warningf("Prune feed in description %s failed: %v", klog.KObj(curDesc), err)
 					return
 				}
+				cancel()
 			}, known.DefaultRetryPeriod, 0.3, true)
 
 			curDescCopy := curDesc.DeepCopy()
