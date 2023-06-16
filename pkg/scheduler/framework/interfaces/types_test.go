@@ -177,7 +177,7 @@ func TestTargetClusters_Merge(t *testing.T) {
 	}
 }
 
-func TestTargetCLusters_MergeOneFeed(t *testing.T) {
+func TestTargetClusters_MergeOneFeed(t *testing.T) {
 	template := &TargetClusters{
 		BindingClusters: []string{"c1", "c2", "c3"},
 		Replicas: map[string][]int32{
@@ -285,4 +285,31 @@ func TestTargetCLusters_MergeOneFeed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTargetClusters_MergeOneFeed_TargetClusterEmpty(t *testing.T) {
+	template := &TargetClusters{
+		BindingClusters: nil,
+		Replicas:        nil,
+	}
+	b := &TargetClusters{
+		BindingClusters: []string{"c2", "c3"},
+		Replicas: map[string][]int32{
+			"f1": {1, 2},
+			"f3": {1, 0},
+		},
+	}
+	result := &TargetClusters{
+		BindingClusters: []string{"c2", "c3"},
+		Replicas: map[string][]int32{
+			"f1": {1, 2},
+			"f3": {1, 0},
+		},
+	}
+	t.Run("panic", func(t *testing.T) {
+		template.MergeOneFeed(b)
+		if !reflect.DeepEqual(template, result) {
+			t.Errorf("MergeOneFeed() \ngot = %v\nwant= %v", result, template)
+		}
+	})
 }
