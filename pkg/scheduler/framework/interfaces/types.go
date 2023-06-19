@@ -147,6 +147,7 @@ func (t *TargetClusters) MergeOneFeed(b *TargetClusters) {
 			} else {
 				// new cluster, add cluster to t binding cluster
 				t.BindingClusters = append(t.BindingClusters, cluster)
+				m[cluster] = len(t.BindingClusters) - 1
 				// add 0 to exist feed but new cluster, if feed is nil, skip it
 				for f := range t.Replicas {
 					if f != feed {
