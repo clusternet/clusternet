@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	pkgruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 
@@ -47,35 +48,45 @@ func (ri *resourceInformer) HasSynced() bool {
 // NewResourceInformer returns a filtered informer limited to resources managed by Clusternet
 // as indicated by labeling.
 func NewResourceInformer(client ResourceClient, apiResource *metav1.APIResource,
-	handler cache.ResourceEventHandlerFuncs) *resourceInformer {
-	store, controller := newResourceInformer(client, apiResource, handler)
+	handler cache.ResourceEventHandlerFuncs) (*resourceInformer, error) {
+	store, controller, err := newResourceInformer(client, apiResource, handler)
+	if err != nil {
+		return nil, err
+	}
 	return &resourceInformer{
 		controller: controller,
 		store:      store,
 		stopChan:   make(chan struct{}),
-	}
+	}, nil
 }
 
 func newResourceInformer(client ResourceClient, apiResource *metav1.APIResource,
-	handler cache.ResourceEventHandlerFuncs) (cache.Store, cache.Controller) {
-	labelSelector := labels.Set(map[string]string{
-		known.ObjectCreatedByLabel: known.ClusternetHubName,
-	}).AsSelector().String()
+	handler cache.ResourceEventHandlerFuncs) (cache.Store, cache.Controller, error) {
+	rqmt, err := labels.NewRequirement(
+		known.ObjectCreatedByLabel,
+		selection.In,
+		[]string{
+			known.ClusternetCtrlMgrName,
+			known.ClusternetHubName, // for backwards compatible, could be deleted in a future release (TODO)
+		},
+	)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	obj := &unstructured.Unstructured{}
-
 	if apiResource != nil {
 		gvk := schema.GroupVersionKind{Group: apiResource.Group, Version: apiResource.Version, Kind: apiResource.Kind}
 		obj.SetGroupVersionKind(gvk)
 	}
-	return cache.NewInformer(
+	store, controller := cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (pkgruntime.Object, error) {
-				options.LabelSelector = labelSelector
+				options.LabelSelector = rqmt.String()
 				return client.Resources("").List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				options.LabelSelector = labelSelector
+				options.LabelSelector = rqmt.String()
 				return client.Resources("").Watch(context.Background(), options)
 			},
 		},
@@ -83,4 +94,5 @@ func newResourceInformer(client ResourceClient, apiResource *metav1.APIResource,
 		known.NoResyncPeriod,
 		handler,
 	)
+	return store, controller, nil
 }

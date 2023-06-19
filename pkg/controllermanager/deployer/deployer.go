@@ -362,7 +362,7 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 				Name:      sub.Name,
 				Namespace: namespace,
 				Labels: map[string]string{
-					known.ObjectCreatedByLabel: known.ClusternetHubName,
+					known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 					known.ConfigKindLabel:      subscriptionKind.Kind,
 					known.ConfigNameLabel:      sub.Name,
 					known.ConfigNamespaceLabel: sub.Namespace,
@@ -792,7 +792,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: base.Namespace,
 			Labels: map[string]string{
-				known.ObjectCreatedByLabel: known.ClusternetHubName,
+				known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 				known.ConfigKindLabel:      baseKind.Kind,
 				known.ConfigNameLabel:      base.Name,
 				known.ConfigNamespaceLabel: base.Namespace,

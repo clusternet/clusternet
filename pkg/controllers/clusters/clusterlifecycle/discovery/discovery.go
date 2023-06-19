@@ -244,7 +244,7 @@ func createClusterResourceSet(ctx context.Context, namespace, capiVersion string
 				"name": clusternetClusterAPI,
 				//"namespace":  clusterAPIClusternetNamespace,
 				"labels": map[string]interface{}{
-					known.ObjectCreatedByLabel: known.ClusternetHubName,
+					known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 				},
 			},
 			"spec": map[string]interface{}{

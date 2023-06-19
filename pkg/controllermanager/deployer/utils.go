@@ -111,7 +111,7 @@ func GenerateLocalizationTemplate(base *appsapi.Base, overridePolicy appsapi.Ove
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: base.Namespace,
 			Labels: map[string]string{
-				known.ObjectCreatedByLabel: known.ClusternetHubName,
+				known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 			},
 		},
 		Spec: appsapi.LocalizationSpec{
