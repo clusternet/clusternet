@@ -151,7 +151,7 @@ func (crrApprover *CRRApprover) defaultRoles(namespace string) []rbacv1.Role {
 			Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 			Labels: map[string]string{
 				known.ClusterBootstrappingLabel: known.RBACDefaults,
-				known.ObjectCreatedByLabel:      known.ClusternetHubName,
+				known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 			},
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -175,7 +175,7 @@ func (crrApprover *CRRApprover) defaultClusterRoles(clusterID types.UID) []rbacv
 			Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 			Labels: map[string]string{
 				known.ClusterBootstrappingLabel: known.RBACDefaults,
-				known.ObjectCreatedByLabel:      known.ClusternetHubName,
+				known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 				known.ClusterIDLabel:            string(clusterID),
 			},
 		},
@@ -472,7 +472,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 					Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 					Labels: map[string]string{
 						known.ClusterBootstrappingLabel: known.RBACDefaults,
-						known.ObjectCreatedByLabel:      known.ClusternetHubName,
+						known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 						known.ClusterIDLabel:            string(clusterID),
 					},
 				},
@@ -525,7 +525,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 					Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 					Labels: map[string]string{
 						known.ClusterBootstrappingLabel: known.RBACDefaults,
-						known.ObjectCreatedByLabel:      known.ClusternetHubName,
+						known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 					},
 				},
 				Subjects: []rbacv1.Subject{

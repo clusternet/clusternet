@@ -355,7 +355,7 @@ func (c *Controller) handleSubscription(sub *appsapi.Subscription) error {
 			Name:      sub.Name,
 			Namespace: sub.Namespace,
 			Labels: map[string]string{
-				known.ObjectCreatedByLabel: known.ClusternetHubName,
+				known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 				// add subscription info
 				known.ConfigSubscriptionNameLabel:      sub.Name,
 				known.ConfigSubscriptionNamespaceLabel: sub.Namespace,

@@ -280,7 +280,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 			return err
 		}
 		defaultLabels := map[string]string{
-			known.ObjectCreatedByLabel: known.ClusternetHubName,
+			known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 			known.ConfigKindLabel:      descriptionKind.Kind,
 			known.ConfigNameLabel:      desc.Name,
 			known.ConfigNamespaceLabel: desc.Namespace,

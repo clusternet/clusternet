@@ -98,7 +98,7 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 		clusternetClient: clusternetClient,
 	}
 
-	ri := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
+	ri, err := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
 			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
@@ -142,6 +142,9 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 			}
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
 	ri.Start()
 	c.resourceSynced = ri.HasSynced
 

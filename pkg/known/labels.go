@@ -47,6 +47,7 @@ const (
 	CredentialsAuto = "credentials-auto"
 	RBACDefaults    = "rbac-defaults"
 
-	ClusternetAgentName = "clusternet-agent"
-	ClusternetHubName   = "clusternet-hub"
+	ClusternetAgentName   = "clusternet-agent"
+	ClusternetHubName     = "clusternet-hub"
+	ClusternetCtrlMgrName = "clusternet-controller-manager"
 )
