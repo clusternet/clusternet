@@ -34,7 +34,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-scheduler
-          image: ghcr.io/clusternet/clusternet-scheduler:v0.15.2
+          image: ghcr.io/clusternet/clusternet-scheduler:v0.16.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
@@ -46,3 +46,4 @@ spec:
           args:
             - --leader-elect=true
             - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
+            - --feature-gates=FailOver=true,FeasibleClustersToleration=true
