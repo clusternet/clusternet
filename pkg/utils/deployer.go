@@ -46,6 +46,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -386,6 +387,10 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
 			continue
 		}
+
+		// erases fields that are managed by the system on ObjectMeta when deploying to child clusters
+		rest.WipeObjectMetaSystemFields(resource)
+
 		annotations := resource.GetAnnotations()
 		if annotations == nil {
 			annotations = map[string]string{}
@@ -394,6 +399,7 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 		delete(annotations, corev1.LastAppliedConfigAnnotation)
 		annotations[known.ObjectOwnedByDescriptionAnnotation] = desc.Namespace + "." + desc.Name
 		resource.SetAnnotations(annotations)
+
 		trimedObject, err := resource.MarshalJSON()
 		if err != nil {
 			allErrs = append(allErrs, err)
