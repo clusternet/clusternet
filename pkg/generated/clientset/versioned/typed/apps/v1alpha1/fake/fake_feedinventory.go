@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeFeedInventories struct {
 	ns   string
 }
 
-var feedinventoriesResource = schema.GroupVersionResource{Group: "apps.clusternet.io", Version: "v1alpha1", Resource: "feedinventories"}
+var feedinventoriesResource = v1alpha1.SchemeGroupVersion.WithResource("feedinventories")
 
-var feedinventoriesKind = schema.GroupVersionKind{Group: "apps.clusternet.io", Version: "v1alpha1", Kind: "FeedInventory"}
+var feedinventoriesKind = v1alpha1.SchemeGroupVersion.WithKind("FeedInventory")
 
 // Get takes name of the feedInventory, and returns the corresponding feedInventory object, and an error if there is any.
 func (c *FakeFeedInventories) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.FeedInventory, err error) {
@@ -121,6 +123,28 @@ func (c *FakeFeedInventories) DeleteCollection(ctx context.Context, opts v1.Dele
 func (c *FakeFeedInventories) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.FeedInventory, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(feedinventoriesResource, c.ns, name, pt, data, subresources...), &v1alpha1.FeedInventory{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.FeedInventory), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied feedInventory.
+func (c *FakeFeedInventories) Apply(ctx context.Context, feedInventory *appsv1alpha1.FeedInventoryApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.FeedInventory, err error) {
+	if feedInventory == nil {
+		return nil, fmt.Errorf("feedInventory provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(feedInventory)
+	if err != nil {
+		return nil, err
+	}
+	name := feedInventory.Name
+	if name == nil {
+		return nil, fmt.Errorf("feedInventory.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(feedinventoriesResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.FeedInventory{})
 
 	if obj == nil {
 		return nil, err

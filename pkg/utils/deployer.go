@@ -544,7 +544,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
 	resource *unstructured.Unstructured, ignoreAdd bool) error {
 	var lastError error
-	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func(ctx context.Context) (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
 			lastError = fmt.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
@@ -697,7 +697,7 @@ func DeleteResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interfac
 	deletePropagationBackground := metav1.DeletePropagationBackground
 
 	var lastError error
-	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func(ctx context.Context) (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
 			lastError = fmt.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)

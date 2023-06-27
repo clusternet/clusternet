@@ -135,7 +135,7 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 	// in case the network is not stable, retry with backoff
 	var lastError error
 	var mcls *clusterapi.ManagedCluster
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
 		status := mgr.clusterStatusController.GetClusterStatus()
 		if status == nil {
 			lastError = errors.New("cluster status is not ready, will retry later")

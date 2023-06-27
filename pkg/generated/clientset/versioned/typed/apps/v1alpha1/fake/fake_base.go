@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeBases struct {
 	ns   string
 }
 
-var basesResource = schema.GroupVersionResource{Group: "apps.clusternet.io", Version: "v1alpha1", Resource: "bases"}
+var basesResource = v1alpha1.SchemeGroupVersion.WithResource("bases")
 
-var basesKind = schema.GroupVersionKind{Group: "apps.clusternet.io", Version: "v1alpha1", Kind: "Base"}
+var basesKind = v1alpha1.SchemeGroupVersion.WithKind("Base")
 
 // Get takes name of the base, and returns the corresponding base object, and an error if there is any.
 func (c *FakeBases) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Base, err error) {
@@ -121,6 +123,28 @@ func (c *FakeBases) DeleteCollection(ctx context.Context, opts v1.DeleteOptions,
 func (c *FakeBases) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Base, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(basesResource, c.ns, name, pt, data, subresources...), &v1alpha1.Base{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Base), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied base.
+func (c *FakeBases) Apply(ctx context.Context, base *appsv1alpha1.BaseApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Base, err error) {
+	if base == nil {
+		return nil, fmt.Errorf("base provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(base)
+	if err != nil {
+		return nil, err
+	}
+	name := base.Name
+	if name == nil {
+		return nil, fmt.Errorf("base.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(basesResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.Base{})
 
 	if obj == nil {
 		return nil, err
