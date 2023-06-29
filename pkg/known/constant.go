@@ -26,7 +26,7 @@ const (
 	NamePrefixForClusternetObjects = "clusternet-"
 
 	// ChildClusterSecretName is the secret that stores credentials of child cluster, which will be used by deployer
-	// in clusternet-hub
+	// in clusternet-controller-manager
 	ChildClusterSecretName = "child-cluster-deployer"
 
 	// ClusterAPIServerURLKey denotes the apiserver address
