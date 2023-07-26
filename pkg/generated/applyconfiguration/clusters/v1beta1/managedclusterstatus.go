@@ -34,6 +34,8 @@ type ManagedClusterStatusApplyConfiguration struct {
 	Readyz                    *bool                             `json:"readyz,omitempty"`
 	AppPusher                 *bool                             `json:"appPusher,omitempty"`
 	UseSocket                 *bool                             `json:"useSocket,omitempty"`
+	KubeQPS                   *float32                          `json:"kubeQPS,omitempty"`
+	KubeBurst                 *int32                            `json:"kubeBurst,omitempty"`
 	Allocatable               *corev1.ResourceList              `json:"allocatable,omitempty"`
 	Capacity                  *corev1.ResourceList              `json:"capacity,omitempty"`
 	ClusterCIDR               *string                           `json:"clusterCIDR,omitempty"`
@@ -123,6 +125,22 @@ func (b *ManagedClusterStatusApplyConfiguration) WithAppPusher(value bool) *Mana
 // If called multiple times, the UseSocket field is set to the value of the last call.
 func (b *ManagedClusterStatusApplyConfiguration) WithUseSocket(value bool) *ManagedClusterStatusApplyConfiguration {
 	b.UseSocket = &value
+	return b
+}
+
+// WithKubeQPS sets the KubeQPS field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the KubeQPS field is set to the value of the last call.
+func (b *ManagedClusterStatusApplyConfiguration) WithKubeQPS(value float32) *ManagedClusterStatusApplyConfiguration {
+	b.KubeQPS = &value
+	return b
+}
+
+// WithKubeBurst sets the KubeBurst field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the KubeBurst field is set to the value of the last call.
+func (b *ManagedClusterStatusApplyConfiguration) WithKubeBurst(value int32) *ManagedClusterStatusApplyConfiguration {
+	b.KubeBurst = &value
 	return b
 }
 
