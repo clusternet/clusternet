@@ -92,3 +92,8 @@ const (
 	// copied from k8s.io/kubernetes/pkg/apis/core/validation/events.go
 	NoteLengthLimit = 1024
 )
+
+const (
+	// DefaultRandomIDLength is the default length for random id
+	DefaultRandomIDLength = 5
+)

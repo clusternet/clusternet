@@ -598,7 +598,7 @@ func generateClusterRegistrationRequestName(clusterID types.UID) string {
 
 func generateClusterName(clusterName, clusterNamePrefix string) string {
 	if len(clusterName) == 0 {
-		clusterName = fmt.Sprintf("%s-%s", clusterNamePrefix, utilrand.String(options.DefaultRandomUIDLength))
+		clusterName = fmt.Sprintf("%s-%s", clusterNamePrefix, utilrand.String(known.DefaultRandomIDLength))
 		klog.V(4).Infof("generate a random string %q as cluster name for later use", clusterName)
 	}
 	return clusterName

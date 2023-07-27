@@ -18,12 +18,14 @@ package deployer
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
@@ -109,6 +111,7 @@ func removeFeedFromAllMatchingSubscriptions(clusternetClient *clusternetclientse
 func GenerateLocalizationTemplate(base *appsapi.Base, overridePolicy appsapi.OverridePolicy) *appsapi.Localization {
 	loc := &appsapi.Localization{
 		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%s", base.Name, utilrand.String(known.DefaultRandomIDLength)),
 			Namespace: base.Namespace,
 			Labels: map[string]string{
 				known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
