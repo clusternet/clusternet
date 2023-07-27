@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -37,6 +38,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeinformers "k8s.io/client-go/informers"
@@ -325,7 +327,7 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 // populateBasesAndLocalizations will populate a group of Base(s) from Subscription.
 // Localization(s) will be populated as well for dividing scheduling.
 func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscription) error {
-	klog.V(5).Infof("Start populate base and localization for subscription %s/%s ", sub.Namespace, sub.Name)
+	klog.V(5).Infof("Start populating bases and localizations for subscription %s/%s ", sub.Namespace, sub.Name)
 	allExistingBases, listErr := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
 		known.ConfigKindLabel:      subscriptionKind.Kind,
 		known.ConfigNamespaceLabel: sub.Namespace,
@@ -356,23 +358,25 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 			}
 			return fmt.Errorf("failed to populate Bases for Subscription %s: %v", klog.KObj(sub), err)
 		}
-		var namespacedBases []*appsapi.Base
+		var basesInCurrentNamespace []*appsapi.Base
 		for _, b := range allExistingBases {
 			if b.Namespace == namespace {
-				namespacedBases = append(namespacedBases, b)
+				basesInCurrentNamespace = append(basesInCurrentNamespace, b)
 			}
 		}
 
-		var baseTemplate = &appsapi.Base{
+		baseTemplate := &appsapi.Base{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s", sub.Name, utilrand.String(5)),
+				Name:      fmt.Sprintf("%s-%s", sub.Name, utilrand.String(known.DefaultRandomIDLength)),
 				Namespace: namespace,
 				Labels: map[string]string{
-					known.ObjectCreatedByLabel:             known.ClusternetCtrlMgrName,
-					known.ConfigKindLabel:                  subscriptionKind.Kind,
+					known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
+					known.ConfigKindLabel:      subscriptionKind.Kind,
+					known.ConfigNamespaceLabel: sub.Namespace,
+					known.ConfigUIDLabel:       string(sub.UID),
+					// add subscription info
 					known.ConfigSubscriptionNamespaceLabel: sub.Namespace,
 					known.ConfigSubscriptionUIDLabel:       string(sub.UID),
-					known.ConfigUIDLabel:                   string(sub.UID),
 				},
 				Finalizers: []string{
 					known.AppFinalizer,
@@ -382,49 +386,47 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 				Feeds: sub.Spec.Feeds,
 			},
 		}
-		var syncErr error
-		switch len(namespacedBases) {
-		case 0:
-			// this cluster is new deploy target
-			if ns.Labels != nil {
-				baseTemplate.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
-				baseTemplate.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
-			}
-			// add sub name labels when name length less then 63 - (5+1), because of kubernetes label value no more then 63
-			if len(sub.Name) <= 58 {
-				baseTemplate.Labels[known.ConfigNameLabel] = sub.Name
-			}
-			syncErr = deployer.syncBase(sub, baseTemplate)
-		case 1:
-			baseTemplate.Name = namespacedBases[0].Name
-			baseTemplate.Spec.Feeds = sub.Spec.Feeds
-			syncErr = deployer.syncBase(sub, baseTemplate)
-			basesToBeDeleted.Delete(klog.KObj(baseTemplate).String())
-		default:
-			// TODO find effective base and delete others
-			var names []string
-			for _, namespacedBase := range namespacedBases {
-				basesToBeDeleted.Delete(klog.KObj(namespacedBase).String())
-				names = append(names, klog.KObj(namespacedBase).String())
-			}
-			msg := fmt.Sprintf("all bases name is : %v", names)
-			klog.Warningf("subscription %s/%s namespace %s have more then one base , %s, will use first one and keep others ... ", sub.Namespace, sub.Name, namespace, msg)
-			deployer.recorder.Event(sub, corev1.EventTypeWarning, "more then one base, use first one ", msg)
-			baseTemplate.Name = namespacedBases[0].Name
-			baseTemplate.Spec.Feeds = sub.Spec.Feeds
-			syncErr = deployer.syncBase(sub, baseTemplate)
+		if ns.Labels != nil {
+			baseTemplate.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
+			baseTemplate.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
 		}
 
-		if syncErr != nil {
-			allErrs = append(allErrs, syncErr)
-			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(baseTemplate), syncErr)
+		// sync base object
+		if len(basesInCurrentNamespace) > 0 {
+			// backward compatible with legacy base name format
+			// reuse existing base object if found, otherwise create base with random uid as postfix
+			sort.SliceStable(basesInCurrentNamespace, func(i, j int) bool {
+				return basesInCurrentNamespace[i].CreationTimestamp.Second() > basesInCurrentNamespace[j].
+					CreationTimestamp.Second()
+			})
+			if len(basesInCurrentNamespace) > 1 {
+				klog.Warningf("found more than one base objects belong to Subscription %s", klog.KObj(sub))
+				deployer.recorder.Eventf(sub, corev1.EventTypeWarning, "MultipleBases",
+					"found more than one base objects belongs to Subscription %s", klog.KObj(sub))
+
+				// TODO: could remove below logic if we really want to prune redundant base objects
+				for _, namespacedBase := range basesInCurrentNamespace[1:] {
+					basesToBeDeleted.Delete(klog.KObj(namespacedBase).String())
+				}
+			}
+			// choose the newest one from existing base objects
+			baseTemplate.Name = basesInCurrentNamespace[0].Name
+			baseTemplate.Spec.Feeds = sub.Spec.Feeds
+			basesToBeDeleted.Delete(klog.KObj(baseTemplate).String())
+			klog.Infof("reuse latest existed Base %s for Subscription %s", klog.KObj(baseTemplate), klog.KObj(sub))
+		}
+
+		base, err := deployer.syncBase(sub, baseTemplate)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(baseTemplate), err)
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingBase", msg)
 			continue
 		}
 
 		// populate Localizations for dividing scheduling.
-		err = deployer.populateLocalizations(sub, baseTemplate, idx)
+		err = deployer.populateLocalizations(sub, base, idx)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			klog.ErrorDepth(5, fmt.Sprintf("Failed to sync Localizations: %v", err))
@@ -441,28 +443,36 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *appsapi.Base) error {
-	_, err := deployer.clusternetClient.AppsV1alpha1().Bases(baseTemplate.Namespace).Create(context.TODO(),
+func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *appsapi.Base) (*appsapi.Base, error) {
+	// append sub name to labels when name length is less than 63 - (5+1)
+	if len(sub.Name) <= utilvalidation.LabelValueMaxLength-known.DefaultRandomIDLength-1 {
+		baseTemplate.Labels[known.ConfigNameLabel] = sub.Name
+		baseTemplate.Labels[known.ConfigSubscriptionNameLabel] = sub.Name
+	} else {
+		delete(baseTemplate.Labels, known.ConfigNameLabel)
+		delete(baseTemplate.Labels, known.ConfigSubscriptionNameLabel)
+	}
+	base, err := deployer.clusternetClient.AppsV1alpha1().Bases(baseTemplate.Namespace).Create(context.TODO(),
 		baseTemplate, metav1.CreateOptions{})
 	if err == nil {
 		msg := fmt.Sprintf("Base %s is created successfully", klog.KObj(baseTemplate))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseCreated", msg)
-		return nil
+		return base, nil
 	}
 
 	if !apierrors.IsAlreadyExists(err) {
-		return err
+		return nil, err
 	}
 
 	// update it
-	base, err := deployer.baseLister.Bases(baseTemplate.Namespace).Get(baseTemplate.Name)
+	base, err = deployer.baseLister.Bases(baseTemplate.Namespace).Get(baseTemplate.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if base.DeletionTimestamp != nil {
-		return fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(base))
+		return nil, fmt.Errorf("Base %s is deleting, will resync later", klog.KObj(base))
 	}
 
 	baseCopy := base.DeepCopy()
@@ -478,14 +488,16 @@ func (deployer *Deployer) syncBase(sub *appsapi.Subscription, baseTemplate *apps
 		baseCopy.Finalizers = append(baseCopy.Finalizers, known.AppFinalizer)
 	}
 
-	_, err = deployer.clusternetClient.AppsV1alpha1().Bases(baseCopy.Namespace).Update(context.TODO(),
-		baseCopy, metav1.UpdateOptions{})
+	base, err = deployer.clusternetClient.AppsV1alpha1().
+		Bases(baseCopy.Namespace).
+		Update(context.TODO(), baseCopy, metav1.UpdateOptions{})
 	if err == nil {
 		msg := fmt.Sprintf("Base %s is updated successfully", klog.KObj(baseCopy))
 		klog.V(4).Info(msg)
 		deployer.recorder.Event(sub, corev1.EventTypeNormal, "BaseUpdated", msg)
+		return base, nil
 	}
-	return err
+	return nil, err
 }
 
 func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) error {
@@ -514,14 +526,15 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 }
 
 func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base *appsapi.Base, clusterIndex int) error {
-	klog.V(5).Infof("Start populate localization for subscription %s/%s with base %s/%s", sub.Namespace, sub.Name, base.Namespace, base.Name)
+	klog.V(5).Infof("Start populate localization for Subscription %s with Base %s/%s", klog.KObj(sub), klog.KObj(base))
 	if len(base.UID) == 0 {
 		return fmt.Errorf("waiting for UID set for Base %s", klog.KObj(base))
 	}
 
-	// TODO add a label key-value pair to indicate that this local is for scheduling.
 	allExistingLocalizations, err := deployer.locLister.Localizations(base.Namespace).List(labels.SelectorFromSet(labels.Set{
 		string(sub.UID): subscriptionKind.Kind,
+		// TODO: add this label
+		// known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 	}))
 	if err != nil {
 		return err
@@ -568,51 +581,52 @@ func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base 
 				continue
 			}
 
-			localizations := utils.FindLocalByFeed(feedOrder, allExistingLocalizations)
-
-			var syncErr error
-			var newLocal *appsapi.Localization
-			if len(localizations) < 1 {
-				newLocal = GenerateLocalizationTemplate(base, appsapi.ApplyNow)
-				newLocal.Name = fmt.Sprintf("%s-%s", sub.Name, utilrand.String(5))
-				newLocal.Labels[string(sub.UID)] = subscriptionKind.Kind
-				newLocal.Spec.Feed = feedOrder.Feed
-				newLocal.Spec.Overrides = []appsapi.OverrideConfig{
-					{
-						Name:  "dividing scheduling replicas",
-						Value: fmt.Sprintf(`[{"path":%q,"value":%d,"op":"replace"}]`, feedOrder.ReplicaJsonPath, replicas[clusterIndex]),
-						Type:  appsapi.JSONPatchType,
-					},
-				}
-				syncErr = deployer.syncLocalization(newLocal)
-			} else {
-				newLocal = localizations[0].DeepCopy()
-				newLocal.Spec.Feed = feedOrder.Feed
-				newLocal.Spec.Overrides = []appsapi.OverrideConfig{
-					{
-						Name:  "dividing scheduling replicas",
-						Value: fmt.Sprintf(`[{"path":%q,"value":%d,"op":"replace"}]`, feedOrder.ReplicaJsonPath, replicas[clusterIndex]),
-						Type:  appsapi.JSONPatchType,
-					},
-				}
-				locsToBeDeleted.Delete(klog.KObj(newLocal).String())
-				syncErr = deployer.syncLocalization(newLocal)
-
-				if len(localizations) > 1 {
-					var names []string
-					for _, oldLocal := range localizations {
-						locsToBeDeleted.Delete(klog.KObj(oldLocal).String())
-						names = append(names, oldLocal.Name)
-					}
-					msg := fmt.Sprintf("all localization name is : %v", names)
-					klog.Warningf("subscription %s/%s namespace %s have more then one localization %s, will use first one and keep others ... ", sub.Namespace, sub.Name, localizations[0].Namespace, msg)
-					deployer.recorder.Event(sub, corev1.EventTypeWarning, "more then one localization, use first one ", msg)
-				}
+			loc := GenerateLocalizationTemplate(base, appsapi.ApplyNow)
+			loc.Labels[string(sub.UID)] = subscriptionKind.Kind
+			loc.Spec.Feed = feedOrder.Feed
+			loc.Spec.Overrides = []appsapi.OverrideConfig{
+				{
+					Name:  "dividing scheduling replicas",
+					Value: fmt.Sprintf(`[{"path":%q,"value":%d,"op":"replace"}]`, feedOrder.ReplicaJsonPath, replicas[clusterIndex]),
+					Type:  appsapi.JSONPatchType,
+				},
 			}
 
-			if syncErr != nil {
-				allErrs = append(allErrs, syncErr)
-				msg := fmt.Sprintf("Failed to sync Localization %s: %v", klog.KObj(newLocal), syncErr)
+			var localsForCurrentFeed []*appsapi.Localization
+			for _, local := range allExistingLocalizations {
+				if local.Spec.Feed == feedOrder.Feed {
+					localsForCurrentFeed = append(localsForCurrentFeed, local)
+				}
+			}
+			if len(localsForCurrentFeed) > 0 {
+				// backward compatible with legacy localization name format
+				// reuse existing localization objects if found, otherwise create localization with random uid as postfix
+				sort.SliceStable(localsForCurrentFeed, func(i, j int) bool {
+					return localsForCurrentFeed[i].CreationTimestamp.Second() > localsForCurrentFeed[j].
+						CreationTimestamp.Second()
+				})
+				if len(localsForCurrentFeed) > 1 {
+					klog.Warningf("found more than one localization objects for Feed %q in Base %s",
+						utils.FormatFeed(feedOrder.Feed), klog.KObj(base))
+					deployer.recorder.Eventf(sub, corev1.EventTypeWarning, "MultipleLocalizations",
+						"found more than one auto-populated localization objects belong to Base %s", klog.KObj(base))
+
+					// TODO: could remove below logic if we really want to prune redundant localization objects
+					for _, namespacedBase := range localsForCurrentFeed[1:] {
+						locsToBeDeleted.Delete(klog.KObj(namespacedBase).String())
+					}
+				}
+				// choose the newest one from existing localization objects
+				loc.Name = localsForCurrentFeed[0].Name
+				locsToBeDeleted.Delete(klog.KObj(loc).String())
+				klog.Infof("reuse latest existed Localization %s for Feed %q in Base %s",
+					klog.KObj(loc), utils.FormatFeed(feedOrder.Feed), klog.KObj(base))
+			}
+
+			err = deployer.syncLocalization(loc)
+			if err != nil {
+				allErrs = append(allErrs, err)
+				msg := fmt.Sprintf("Failed to sync Localization %s: %v", klog.KObj(loc), err)
 				klog.ErrorDepth(5, msg)
 				deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingLocalization", msg)
 			}

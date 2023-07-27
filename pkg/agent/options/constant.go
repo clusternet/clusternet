@@ -85,9 +85,6 @@ const (
 	// ClusterNamespaceMaxLength is the max length for clusternamespace
 	ClusterNamespaceMaxLength = 63
 
-	// DefaultRandomUIDLength is the default length for random uid
-	DefaultRandomUIDLength = 5
-
 	nameFmt                              = "[a-z0-9]([-a-z0-9]*[a-z0-9])?([a-z0-9]([-a-z0-9]*[a-z0-9]))*"
 	namespaceFmt                         = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
 	serviceAccountTokenFmt               = `[A-Za-z0-9-_]*\.[A-Za-z0-9-_]*\.[A-Za-z0-9-_]*`

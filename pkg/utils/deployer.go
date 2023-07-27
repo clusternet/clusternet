@@ -924,13 +924,3 @@ func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.Descript
 		return err
 	})
 }
-
-func FindLocalByFeed(feed appsapi.FeedOrder, locals []*appsapi.Localization) []*appsapi.Localization {
-	var result []*appsapi.Localization
-	for _, local := range locals {
-		if local.Spec.Feed == feed.Feed {
-			result = append(result, local)
-		}
-	}
-	return result
-}

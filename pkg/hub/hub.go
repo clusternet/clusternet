@@ -126,7 +126,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 		NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client")), known.DefaultResync)
 
 	hub := &Hub{
-		peerID:                    utilrand.String(5),
+		peerID:                    utilrand.String(known.DefaultRandomIDLength),
 		options:                   opts,
 		kubeClient:                kubeClient,
 		electionClient:            electionClient,

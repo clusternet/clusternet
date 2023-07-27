@@ -178,9 +178,9 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 			opts.ClusterType, supportedClusterTypes.List()))
 	}
 
-	if len(opts.ClusterNamePrefix) > ClusterNameMaxLength-DefaultRandomUIDLength-1 {
+	if len(opts.ClusterNamePrefix) > ClusterNameMaxLength-known.DefaultRandomIDLength-1 {
 		allErrs = append(allErrs, fmt.Errorf("cluster name prefix %s is longer than %d",
-			opts.ClusterName, ClusterNameMaxLength-DefaultRandomUIDLength))
+			opts.ClusterName, ClusterNameMaxLength-known.DefaultRandomIDLength))
 	}
 
 	switch opts.ClusterSyncMode {
