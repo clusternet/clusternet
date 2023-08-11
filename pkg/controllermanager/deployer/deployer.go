@@ -532,9 +532,8 @@ func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base 
 	}
 
 	allExistingLocalizations, err := deployer.locLister.Localizations(base.Namespace).List(labels.SelectorFromSet(labels.Set{
-		string(sub.UID): subscriptionKind.Kind,
-		// TODO: add this label
-		// known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
+		string(sub.UID):            subscriptionKind.Kind,
+		known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 	}))
 	if err != nil {
 		return err
