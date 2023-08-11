@@ -64,11 +64,12 @@ type ClusterRegistrationOptions struct {
 	// UseMetricsServer specifies whether to collect metrics from metrics server
 	UseMetricsServer bool
 
-	// LabelAggregateThreshold specifies the threshold of common labels in child cluster nodes should be aggregated to parent
-	// e.g LabelAggregateThreshold 0.8  means 80% of work nodes in child clusters labels in common will be aggregated to parent.
+	// LabelAggregateThreshold specifies the threshold of common node labels that will be aggregated to ManagedCluster
+	// object in parent cluster. e.g. LabelAggregateThreshold 0.8 means if >=80% nodes in current child cluster have
+	// such common labels, then these labels will be labeled to ManagedCluster object.
 	LabelAggregateThreshold float32
 
-	// LabelAggregatePrefix  specifies the prefix of node label which can be aggregate
+	// LabelAggregatePrefix specifies the prefixes of node labels that should be aggregated
 	LabelAggregatePrefix []string
 
 	// TODO: check ca hash
@@ -113,9 +114,9 @@ func (opts *ClusterRegistrationOptions) AddFlagSets(fss *cliflag.NamedFlagSets) 
 	mgmtfs.StringVar(&opts.ClusterLabels, ClusterLabels, opts.ClusterLabels,
 		"Specify the labels for the child cluster, split by `,`")
 	mgmtfs.Float32Var(&opts.LabelAggregateThreshold, LabelAggregateThreshold, opts.LabelAggregateThreshold,
-		"Specifies the threshold of common labels in child cluster nodes should be aggregated to parent")
+		"Specifies the threshold of common node labels that will be aggregated to ManagedCluster in parent cluster")
 	mgmtfs.StringArrayVar(&opts.LabelAggregatePrefix, LabelAggregatePrefix, opts.LabelAggregatePrefix,
-		"Specifies the desired prefixes of node labels to be aggregated")
+		"Specifies the desired prefix of node labels to be aggregated")
 
 	mfs := fss.FlagSet("cluster health status")
 	mfs.DurationVar(&opts.ClusterStatusReportFrequency.Duration, ClusterStatusReportFrequency, opts.ClusterStatusReportFrequency.Duration,
