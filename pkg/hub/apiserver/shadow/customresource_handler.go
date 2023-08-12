@@ -206,13 +206,13 @@ func (r *crdHandler) updateCustomResourceDefinition(old, cur interface{}) {
 func (r *crdHandler) deleteCustomResourceDefinition(obj interface{}) {
 	crd, ok := obj.(*apiextensionsv1.CustomResourceDefinition)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		crd, ok = tombstone.Obj.(*apiextensionsv1.CustomResourceDefinition)
-		if !ok {
+		crd, ok2 = tombstone.Obj.(*apiextensionsv1.CustomResourceDefinition)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a CustomResourceDefinition %#v", obj))
 			return
 		}

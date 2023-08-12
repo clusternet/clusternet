@@ -154,13 +154,13 @@ func (c *Controller) updateDescription(old, cur interface{}) {
 func (c *Controller) deleteDescription(obj interface{}) {
 	desc, ok := obj.(*appsapi.Description)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		desc, ok = tombstone.Obj.(*appsapi.Description)
-		if !ok {
+		desc, ok2 = tombstone.Obj.(*appsapi.Description)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
 			return
 		}
@@ -270,7 +270,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing Subscription %q", key)
 	// Get the Subscription resource with this name
-	sub, err := c.subsLister.Subscriptions(ns).Get(name)
+	cachedSub, err := c.subsLister.Subscriptions(ns).Get(name)
 	// The Subscription resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Subscription %q has been deleted", key)
@@ -280,38 +280,36 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	err = c.handleAggregateStatus(sub)
+	subCopy := cachedSub.DeepCopy()
+	err = c.handleAggregateStatus(subCopy)
 	if err != nil {
-		c.recorder.Event(sub, corev1.EventTypeWarning, "FailedAggregateStatus", err.Error())
+		c.recorder.Event(subCopy, corev1.EventTypeWarning, "FailedAggregateStatus", err.Error())
 	} else {
-		c.recorder.Event(sub, corev1.EventTypeNormal, "AggregateStatus", "Subscription synced successfully")
+		c.recorder.Event(subCopy, corev1.EventTypeNormal, "AggregateStatus", "Subscription synced successfully")
 	}
 	return err
 }
 
-func (c *Controller) updateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update Subscription %q status", sub.Name)
-	subsCopy := sub.DeepCopy()
+func (c *Controller) updateSubscriptionStatus(subCopy *appsapi.Subscription) error {
+	klog.V(5).Infof("try to update Subscription %q status", subCopy.Name)
+	status := subCopy.Status
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		subsCopy.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subsCopy.Namespace).UpdateStatus(context.TODO(), subsCopy, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subCopy.Namespace).UpdateStatus(context.TODO(), subCopy, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
 		}
 
-		if updated, err := c.subsLister.Subscriptions(subsCopy.Namespace).Get(subsCopy.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
-			subsCopy = updated.DeepCopy()
+		updated, err2 := c.subsLister.Subscriptions(subCopy.Namespace).Get(subCopy.Name)
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
+			subCopy = updated.DeepCopy()
+			subCopy.Status = status
 		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", subsCopy.Name, err))
+			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", subCopy.Name, err2))
 		}
-		return err
+		return err2
 	})
 }
 
@@ -328,24 +326,22 @@ func (c *Controller) enqueue(sub *appsapi.Subscription) {
 }
 
 // handleAggregateStatus
-func (c *Controller) handleAggregateStatus(sub *appsapi.Subscription) error {
-	klog.Infof("handle AggregateStatus %s", klog.KObj(sub))
-	if sub.DeletionTimestamp != nil {
+func (c *Controller) handleAggregateStatus(subCopy *appsapi.Subscription) error {
+	klog.Infof("handle AggregateStatus %s", klog.KObj(subCopy))
+	if subCopy.DeletionTimestamp != nil {
 		return nil
 	}
 
-	aggregatedStatuses, err := c.descriptionStatusChanged(sub)
+	aggregatedStatuses, err := c.descriptionStatusChanged(subCopy)
 	if err == nil {
 		if aggregatedStatuses != nil {
-			subStatus := sub.Status.DeepCopy()
-			subStatus.AggregatedStatuses = aggregatedStatuses
-
-			err = c.updateSubscriptionStatus(sub, subStatus)
+			subCopy.Status.AggregatedStatuses = aggregatedStatuses
+			err = c.updateSubscriptionStatus(subCopy)
 			if err != nil {
-				klog.Errorf("Failed to aggregate baseStatus to Subscriptions(%s/%s). Error: %v.", sub.Namespace, sub.Name, err)
+				klog.Errorf("Failed to aggregate baseStatus to Subscriptions(%s/%s). Error: %v.", subCopy.Namespace, subCopy.Name, err)
 			}
 		} else {
-			klog.V(5).Infof("AggregateStatus %s does not change, skip it.", klog.KObj(sub))
+			klog.V(5).Infof("AggregateStatus %s does not change, skip it.", klog.KObj(subCopy))
 		}
 	}
 	return err
@@ -375,12 +371,13 @@ func (c *Controller) descriptionStatusChanged(sub *appsapi.Subscription) ([]apps
 				Available: true,
 			}
 
-			ReplicaStatus, err := c.getWorkloadReplicaStatus(manifeststatus)
+			var replicaStatus *appsapi.ReplicaStatus
+			replicaStatus, err = c.getWorkloadReplicaStatus(manifeststatus)
 			if err != nil {
 				return nil, err
 			}
-			if ReplicaStatus != nil {
-				feedStatus.ReplicaStatus = *ReplicaStatus
+			if replicaStatus != nil {
+				feedStatus.ReplicaStatus = *replicaStatus
 			}
 
 			feedStatusOneCluster := appsapi.FeedStatusPerCluster{

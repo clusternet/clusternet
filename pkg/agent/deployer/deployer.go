@@ -205,7 +205,8 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 				klog.V(5).Infof("found existed Secret %s in parent cluster, will try to update it", klog.KObj(secret))
 
 				// try to auto update existing object
-				sct, err := parentClientSet.CoreV1().Secrets(dedicatedNamespace).Get(ctx, secret.Name, metav1.GetOptions{})
+				var sct *corev1.Secret
+				sct, err = parentClientSet.CoreV1().Secrets(dedicatedNamespace).Get(ctx, secret.Name, metav1.GetOptions{})
 				if err != nil {
 					klog.ErrorDepth(5, fmt.Sprintf("failed to get Secret %s in parent cluster: %v, will retry",
 						klog.KObj(secret), err))

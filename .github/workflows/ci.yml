@@ -48,8 +48,6 @@ jobs:
             ${{ matrix.os }}-go-
       - name: Golang Lint
         run: make lint
-      - name: Golang Vet
-        run: make vet
   verify:
     name: pull-clusternet-verify
     needs: golangci # rely on golangci successful completion

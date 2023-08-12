@@ -540,10 +540,11 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 	errCh := parallelize.NewErrorChannel()
 
 	// Run Score method for each cluster in parallel.
+	var s int64
 	f.Parallelizer().Until(ctx, len(clusters), func(index int) {
 		for _, pl := range f.scorePlugins {
 			clusterNamespacedName := klog.KObj(clusters[index]).String()
-			s, status := f.runScorePlugin(ctx, pl, state, sub, clusterNamespacedName)
+			s, status = f.runScorePlugin(ctx, pl, state, sub, clusterNamespacedName)
 			if !status.IsSuccess() {
 				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
@@ -566,7 +567,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 		if pl.ScoreExtensions() == nil {
 			return
 		}
-		status := f.runScoreExtension(ctx, pl, state, sub, ClusterScoreList)
+		status = f.runScoreExtension(ctx, pl, state, sub, ClusterScoreList)
 		if !status.IsSuccess() {
 			err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
 			errCh.SendErrorWithCancel(err, cancel)
@@ -803,8 +804,9 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, state *framework.C
 	}()
 	pluginsWaitTime := make(map[string]time.Duration)
 	statusCode := framework.Success
+	var timeout time.Duration
 	for _, pl := range f.permitPlugins {
-		status, timeout := f.runPermitPlugin(ctx, pl, state, sub, targetClusters)
+		status, timeout = f.runPermitPlugin(ctx, pl, state, sub, targetClusters)
 		if !status.IsSuccess() {
 			if status.IsUnschedulable() {
 				msg := fmt.Sprintf("rejected subscription %q by permit plugin %q: %v", sub.Name, pl.Name(), status.Message())
@@ -827,8 +829,7 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, state *framework.C
 		}
 	}
 	if statusCode == framework.Wait {
-		waitingSubscription := newWaitingSubscription(sub, pluginsWaitTime)
-		f.waitingSubscriptions.add(waitingSubscription)
+		f.waitingSubscriptions.add(newWaitingSubscription(sub, pluginsWaitTime))
 		msg := fmt.Sprintf("one or more plugins asked to wait and no plugin rejected subscription %q", sub.Name)
 		klog.V(4).Infof(msg)
 		return framework.NewStatus(framework.Wait, msg)

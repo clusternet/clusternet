@@ -165,13 +165,13 @@ func (c *Controller) updateManifest(old, cur interface{}) {
 func (c *Controller) deleteManifest(obj interface{}) {
 	manifest, ok := obj.(*appsapi.Manifest)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		manifest, ok = tombstone.Obj.(*appsapi.Manifest)
-		if !ok {
+		manifest, ok2 = tombstone.Obj.(*appsapi.Manifest)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Manifest %#v", obj))
 			return
 		}
@@ -297,7 +297,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing Manifest %q", key)
 	// Get the Manifest resource with this name
-	manifest, err := c.manifestLister.Manifests(ns).Get(name)
+	cachedManifest, err := c.manifestLister.Manifests(ns).Get(name)
 	// The Manifest resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Manifest %q has been deleted", key)
@@ -307,6 +307,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	manifest := cachedManifest.DeepCopy()
 	if manifest.DeletionTimestamp == nil {
 		updatedManifest := manifest.DeepCopy()
 

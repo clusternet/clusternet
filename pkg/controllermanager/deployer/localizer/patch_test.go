@@ -439,16 +439,16 @@ hole: black
 			gotChartObj := &unstructured.Unstructured{Object: map[string]interface{}{}}
 			wantChartObj := &unstructured.Unstructured{Object: map[string]interface{}{}}
 
-			if err := yaml.Unmarshal(gotChart, &gotChartObj); err != nil {
+			if err = yaml.Unmarshal(gotChart, &gotChartObj); err != nil {
 				t.Fatalf("error decoding: %v", err)
 			}
-			if err := yaml.Unmarshal(tt.wantChart, &wantChartObj); err != nil {
+			if err = yaml.Unmarshal(tt.wantChart, &wantChartObj); err != nil {
 				t.Fatalf("error decoding: %v", err)
 			}
-			if err := yaml.Unmarshal(got, &gotObj); err != nil {
+			if err = yaml.Unmarshal(got, &gotObj); err != nil {
 				t.Fatalf("error decoding: %v", err)
 			}
-			if err := yaml.Unmarshal(tt.want, &wantObj); err != nil {
+			if err = yaml.Unmarshal(tt.want, &wantObj); err != nil {
 				t.Fatalf("error decoding: %v", err)
 			}
 

@@ -214,15 +214,15 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 
 	// When using external FeedInventory controller, this feature gate should be closed
 	if utilfeature.DefaultFeatureGate.Enabled(features.FeedInventory) {
-		finv, err := feedinventory.NewController(clusternetclient,
+		finv, err2 := feedinventory.NewController(clusternetclient,
 			clusternetInformerFactory.Apps().V1alpha1().Subscriptions(),
 			clusternetInformerFactory.Apps().V1alpha1().FeedInventories(),
 			clusternetInformerFactory.Apps().V1alpha1().Manifests(),
 			deployer.recorder,
 			feedinventory.NewInTreeRegistry(),
 			reservedNamespace, nil)
-		if err != nil {
-			return nil, err
+		if err2 != nil {
+			return nil, err2
 		}
 		deployer.finvController = finv
 	}
@@ -272,13 +272,13 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
-	klog.V(5).Infof("handle Subscription %s", klog.KObj(sub))
-	if sub.DeletionTimestamp != nil {
+func (deployer *Deployer) handleSubscription(subCopy *appsapi.Subscription) error {
+	klog.V(5).Infof("handle Subscription %s", klog.KObj(subCopy))
+	if subCopy.DeletionTimestamp != nil {
 		bases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      subscriptionKind.Kind,
-			known.ConfigNamespaceLabel: sub.Namespace,
-			known.ConfigUIDLabel:       string(sub.UID),
+			known.ConfigNamespaceLabel: subCopy.Namespace,
+			known.ConfigUIDLabel:       string(subCopy.UID),
 		}))
 		if err != nil {
 			return err
@@ -290,33 +290,32 @@ func (deployer *Deployer) handleSubscription(sub *appsapi.Subscription) error {
 			if base.DeletionTimestamp != nil {
 				continue
 			}
-			if err := deployer.deleteBase(context.TODO(), klog.KObj(base).String()); err != nil {
+			if err = deployer.deleteBase(context.TODO(), klog.KObj(base).String()); err != nil {
 				klog.ErrorDepth(5, err)
 				allErrs = append(allErrs, err)
 				continue
 			}
 		}
 		if bases != nil || len(allErrs) > 0 {
-			return fmt.Errorf("waiting for Bases belongs to Subscription %s getting deleted", klog.KObj(sub))
+			return fmt.Errorf("waiting for Bases belongs to Subscription %s getting deleted", klog.KObj(subCopy))
 		}
 
 		// remove label (subUID="Subscription") from referred Manifest/HelmChart
-		if err := deployer.removeLabelsFromReferredFeeds(sub.UID, subscriptionKind.Kind); err != nil {
+		if err = deployer.removeLabelsFromReferredFeeds(subCopy.UID, subscriptionKind.Kind); err != nil {
 			return err
 		}
 
-		subCopy := sub.DeepCopy()
 		subCopy.Finalizers = utils.RemoveString(subCopy.Finalizers, known.AppFinalizer)
-		_, err = deployer.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).Update(context.TODO(), subCopy, metav1.UpdateOptions{})
+		_, err = deployer.clusternetClient.AppsV1alpha1().Subscriptions(subCopy.Namespace).Update(context.TODO(), subCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Subscription %s: %v", known.AppFinalizer, klog.KObj(sub), err))
+				fmt.Sprintf("failed to remove finalizer %s from Subscription %s: %v", known.AppFinalizer, klog.KObj(subCopy), err))
 		}
 		return err
 	}
 
 	// populate Base and Localization (for dividing scheduling)
-	err := deployer.populateBasesAndLocalizations(sub)
+	err := deployer.populateBasesAndLocalizations(subCopy)
 	if err != nil {
 		return err
 	}
@@ -512,7 +511,7 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 		return err
 	}
 	// remove label (baseUID="Base") from referred Manifest/HelmChart
-	if err := deployer.removeLabelsFromReferredFeeds(base.UID, baseKind.Kind); err != nil {
+	if err = deployer.removeLabelsFromReferredFeeds(base.UID, baseKind.Kind); err != nil {
 		return err
 	}
 
@@ -700,14 +699,14 @@ func (deployer *Deployer) deleteLocalization(ctx context.Context, namespacedKey 
 	return err
 }
 
-func (deployer *Deployer) handleBase(base *appsapi.Base) error {
-	klog.V(5).Infof("handle Base %s", klog.KObj(base))
-	if base.DeletionTimestamp != nil {
+func (deployer *Deployer) handleBase(baseCopy *appsapi.Base) error {
+	klog.V(5).Infof("handle Base %s", klog.KObj(baseCopy))
+	if baseCopy.DeletionTimestamp != nil {
 		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      baseKind.Kind,
-			known.ConfigNameLabel:      base.Name,
-			known.ConfigNamespaceLabel: base.Namespace,
-			known.ConfigUIDLabel:       string(base.UID),
+			known.ConfigNameLabel:      baseCopy.Name,
+			known.ConfigNamespaceLabel: baseCopy.Namespace,
+			known.ConfigUIDLabel:       string(baseCopy.UID),
 		}))
 		if err != nil {
 			return err
@@ -720,32 +719,31 @@ func (deployer *Deployer) handleBase(base *appsapi.Base) error {
 				continue
 			}
 
-			if err := deployer.deleteDescription(context.TODO(), klog.KObj(desc).String()); err != nil {
+			if err = deployer.deleteDescription(context.TODO(), klog.KObj(desc).String()); err != nil {
 				klog.ErrorDepth(5, err)
 				allErrs = append(allErrs, err)
 				continue
 			}
 		}
 		if descs != nil || len(allErrs) > 0 {
-			return fmt.Errorf("waiting for Descriptions belongs to Base %s getting deleted", klog.KObj(base))
+			return fmt.Errorf("waiting for Descriptions belongs to Base %s getting deleted", klog.KObj(baseCopy))
 		}
 
-		baseCopy := base.DeepCopy()
 		baseCopy.Finalizers = utils.RemoveString(baseCopy.Finalizers, known.AppFinalizer)
 		_, err = deployer.clusternetClient.AppsV1alpha1().Bases(baseCopy.Namespace).Update(context.TODO(), baseCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Base %s: %v", known.AppFinalizer, klog.KObj(base), err))
+				fmt.Sprintf("failed to remove finalizer %s from Base %s: %v", known.AppFinalizer, klog.KObj(baseCopy), err))
 		}
 		return err
 	}
 
 	// add label (baseUID="Base") to referred Manifest/HelmChart
-	if err := deployer.addLabelsToReferredFeeds(base); err != nil {
+	if err := deployer.addLabelsToReferredFeeds(baseCopy); err != nil {
 		return err
 	}
 
-	err := deployer.populateDescriptions(base)
+	err := deployer.populateDescriptions(baseCopy)
 	if err != nil {
 		return err
 	}
@@ -761,10 +759,11 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	var err error
 	var index int
 	var manifests []*appsapi.Manifest
+	var chart *appsapi.HelmChart
 	for idx, feed := range base.Spec.Feeds {
 		switch feed.Kind {
 		case helmChartKind.Kind:
-			chart, err := deployer.chartLister.HelmCharts(feed.Namespace).Get(feed.Name)
+			chart, err = deployer.chartLister.HelmCharts(feed.Namespace).Get(feed.Name)
 			if err != nil {
 				break
 			}
@@ -858,8 +857,8 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		desc.Name = fmt.Sprintf("%s-helm", base.Name)
 		desc.Spec.Deployer = appsapi.DescriptionHelmDeployer
 		desc.Spec.Charts = allChartRefs
-		for _, chart := range allCharts {
-			chartByte, err2 := json.Marshal(chart)
+		for _, chart2 := range allCharts {
+			chartByte, err2 := json.Marshal(chart2)
 			if err2 != nil {
 				allErrs = append(allErrs, err2)
 				continue
@@ -885,7 +884,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		desc.Name = fmt.Sprintf("%s-generic", base.Name)
 		desc.Spec.Deployer = appsapi.DescriptionGenericDeployer
 		desc.Spec.Raw = rawObjects
-		err := deployer.syncDescriptions(base, desc)
+		err = deployer.syncDescriptions(base, desc)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("Failed to sync Description %s: %v", klog.KObj(desc), err)
@@ -896,7 +895,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 	}
 
 	for key := range descsToBeDeleted {
-		if err := deployer.deleteDescription(context.TODO(), key); err != nil {
+		if err = deployer.deleteDescription(context.TODO(), key); err != nil {
 			allErrs = append(allErrs, err)
 			continue
 		}
@@ -933,7 +932,7 @@ func (deployer *Deployer) syncDescriptions(base *appsapi.Base, desc *appsapi.Des
 			// Here we only need to focus on generic deployer.
 			pruneCtx, cancel := context.WithCancel(context.TODO())
 			go wait.JitterUntilWithContext(pruneCtx, func(ctx context.Context) {
-				if err := deployer.genericDeployer.PruneFeedsInDescription(ctx, curDesc.DeepCopy(), desc.DeepCopy()); err != nil {
+				if err = deployer.genericDeployer.PruneFeedsInDescription(ctx, curDesc.DeepCopy(), desc.DeepCopy()); err != nil {
 					klog.Warningf("Prune feed in description %s failed: %v", klog.KObj(curDesc), err)
 					return
 				}
@@ -991,31 +990,30 @@ func (deployer *Deployer) deleteDescription(ctx context.Context, namespacedKey s
 	return err
 }
 
-func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
-	klog.V(5).Infof("handle Manifest %s", klog.KObj(manifest))
-	if manifest.DeletionTimestamp != nil {
-		if err := deployer.protectManifestFeed(manifest); err != nil {
+func (deployer *Deployer) handleManifest(manifestCopy *appsapi.Manifest) error {
+	klog.V(5).Infof("handle Manifest %s", klog.KObj(manifestCopy))
+	if manifestCopy.DeletionTimestamp != nil {
+		if err := deployer.protectManifestFeed(manifestCopy); err != nil {
 			return err
 		}
 
 		// remove finalizers
-		manifestCopy := manifest.DeepCopy()
 		manifestCopy.Finalizers = utils.RemoveString(manifestCopy.Finalizers, known.AppFinalizer)
 		manifestCopy.Finalizers = utils.RemoveString(manifestCopy.Finalizers, known.FeedProtectionFinalizer)
-		_, err := deployer.clusternetClient.AppsV1alpha1().Manifests(manifest.Namespace).Update(context.TODO(), manifestCopy, metav1.UpdateOptions{})
+		_, err := deployer.clusternetClient.AppsV1alpha1().Manifests(manifestCopy.Namespace).Update(context.TODO(), manifestCopy, metav1.UpdateOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil
 			}
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizers from Manifest %s: %v", klog.KObj(manifest), err))
+				fmt.Sprintf("failed to remove finalizers from Manifest %s: %v", klog.KObj(manifestCopy), err))
 		}
 		return err
 	}
 
 	// find all referred Base UIDs
 	var baseUIDs []string
-	for key, val := range manifest.Labels {
+	for key, val := range manifestCopy.Labels {
 		if val == baseKind.Kind {
 			baseUIDs = append(baseUIDs, key)
 		}
@@ -1024,24 +1022,24 @@ func (deployer *Deployer) handleManifest(manifest *appsapi.Manifest) error {
 	return deployer.resyncBase(baseUIDs...)
 }
 
-func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
+func (deployer *Deployer) handleHelmChart(chartCopy *appsapi.HelmChart) error {
 	var err error
-	klog.V(5).Infof("handle HelmChart %s", klog.KObj(chart))
-	if chart.DeletionTimestamp != nil {
-		if err = deployer.protectHelmChartFeed(chart); err != nil {
+	klog.V(5).Infof("handle HelmChart %s", klog.KObj(chartCopy))
+	if chartCopy.DeletionTimestamp != nil {
+		if err = deployer.protectHelmChartFeed(chartCopy); err != nil {
 			return err
 		}
 
 		// remove finalizers
-		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.AppFinalizer)
-		chart.Finalizers = utils.RemoveString(chart.Finalizers, known.FeedProtectionFinalizer)
-		_, err = deployer.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(), chart, metav1.UpdateOptions{})
+		chartCopy.Finalizers = utils.RemoveString(chartCopy.Finalizers, known.AppFinalizer)
+		chartCopy.Finalizers = utils.RemoveString(chartCopy.Finalizers, known.FeedProtectionFinalizer)
+		_, err = deployer.clusternetClient.AppsV1alpha1().HelmCharts(chartCopy.Namespace).Update(context.TODO(), chartCopy, metav1.UpdateOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil
 			}
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizers from HelmChart %s: %v", klog.KObj(chart), err))
+				fmt.Sprintf("failed to remove finalizers from HelmChart %s: %v", klog.KObj(chartCopy), err))
 		}
 		return err
 	}
@@ -1053,24 +1051,35 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 		chartPhase appsapi.HelmChartPhase
 		reason     string
 	)
-	if chart.Spec.ChartPullSecret.Name != "" {
-		username, password, err = utils.GetHelmRepoCredentials(deployer.kubeClient, chart.Spec.ChartPullSecret.Name, chart.Spec.ChartPullSecret.Namespace)
+	if chartCopy.Spec.ChartPullSecret.Name != "" {
+		username, password, err = utils.GetHelmRepoCredentials(
+			deployer.kubeClient,
+			chartCopy.Spec.ChartPullSecret.Name,
+			chartCopy.Spec.ChartPullSecret.Namespace,
+		)
 		if err != nil {
 			return err
 		}
 	}
 	chartPhase = appsapi.HelmChartFound
-	if registry.IsOCI(chart.Spec.Repository) {
+	if registry.IsOCI(chartCopy.Spec.Repository) {
 		var found bool
-		found, err = utils.FindOCIChart(chart.Spec.Repository, chart.Spec.Chart, chart.Spec.ChartVersion)
+		found, err = utils.FindOCIChart(chartCopy.Spec.Repository, chartCopy.Spec.Chart, chartCopy.Spec.ChartVersion)
 		if !found {
 			chartPhase = appsapi.HelmChartNotFound
-			reason = fmt.Sprintf("not found a version matched %s for chart %s/%s", chart.Spec.ChartVersion, chart.Spec.Repository, chart.Spec.Chart)
+			reason = fmt.Sprintf("not found a version matched %s for chart %s/%s",
+				chartCopy.Spec.ChartVersion, chartCopy.Spec.Repository, chartCopy.Spec.Chart)
 		}
 	} else {
-		_, err = repo.FindChartInAuthRepoURL(chart.Spec.Repository, username, password, chart.Spec.Chart, chart.Spec.ChartVersion,
+		_, err = repo.FindChartInAuthRepoURL(
+			chartCopy.Spec.Repository,
+			username,
+			password,
+			chartCopy.Spec.Chart,
+			chartCopy.Spec.ChartVersion,
 			"", "", "",
-			getter.All(utils.Settings))
+			getter.All(utils.Settings),
+		)
 	}
 	if err != nil {
 		// failed to find chart
@@ -1078,7 +1087,7 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 		reason = err.Error()
 	}
 
-	err = deployer.chartController.UpdateChartStatus(chart, &appsapi.HelmChartStatus{
+	err = deployer.chartController.UpdateChartStatus(chartCopy, &appsapi.HelmChartStatus{
 		Phase:  chartPhase,
 		Reason: reason,
 	})
@@ -1088,7 +1097,7 @@ func (deployer *Deployer) handleHelmChart(chart *appsapi.HelmChart) error {
 
 	// find all referred Base UIDs
 	var baseUIDs []string
-	for key, val := range chart.Labels {
+	for key, val := range chartCopy.Labels {
 		if val == baseKind.Kind {
 			baseUIDs = append(baseUIDs, key)
 		}
@@ -1116,7 +1125,7 @@ func (deployer *Deployer) resyncBase(baseUIDs ...string) error {
 				return
 			}
 			// here the length should always be 1
-			if err := deployer.populateDescriptions(bases[0]); err != nil {
+			if err = deployer.populateDescriptions(bases[0]); err != nil {
 				errCh <- err
 			}
 		}()
@@ -1233,7 +1242,7 @@ func (deployer *Deployer) removeLabelsFromReferredFeeds(uid types.UID, kind stri
 			if chart.DeletionTimestamp != nil {
 				return
 			}
-			if err := utils.PatchHelmChartLabelsAndAnnotations(deployer.clusternetClient, chart, labelsToPatch, nil); err != nil {
+			if err = utils.PatchHelmChartLabelsAndAnnotations(deployer.clusternetClient, chart, labelsToPatch, nil); err != nil {
 				errCh <- err
 			}
 		}(chart)
@@ -1245,7 +1254,7 @@ func (deployer *Deployer) removeLabelsFromReferredFeeds(uid types.UID, kind stri
 			if manifest.DeletionTimestamp != nil {
 				return
 			}
-			if err := utils.PatchManifestLabelsAndAnnotations(deployer.clusternetClient, manifest, labelsToPatch, nil); err != nil {
+			if err = utils.PatchManifestLabelsAndAnnotations(deployer.clusternetClient, manifest, labelsToPatch, nil); err != nil {
 				errCh <- err
 			}
 		}(manifest)
@@ -1256,7 +1265,7 @@ func (deployer *Deployer) removeLabelsFromReferredFeeds(uid types.UID, kind stri
 	// collect errors
 	close(errCh)
 	var allErrs []error
-	for err := range errCh {
+	for err = range errCh {
 		allErrs = append(allErrs, err)
 	}
 	return utilerrors.NewAggregate(allErrs)
@@ -1277,7 +1286,7 @@ func (deployer *Deployer) protectManifestFeed(manifest *appsapi.Manifest) error 
 
 		annotationsToPatch := map[string]*string{}
 		annotationsToPatch[known.FeedProtectionAnnotation] = utilpointer.StringPtr(msg)
-		if err := utils.PatchManifestLabelsAndAnnotations(deployer.clusternetClient, manifest,
+		if err = utils.PatchManifestLabelsAndAnnotations(deployer.clusternetClient, manifest,
 			nil, annotationsToPatch); err != nil {
 			return err
 		}
@@ -1305,7 +1314,7 @@ func (deployer *Deployer) protectHelmChartFeed(chart *appsapi.HelmChart) error {
 
 		annotationsToPatch := map[string]*string{}
 		annotationsToPatch[known.FeedProtectionAnnotation] = utilpointer.StringPtr(msg)
-		if err := utils.PatchHelmChartLabelsAndAnnotations(deployer.clusternetClient, chart,
+		if err = utils.PatchHelmChartLabelsAndAnnotations(deployer.clusternetClient, chart,
 			nil, annotationsToPatch); err != nil {
 			return err
 		}

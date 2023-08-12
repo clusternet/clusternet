@@ -156,13 +156,13 @@ func (c *Controller) updateBase(old, cur interface{}) {
 func (c *Controller) deleteBase(obj interface{}) {
 	base, ok := obj.(*appsapi.Base)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		base, ok = tombstone.Obj.(*appsapi.Base)
-		if !ok {
+		base, ok2 = tombstone.Obj.(*appsapi.Base)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Base %#v", obj))
 			return
 		}
@@ -174,13 +174,13 @@ func (c *Controller) deleteBase(obj interface{}) {
 func (c *Controller) deleteDescription(obj interface{}) {
 	desc, ok := obj.(*appsapi.Description)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		desc, ok = tombstone.Obj.(*appsapi.Description)
-		if !ok {
+		desc, ok2 = tombstone.Obj.(*appsapi.Description)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
 			return
 		}

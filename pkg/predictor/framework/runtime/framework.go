@@ -446,11 +446,12 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, requirements *appsa
 	ctx, cancel := context.WithCancel(ctx)
 	errCh := parallelize.NewErrorChannel()
 
+	var s int64
 	// Run Score method for each node in parallel.
 	f.Parallelizer().Until(ctx, len(nodes), func(index int) {
 		for _, pl := range f.scorePlugins {
 			nodeName := nodes[index].Name
-			s, status := f.runScorePlugin(ctx, pl, requirements, nodeName)
+			s, status = f.runScorePlugin(ctx, pl, requirements, nodeName)
 			if !status.IsSuccess() {
 				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
@@ -473,7 +474,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, requirements *appsa
 		if pl.ScoreExtensions() == nil {
 			return
 		}
-		status := f.runScoreExtension(ctx, pl, requirements, nodeScoreList)
+		status = f.runScoreExtension(ctx, pl, requirements, nodeScoreList)
 		if !status.IsSuccess() {
 			err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
 			errCh.SendErrorWithCancel(err, cancel)

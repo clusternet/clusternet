@@ -22,7 +22,7 @@ REGISTRY ?= ghcr.io
 
 # Run tests
 .PHONY: test
-test: generated vet
+test: generated
 	go test -race -coverprofile coverage.out -covermode=atomic ./...
 
 # Generate CRDs
@@ -41,11 +41,6 @@ verify:
 .PHONY: fmt
 fmt:
 	@find . -type f -name '*.go'| grep -v "/vendor/" | grep -v "/pkg/generated/" | xargs gofmt -w -s
-
-# Run go vet against code
-.PHONY: vet
-vet:
-	go vet ./...
 
 # Run golang lint against code
 .PHONY: lint

@@ -145,7 +145,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 
 	// support out of tree plugins
 	registry := plugins.NewInTreeRegistry()
-	if err := registry.Merge(schedulerOptions.FrameworkOutOfTreeRegistry); err != nil {
+	if err = registry.Merge(schedulerOptions.FrameworkOutOfTreeRegistry); err != nil {
 		return nil, err
 	}
 	sched := &Scheduler{
@@ -377,8 +377,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 	// bind the subscription to multiple clusters asynchronously (we can do this b/c of the assumption step above).
 	go func() {
-		bindingCycleCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		bindingCycleCtx, cancel2 := context.WithCancel(ctx)
+		defer cancel2()
 		metrics.SchedulerGoroutines.WithLabelValues(metrics.Binding).Inc()
 		defer metrics.SchedulerGoroutines.WithLabelValues(metrics.Binding).Dec()
 
@@ -408,7 +408,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			return
 		}
 
-		err := sched.bind(bindingCycleCtx, state, fwk, sub, targetClusters)
+		err = sched.bind(bindingCycleCtx, state, fwk, sub, targetClusters)
 		if err != nil {
 			metrics.SubscriptionScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription

@@ -193,7 +193,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 	// Now we've got a fully formed object. Validators that apiserver handling chain wants to enforce can be called.
 	if updateValidation != nil {
-		if err := updateValidation(ctx, newObj.DeepCopyObject(), oldObj.DeepCopyObject()); err != nil {
+		if err = updateValidation(ctx, newObj.DeepCopyObject(), oldObj.DeepCopyObject()); err != nil {
 			return nil, false, err
 		}
 	}
@@ -329,9 +329,9 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		return result, nil
 	}
 	for _, manifest := range manifests.Items {
-		obj, err := transformManifest(&manifest)
-		if err != nil {
-			return nil, err
+		obj, err2 := transformManifest(&manifest)
+		if err2 != nil {
+			return nil, err2
 		}
 		result.Items = append(result.Items, *obj)
 	}
@@ -621,9 +621,9 @@ func (r *REST) convertListOptionsToLabels(ctx context.Context, options *internal
 	// apply default namespace label
 	namespace := request.NamespaceValue(ctx)
 	if len(namespace) > 0 {
-		nsRequirement, err := labels.NewRequirement(known.ConfigNamespaceLabel, selection.Equals, []string{namespace})
-		if err != nil {
-			return nil, err
+		nsRequirement, err2 := labels.NewRequirement(known.ConfigNamespaceLabel, selection.Equals, []string{namespace})
+		if err2 != nil {
+			return nil, err2
 		}
 		label = label.Add(*nsRequirement)
 	}

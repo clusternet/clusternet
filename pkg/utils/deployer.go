@@ -293,13 +293,14 @@ func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetcl
 			return nil
 		}
 
-		if updated, err := hrLister.HelmReleases(hr.Namespace).Get(hr.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
+		updated, err2 := hrLister.HelmReleases(hr.Namespace).Get(hr.Name)
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
 			hr = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated HelmRelease %q from lister: %v", hr.Name, err))
+			return nil
 		}
-		return err
+		utilruntime.HandleError(fmt.Errorf("error getting updated HelmRelease %q from lister: %v", hr.Name, err2))
+		return err2
 	})
 
 	if err != nil {
@@ -337,7 +338,7 @@ func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetcl
 			desc.Status.Phase = appsapi.DescriptionPhaseUnknown
 			desc.Status.Reason = status.Notes
 		}
-		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
+		_, err = clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
 		if err == nil {
 			return nil
 		}
@@ -495,7 +496,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 	errCh := make(chan error, len(objectsToBeDeleted))
 	for _, object := range objectsToBeDeleted {
 		resource := &unstructured.Unstructured{}
-		err := resource.UnmarshalJSON(object)
+		err = resource.UnmarshalJSON(object)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
@@ -507,7 +508,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 				defer wg.Done()
 				klog.V(5).Infof("deleting %s %s defined in Description %s", resource.GetKind(),
 					klog.KObj(resource), klog.KObj(desc))
-				err := DeleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+				err = DeleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
 				if err != nil {
 					errCh <- err
 				}
@@ -518,7 +519,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 
 	// collect errors
 	close(errCh)
-	for err := range errCh {
+	for err = range errCh {
 		allErrs = append(allErrs, err)
 	}
 
@@ -915,12 +916,14 @@ func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.Descript
 			return nil
 		}
 
-		if updated, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(context.TODO(), desc.Name, metav1.GetOptions{}); err == nil {
-			// make a copy so we don't mutate the shared cache
+		updated, err2 := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(context.TODO(), desc.Name,
+			metav1.GetOptions{})
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
 			desc = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err))
+			return nil
 		}
-		return err
+		utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err2))
+		return err2
 	})
 }

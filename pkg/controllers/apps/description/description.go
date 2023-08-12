@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -167,13 +166,13 @@ func (c *Controller) updateDescription(old, cur interface{}) {
 func (c *Controller) deleteDescription(obj interface{}) {
 	desc, ok := obj.(*appsapi.Description)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		desc, ok = tombstone.Obj.(*appsapi.Description)
-		if !ok {
+		desc, ok2 = tombstone.Obj.(*appsapi.Description)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
 			return
 		}
@@ -185,13 +184,13 @@ func (c *Controller) deleteDescription(obj interface{}) {
 func (c *Controller) deleteHelmRelease(obj interface{}) {
 	hr, ok := obj.(*appsapi.HelmRelease)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		hr, ok = tombstone.Obj.(*appsapi.HelmRelease)
-		if !ok {
+		hr, ok2 = tombstone.Obj.(*appsapi.HelmRelease)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a HelmRelease %#v", obj))
 			return
 		}
@@ -384,31 +383,6 @@ func (c *Controller) syncHandler(key string) error {
 		c.recorder.Event(desc, corev1.EventTypeNormal, "Synced", "Description synced successfully")
 	}
 	return err
-}
-
-func (c *Controller) UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update Description %q status", desc.Name)
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		desc.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
-		if err == nil {
-			//TODO
-			return nil
-		}
-
-		if updated, err := c.descLister.Descriptions(desc.Namespace).Get(desc.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
-			desc = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err))
-		}
-		return err
-	})
 }
 
 // enqueue takes a Description resource and converts it into a namespace/name

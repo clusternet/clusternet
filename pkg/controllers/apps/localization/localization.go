@@ -166,13 +166,13 @@ func (c *Controller) updateLocalization(old, cur interface{}) {
 func (c *Controller) deleteLocalization(obj interface{}) {
 	loc, ok := obj.(*appsapi.Localization)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		loc, ok = tombstone.Obj.(*appsapi.Localization)
-		if !ok {
+		loc, ok2 = tombstone.Obj.(*appsapi.Localization)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Localization %#v", obj))
 			return
 		}

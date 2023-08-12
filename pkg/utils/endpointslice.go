@@ -62,8 +62,14 @@ func ApplyEndPointSliceWithRetry(client kubernetes.Interface, slice *discoveryv1
 	})
 }
 
-func RemoveUnexistEndpointslice(srcLister discoverylisterv1.EndpointSliceLister, srcNamespace string, labelMap labels.Set,
-	targetClient kubernetes.Interface, targetNamespace string, dstLabelMap labels.Set) ([]*discoveryv1.EndpointSlice, error) {
+func RemoveNonexistentEndpointslice(
+	srcLister discoverylisterv1.EndpointSliceLister,
+	srcNamespace string,
+	labelMap labels.Set,
+	targetClient kubernetes.Interface,
+	targetNamespace string,
+	dstLabelMap labels.Set,
+) ([]*discoveryv1.EndpointSlice, error) {
 	srcEndpointSliceList, err := srcLister.EndpointSlices(srcNamespace).List(
 		labels.SelectorFromSet(labelMap))
 	if err != nil {
@@ -77,8 +83,14 @@ func RemoveUnexistEndpointslice(srcLister discoverylisterv1.EndpointSliceLister,
 		srcEndpointSliceMap[fmt.Sprintf("%s-%s", item.Namespace, item.Name)] = true
 	}
 
-	if targetEndpointSliceList, err := targetClient.DiscoveryV1().EndpointSlices(targetNamespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(dstLabelMap).String()}); err == nil {
+	var targetEndpointSliceList *discoveryv1.EndpointSliceList
+	targetEndpointSliceList, err = targetClient.DiscoveryV1().EndpointSlices(targetNamespace).List(
+		context.TODO(),
+		metav1.ListOptions{
+			LabelSelector: labels.SelectorFromSet(dstLabelMap).String(),
+		},
+	)
+	if err == nil {
 		for _, item := range targetEndpointSliceList.Items {
 			if !srcEndpointSliceMap[item.Name] {
 				if err = targetClient.DiscoveryV1().EndpointSlices(targetNamespace).Delete(context.TODO(), item.Name, metav1.DeleteOptions{}); err != nil {

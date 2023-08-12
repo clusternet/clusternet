@@ -157,7 +157,7 @@ func (c *ServiceImportController) Handle(obj interface{}) (requeueAfter *time.Du
 		known.LabelServiceNameSpace: rawServiceNamespace,
 	}
 
-	endpointSliceList, err := utils.RemoveUnexistEndpointslice(c.endpointSlicesLister, corev1.NamespaceAll,
+	endpointSliceList, err := utils.RemoveNonexistentEndpointslice(c.endpointSlicesLister, corev1.NamespaceAll,
 		srcLabelMap, c.localk8sClient, namespace, dstLabelMap)
 	if err != nil {
 		d := time.Second
@@ -263,13 +263,16 @@ func (c *ServiceImportController) updateServiceStatus(svcImport *v1alpha1.Servic
 			return nil
 		}
 
-		if updated, err := c.localk8sClient.CoreV1().Services(derivedService.Namespace).Get(context.TODO(), derivedService.Name, metav1.GetOptions{}); err == nil {
-			// make a copy so we don't mutate the shared cache
+		updated, err2 := c.localk8sClient.CoreV1().Services(derivedService.Namespace).Get(context.TODO(),
+			derivedService.Name, metav1.GetOptions{})
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
 			derivedService = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Service %q from lister: %v", derivedService.Name, err))
+			return nil
 		}
-		return err
+		utilruntime.HandleError(fmt.Errorf("error getting updated Service %q from lister: %v", derivedService.Name,
+			err2))
+		return err2
 	})
 }
 
