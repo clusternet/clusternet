@@ -172,19 +172,19 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
-	klog.V(5).Infof("handle Description %s", klog.KObj(desc))
-	if desc.Spec.Deployer != appsapi.DescriptionHelmDeployer {
+func (deployer *Deployer) handleDescription(descCopy *appsapi.Description) error {
+	klog.V(5).Infof("handle Description %s", klog.KObj(descCopy))
+	if descCopy.Spec.Deployer != appsapi.DescriptionHelmDeployer {
 		return nil
 	}
 
-	if desc.DeletionTimestamp != nil {
+	if descCopy.DeletionTimestamp != nil {
 		// make sure all controllees have been deleted
-		hrs, err := deployer.hrLister.HelmReleases(desc.Namespace).List(labels.SelectorFromSet(labels.Set{
+		hrs, err := deployer.hrLister.HelmReleases(descCopy.Namespace).List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      descriptionKind.Kind,
-			known.ConfigNameLabel:      desc.Name,
-			known.ConfigNamespaceLabel: desc.Namespace,
-			known.ConfigUIDLabel:       string(desc.UID),
+			known.ConfigNameLabel:      descCopy.Name,
+			known.ConfigNamespaceLabel: descCopy.Namespace,
+			known.ConfigUIDLabel:       string(descCopy.UID),
 		}))
 		if err != nil {
 			return err
@@ -196,7 +196,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 				continue
 			}
 
-			if err := deployer.deleteHelmRelease(context.TODO(), klog.KObj(hr).String()); err != nil {
+			if err = deployer.deleteHelmRelease(context.TODO(), klog.KObj(hr).String()); err != nil {
 				klog.ErrorDepth(5, err)
 				allErrs = append(allErrs, err)
 				continue
@@ -204,15 +204,14 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 		}
 
 		if hrs != nil || len(allErrs) > 0 {
-			return fmt.Errorf("waiting for HelmRelease belongs to Description %s getting deleted", klog.KObj(desc))
+			return fmt.Errorf("waiting for HelmRelease belongs to Description %s getting deleted", klog.KObj(descCopy))
 		}
 
-		descCopy := desc.DeepCopy()
 		descCopy.Finalizers = utils.RemoveString(descCopy.Finalizers, known.AppFinalizer)
 		_, err = deployer.clusternetClient.AppsV1alpha1().Descriptions(descCopy.Namespace).Update(context.TODO(), descCopy, metav1.UpdateOptions{})
 		if err != nil {
 			klog.WarningDepth(4,
-				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(desc), err))
+				fmt.Sprintf("failed to remove finalizer %s from Description %s: %v", known.AppFinalizer, klog.KObj(descCopy), err))
 		}
 		return err
 	}
@@ -220,30 +219,30 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 	// TODO: may ignore checking AppPusher for helm charts?
 	// check whether ManagedCluster will enable deploying Description with Pusher/Dual mode
 	labelSet := labels.Set{}
-	if len(desc.Labels[known.ClusterIDLabel]) > 0 {
-		labelSet[known.ClusterIDLabel] = desc.Labels[known.ClusterIDLabel]
+	if len(descCopy.Labels[known.ClusterIDLabel]) > 0 {
+		labelSet[known.ClusterIDLabel] = descCopy.Labels[known.ClusterIDLabel]
 	}
-	mcls, err := deployer.clusterLister.ManagedClusters(desc.Namespace).List(
+	mcls, err := deployer.clusterLister.ManagedClusters(descCopy.Namespace).List(
 		labels.SelectorFromSet(labelSet))
 	if err != nil {
 		return err
 	}
 	if mcls == nil {
-		deployer.recorder.Event(desc, corev1.EventTypeWarning, "ManagedClusterNotFound",
-			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", desc.Labels[known.ClusterIDLabel]))
-		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", desc.Namespace)
+		deployer.recorder.Event(descCopy, corev1.EventTypeWarning, "ManagedClusterNotFound",
+			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", descCopy.Labels[known.ClusterIDLabel]))
+		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", descCopy.Namespace)
 	}
 	if mcls[0].Status.AppPusher == nil {
-		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "unknown AppPusher")
+		deployer.recorder.Event(descCopy, corev1.EventTypeNormal, "", "unknown AppPusher")
 		return fmt.Errorf("unknown AppPusher for ManagedCluster with uid=%s", mcls[0].UID)
 	}
 	if !*mcls[0].Status.AppPusher {
-		deployer.recorder.Event(desc, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
+		deployer.recorder.Event(descCopy, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
 		klog.V(5).Infof("ManagedCluster with uid=%s has disabled AppPusher", mcls[0].UID)
 		return nil
 	}
 
-	if err := deployer.populateHelmRelease(desc); err != nil {
+	if err = deployer.populateHelmRelease(descCopy); err != nil {
 		return err
 	}
 
@@ -276,7 +275,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 	var allErrs []error
 	for idx, chartRef := range desc.Spec.Charts {
 		chart := &appsapi.HelmChart{}
-		if err := json.Unmarshal(desc.Spec.ChartRaw[idx], chart); err != nil {
+		if err = json.Unmarshal(desc.Spec.ChartRaw[idx], chart); err != nil {
 			return err
 		}
 		defaultLabels := map[string]string{
@@ -331,7 +330,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 	}
 
 	for key := range hrsToBeDeleted {
-		err := deployer.deleteHelmRelease(context.TODO(), key)
+		err = deployer.deleteHelmRelease(context.TODO(), key)
 		if err != nil {
 			allErrs = append(allErrs, err)
 		}

@@ -113,8 +113,8 @@ func (h *HumanReadableGenerator) GenerateTable(obj k8sruntime.Object, options Ge
 		table.Continue = m.GetContinue()
 		table.RemainingItemCount = m.GetRemainingItemCount()
 	} else {
-		if m, err := meta.CommonAccessor(obj); err == nil {
-			table.ResourceVersion = m.GetResourceVersion()
+		if m2, err2 := meta.CommonAccessor(obj); err2 == nil {
+			table.ResourceVersion = m2.GetResourceVersion()
 		}
 	}
 	return table, nil

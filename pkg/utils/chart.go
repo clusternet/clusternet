@@ -128,7 +128,7 @@ func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, passwor
 		return nil, err
 	}
 
-	if err := CheckIfInstallable(chartRequested); err != nil {
+	if err = CheckIfInstallable(chartRequested); err != nil {
 		return nil, err
 	}
 

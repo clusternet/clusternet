@@ -144,13 +144,13 @@ func (c *Controller) updateHelmRelease(old, cur interface{}) {
 func (c *Controller) deleteHelmRelease(obj interface{}) {
 	hr, ok := obj.(*appsapi.HelmRelease)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		hr, ok = tombstone.Obj.(*appsapi.HelmRelease)
-		if !ok {
+		hr, ok2 = tombstone.Obj.(*appsapi.HelmRelease)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a HelmRelease %#v", obj))
 			return
 		}
@@ -239,7 +239,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing HelmRelease %q", key)
 	// Get the HelmRelease resource with this name
-	hr, err := c.hrLister.HelmReleases(ns).Get(name)
+	cachedhr, err := c.hrLister.HelmReleases(ns).Get(name)
 	// The HelmRelease resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("HelmRelease %q has been deleted", key)
@@ -249,6 +249,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	hr := cachedhr.DeepCopy()
 	// add finalizer
 	if !utils.ContainsString(hr.Finalizers, known.AppFinalizer) && hr.DeletionTimestamp == nil {
 		hr.Finalizers = append(hr.Finalizers, known.AppFinalizer)

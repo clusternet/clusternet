@@ -161,13 +161,13 @@ func (c *Controller) updateHelmChart(old, cur interface{}) {
 func (c *Controller) deleteHelmChart(obj interface{}) {
 	chart, ok := obj.(*appsapi.HelmChart)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		chart, ok = tombstone.Obj.(*appsapi.HelmChart)
-		if !ok {
+		chart, ok2 = tombstone.Obj.(*appsapi.HelmChart)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a HelmChart %#v", obj))
 			return
 		}
@@ -280,7 +280,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("start processing HelmChart %q", key)
 	// Get the HelmChart resource with this name
-	chart, err := c.helmChartLister.HelmCharts(ns).Get(name)
+	cachedChart, err := c.helmChartLister.HelmCharts(ns).Get(name)
 	// The HelmChart resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("HelmChart %q has been deleted", key)
@@ -290,34 +290,33 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	chart := cachedChart.DeepCopy()
 	if chart.DeletionTimestamp == nil {
-		updatedChart := chart.DeepCopy()
-
 		// add finalizer
-		if !utils.ContainsString(updatedChart.Finalizers, known.AppFinalizer) {
-			updatedChart.Finalizers = append(updatedChart.Finalizers, known.AppFinalizer)
+		if !utils.ContainsString(chart.Finalizers, known.AppFinalizer) {
+			chart.Finalizers = append(chart.Finalizers, known.AppFinalizer)
 		}
-		if !utils.ContainsString(updatedChart.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
-			updatedChart.Finalizers = append(updatedChart.Finalizers, known.FeedProtectionFinalizer)
+		if !utils.ContainsString(chart.Finalizers, known.FeedProtectionFinalizer) && c.feedInUseProtection {
+			chart.Finalizers = append(chart.Finalizers, known.FeedProtectionFinalizer)
 		}
 
 		// append Clusternet labels
-		if updatedChart.Labels == nil {
-			updatedChart.Labels = map[string]string{}
+		if chart.Labels == nil {
+			chart.Labels = map[string]string{}
 		}
-		updatedChart.Labels[known.ConfigGroupLabel] = controllerKind.Group
-		updatedChart.Labels[known.ConfigVersionLabel] = controllerKind.Version
-		updatedChart.Labels[known.ConfigKindLabel] = controllerKind.Kind
-		updatedChart.Labels[known.ConfigNameLabel] = chart.Name
-		updatedChart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
+		chart.Labels[known.ConfigGroupLabel] = controllerKind.Group
+		chart.Labels[known.ConfigVersionLabel] = controllerKind.Version
+		chart.Labels[known.ConfigKindLabel] = controllerKind.Kind
+		chart.Labels[known.ConfigNameLabel] = chart.Name
+		chart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
 
 		// prune redundant labels
-		pruneLabels(updatedChart, c.baseLister)
+		pruneLabels(chart, c.baseLister)
 
 		// only update on changed
-		if !reflect.DeepEqual(chart, updatedChart) {
+		if !reflect.DeepEqual(chart, cachedChart) {
 			if chart, err = c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).Update(context.TODO(),
-				updatedChart, metav1.UpdateOptions{}); err != nil {
+				chart, metav1.UpdateOptions{}); err != nil {
 				msg := fmt.Sprintf("failed to inject finalizers to HelmChart %s: %v", klog.KObj(chart), err)
 				klog.WarningDepth(4, msg)
 				c.recorder.Event(chart, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
@@ -340,28 +339,25 @@ func (c *Controller) syncHandler(key string) error {
 	return err
 }
 
-func (c *Controller) UpdateChartStatus(chart *appsapi.HelmChart, status *appsapi.HelmChartStatus) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update HelmChart %q status", chart.Name)
+func (c *Controller) UpdateChartStatus(chartCopy *appsapi.HelmChart, status *appsapi.HelmChartStatus) error {
+	klog.V(5).Infof("try to update HelmChart %q status", chartCopy.Name)
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		chart.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chart.Namespace).UpdateStatus(context.TODO(), chart, metav1.UpdateOptions{})
+		chartCopy.Status = *status
+		_, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chartCopy.Namespace).UpdateStatus(context.TODO(), chartCopy, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
 		}
 
-		if updated, err := c.helmChartLister.HelmCharts(chart.Namespace).Get(chart.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
-			chart = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated HelmChart %q from lister: %v", chart.Name, err))
+		updated, err2 := c.helmChartLister.HelmCharts(chartCopy.Namespace).Get(chartCopy.Name)
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
+			chartCopy = updated.DeepCopy()
+			return nil
 		}
-		return err
+		utilruntime.HandleError(fmt.Errorf("error getting updated HelmChart %q from lister: %v", chartCopy.Name, err2))
+		return err2
 	})
 }
 

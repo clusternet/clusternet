@@ -168,7 +168,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 
 func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.Interface, meta.RESTMapper, error) {
 	if dc, ok := deployer.dcs.Load(desc.Labels[known.ClusterIDLabel]); ok {
-		if client, ok := (dc).(DynamicClient); ok {
+		if client, ok2 := (dc).(DynamicClient); ok2 {
 			klog.V(6).Infof("Get description %s's dynamic client form cache", klog.KObj(desc))
 			return client.Interface, client.RESTMapper, nil
 		} else {

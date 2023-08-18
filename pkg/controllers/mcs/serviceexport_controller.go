@@ -170,7 +170,7 @@ func (c *ServiceExportController) Handle(obj interface{}) (requeueAfter *time.Du
 	srcLabelMap := labels.Set{discoveryv1.LabelServiceName: se.Name}
 	// dst endpoint slice with label of derived service name combined with namespace and service export name
 	dstLabelMap := labels.Set{discoveryv1.LabelServiceName: utils.DerivedName(namespace, seName)}
-	endpointSliceList, err := utils.RemoveUnexistEndpointslice(c.endpointSlicesLister, namespace,
+	endpointSliceList, err := utils.RemoveNonexistentEndpointslice(c.endpointSlicesLister, namespace,
 		srcLabelMap, c.parentk8sClient, c.dedicatedNamespace, dstLabelMap)
 	if err != nil {
 		d := time.Second

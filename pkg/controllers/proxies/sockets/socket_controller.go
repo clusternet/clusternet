@@ -63,9 +63,9 @@ func NewController(kubeConfig *rest.Config, tunnelLogging bool) (*Controller, er
 	bearerToken := kubeConfig.BearerToken
 	if len(kubeConfig.BearerTokenFile) > 0 {
 		source := transport.NewCachedFileTokenSource(kubeConfig.BearerTokenFile)
-		token, err := source.Token()
-		if err != nil {
-			return nil, err
+		token, err2 := source.Token()
+		if err2 != nil {
+			return nil, err2
 		}
 		bearerToken = token.AccessToken
 	}

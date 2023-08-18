@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
@@ -172,13 +171,13 @@ func (c *Controller) updateSubscription(old, cur interface{}) {
 func (c *Controller) deleteSubscription(obj interface{}) {
 	sub, ok := obj.(*appsapi.Subscription)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		sub, ok = tombstone.Obj.(*appsapi.Subscription)
-		if !ok {
+		sub, ok2 = tombstone.Obj.(*appsapi.Subscription)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Subscription %#v", obj))
 			return
 		}
@@ -191,13 +190,13 @@ func (c *Controller) deleteSubscription(obj interface{}) {
 func (c *Controller) deleteBase(obj interface{}) {
 	base, ok := obj.(*appsapi.Base)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		base, ok = tombstone.Obj.(*appsapi.Base)
-		if !ok {
+		base, ok2 = tombstone.Obj.(*appsapi.Base)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Base %#v", obj))
 			return
 		}
@@ -353,31 +352,6 @@ func (c *Controller) syncHandler(key string) error {
 		c.recorder.Event(sub, corev1.EventTypeNormal, "Synced", "Subscription synced successfully")
 	}
 	return err
-}
-
-func (c *Controller) UpdateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update Subscription %q status", sub.Name)
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		sub.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(sub.Namespace).UpdateStatus(context.TODO(), sub, metav1.UpdateOptions{})
-		if err == nil {
-			//TODO
-			return nil
-		}
-
-		if updated, err := c.subsLister.Subscriptions(sub.Namespace).Get(sub.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
-			sub = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", sub.Name, err))
-		}
-		return err
-	})
 }
 
 // enqueue takes a Subscription resource and converts it into a namespace/name

@@ -135,13 +135,13 @@ func (c *Controller) updateCRR(old, cur interface{}) {
 func (c *Controller) deleteCRR(obj interface{}) {
 	crr, ok := obj.(*clusterapi.ClusterRegistrationRequest)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		crr, ok = tombstone.Obj.(*clusterapi.ClusterRegistrationRequest)
-		if !ok {
+		crr, ok2 = tombstone.Obj.(*clusterapi.ClusterRegistrationRequest)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a ClusterRegistrationRequest %#v", obj))
 			return
 		}
@@ -247,7 +247,7 @@ func (c *Controller) syncHandler(key string) error {
 		crr.APIVersion = controllerKind.Version
 	}
 
-	return c.SyncHandler(crr)
+	return c.SyncHandler(crr.DeepCopy())
 }
 
 func (c *Controller) UpdateCRRStatus(crr *clusterapi.ClusterRegistrationRequest, status *clusterapi.ClusterRegistrationRequestStatus) error {
@@ -276,13 +276,15 @@ func (c *Controller) UpdateCRRStatus(crr *clusterapi.ClusterRegistrationRequest,
 			return nil
 		}
 
-		if updated, err := c.crrsLister.Get(crr.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
+		updated, err2 := c.crrsLister.Get(crr.Name)
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
 			crr = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated ClusterRegistrationRequest %q from lister: %v", crr.Name, err))
+			return nil
 		}
-		return err
+		utilruntime.HandleError(fmt.Errorf("error getting updated ClusterRegistrationRequest %q from lister: %v",
+			crr.Name, err2))
+		return err2
 	})
 }
 

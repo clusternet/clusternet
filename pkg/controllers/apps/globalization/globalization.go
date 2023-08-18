@@ -166,13 +166,13 @@ func (c *Controller) updateGlobalization(old, cur interface{}) {
 func (c *Controller) deleteGlobalization(obj interface{}) {
 	glob, ok := obj.(*appsapi.Globalization)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		glob, ok = tombstone.Obj.(*appsapi.Globalization)
-		if !ok {
+		glob, ok2 = tombstone.Obj.(*appsapi.Globalization)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Globalization %#v", obj))
 			return
 		}

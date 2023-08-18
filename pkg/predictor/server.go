@@ -183,9 +183,9 @@ func BuildGetPodsAssignedToNodeFunc(podInformer informerv1.PodInformer) (GetPods
 	// The indexer helps us get all the pods that assigned to a node.
 	podIndexer := podInformer.Informer().GetIndexer()
 	getPodsAssignedToNode := func(nodeName string) ([]*corev1.Pod, error) {
-		objs, err := podIndexer.ByIndex(nodeNameKeyIndex, nodeName)
-		if err != nil {
-			return nil, err
+		objs, err2 := podIndexer.ByIndex(nodeNameKeyIndex, nodeName)
+		if err2 != nil {
+			return nil, err2
 		}
 		pods := make([]*corev1.Pod, 0, len(objs))
 		for _, obj := range objs {
@@ -252,8 +252,8 @@ func (s *Server) MaxAcceptableReplicas(ctx context.Context, requirements appsapi
 	nodeInfoList := make([]*framework.NodeInfo, len(nodes))
 	var nodesLen int32
 	getNodeInfo := func(i int) {
-		pods, err := s.getPodFunc(nodes[i].Name)
-		if err != nil {
+		pods, err2 := s.getPodFunc(nodes[i].Name)
+		if err2 != nil {
 			klog.V(6).InfoS("failed to get pods in nodes", "nodes", nodes[i].Name)
 		} else {
 			nodeInfo := framework.NewNodeInfo(nodes[i], pods)

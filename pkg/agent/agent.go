@@ -360,12 +360,12 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 						agent.agentOptions.ClusterRegistrationOptions.ParentURL)
 					klog.Warningf("will try to re-register current cluster")
 				} else {
-					parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(
+					parentDedicatedKubeConfig, err2 := utils.GenerateKubeConfigFromToken(
 						agent.agentOptions.ClusterRegistrationOptions.ParentURL,
 						string(secret.Data[corev1.ServiceAccountTokenKey]),
 						secret.Data[corev1.ServiceAccountRootCAKey],
 					)
-					if err == nil {
+					if err2 == nil {
 						agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
 					}
 				}

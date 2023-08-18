@@ -143,13 +143,13 @@ func (c *Controller) updateSecret(old, cur interface{}) {
 func (c *Controller) deleteSecret(obj interface{}) {
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		secret, ok = tombstone.Obj.(*corev1.Secret)
-		if !ok {
+		secret, ok2 = tombstone.Obj.(*corev1.Secret)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Secret %#v", obj))
 			return
 		}

@@ -323,7 +323,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	klog.V(4).Infof("[FeedInventory] start processing Subscription %q", key)
 	// Get the Subscription resource with this name
-	sub, err := c.subLister.Subscriptions(ns).Get(name)
+	cachedSub, err := c.subLister.Subscriptions(ns).Get(name)
 	// The Subscription resource may no longer exist, in which case we stop processing.
 	if apierrors.IsNotFound(err) {
 		klog.V(2).Infof("Subscription %q has been deleted", key)
@@ -333,6 +333,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	sub := cachedSub.DeepCopy()
 	if sub.DeletionTimestamp != nil {
 		return nil
 	}
