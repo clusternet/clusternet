@@ -35,8 +35,8 @@ require (
 	k8s.io/kubectl v0.27.3
 	k8s.io/metrics v0.27.3
 	k8s.io/utils v0.0.0-20230220204549-a5ecb0141aa5
-	sigs.k8s.io/cluster-api v1.5.0
-	sigs.k8s.io/controller-runtime v0.15.0
+	sigs.k8s.io/cluster-api v1.5.1
+	sigs.k8s.io/controller-runtime v0.15.1
 	sigs.k8s.io/controller-tools v0.12.1-0.20230522072221-11d011f196f2
 	sigs.k8s.io/mcs-api v0.1.1-0.20230217171204-d9e516ac3939
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3
@@ -169,7 +169,7 @@ require (
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
 	golang.org/x/mod v0.10.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
+	golang.org/x/net v0.13.0 // indirect
 	golang.org/x/oauth2 v0.10.0 // indirect
 	golang.org/x/sync v0.2.0 // indirect
 	golang.org/x/sys v0.10.0 // indirect
