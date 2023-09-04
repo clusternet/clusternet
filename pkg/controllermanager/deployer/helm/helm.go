@@ -36,7 +36,7 @@ import (
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -216,8 +216,7 @@ func (deployer *Deployer) handleDescription(descCopy *appsapi.Description) error
 		return err
 	}
 
-	// TODO: may ignore checking AppPusher for helm charts?
-	// check whether ManagedCluster will enable deploying Description with Pusher/Dual mode
+	// check if mcls object exists and ignore checking AppPusher for helm charts
 	labelSet := labels.Set{}
 	if len(descCopy.Labels[known.ClusterIDLabel]) > 0 {
 		labelSet[known.ClusterIDLabel] = descCopy.Labels[known.ClusterIDLabel]
@@ -231,15 +230,6 @@ func (deployer *Deployer) handleDescription(descCopy *appsapi.Description) error
 		deployer.recorder.Event(descCopy, corev1.EventTypeWarning, "ManagedClusterNotFound",
 			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", descCopy.Labels[known.ClusterIDLabel]))
 		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", descCopy.Namespace)
-	}
-	if mcls[0].Status.AppPusher == nil {
-		deployer.recorder.Event(descCopy, corev1.EventTypeNormal, "", "unknown AppPusher")
-		return fmt.Errorf("unknown AppPusher for ManagedCluster with uid=%s", mcls[0].UID)
-	}
-	if !*mcls[0].Status.AppPusher {
-		deployer.recorder.Event(descCopy, corev1.EventTypeNormal, "", "target cluster has disabled AppPusher")
-		klog.V(5).Infof("ManagedCluster with uid=%s has disabled AppPusher", mcls[0].UID)
-		return nil
 	}
 
 	if err = deployer.populateHelmRelease(descCopy); err != nil {
