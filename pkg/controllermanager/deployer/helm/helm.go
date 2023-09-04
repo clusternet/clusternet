@@ -216,23 +216,7 @@ func (deployer *Deployer) handleDescription(descCopy *appsapi.Description) error
 		return err
 	}
 
-	// check if mcls object exists and ignore checking AppPusher for helm charts
-	labelSet := labels.Set{}
-	if len(descCopy.Labels[known.ClusterIDLabel]) > 0 {
-		labelSet[known.ClusterIDLabel] = descCopy.Labels[known.ClusterIDLabel]
-	}
-	mcls, err := deployer.clusterLister.ManagedClusters(descCopy.Namespace).List(
-		labels.SelectorFromSet(labelSet))
-	if err != nil {
-		return err
-	}
-	if mcls == nil {
-		deployer.recorder.Event(descCopy, corev1.EventTypeWarning, "ManagedClusterNotFound",
-			fmt.Sprintf("can not find a ManagedCluster with uid=%s in current namespace", descCopy.Labels[known.ClusterIDLabel]))
-		return fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", descCopy.Namespace)
-	}
-
-	if err = deployer.populateHelmRelease(descCopy); err != nil {
+	if err := deployer.populateHelmRelease(descCopy); err != nil {
 		return err
 	}
 
