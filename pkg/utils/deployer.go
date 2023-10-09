@@ -799,13 +799,19 @@ func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.Man
 		return true
 	}
 
+	// short-circuit
+	// in case the conditions are not updated yet
+	if len(mcls[0].Status.Conditions) == 0 {
+		return false
+	}
+
 	return !ClusterHasReadyCondition(mcls[0])
 }
 
 func ClusterHasReadyCondition(mc *clusterapi.ManagedCluster) bool {
 	// in case the conditions are not updated yet
 	if len(mc.Status.Conditions) == 0 {
-		return true
+		return false
 	}
 
 	for _, condition := range mc.Status.Conditions {
