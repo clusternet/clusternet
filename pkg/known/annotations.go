@@ -34,4 +34,16 @@ const (
 	// LastAppliedConfigAnnotation is the annotation used to store the previous
 	// configuration of a resource for use in a three way diff by UpdateApplyAnnotation.
 	LastAppliedConfigAnnotation = "clusternet.io/last-applied-configuration"
+
+	// IsDefaultClusterInitAnnotation represents an annotation that marks a Base as the default cluster initialization
+	// workloads.
+	IsDefaultClusterInitAnnotation = "clusters.clusternet.io/is-default-cluster-init"
+
+	// ClusterInitBaseAnnotation records the name of the Base to be used for initialization after joining.
+	// This annotation is set on ManagedCluster objects.
+	// It is mainly used for legacy clusters that have already joined.
+	ClusterInitBaseAnnotation = "clusters.clusternet.io/cluster-init-base"
+
+	// ClusterInitSkipAnnotation indicates no initialization operations will be applied to this cluster.
+	ClusterInitSkipAnnotation = "clusters.clusternet.io/skip-cluster-init"
 )

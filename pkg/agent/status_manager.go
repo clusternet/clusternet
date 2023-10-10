@@ -103,7 +103,7 @@ func (mgr *Manager) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Con
 			os.Exit(1)
 			return
 		}
-		mgr.updateClusterStatus(ctx, *dedicatedNamespace, string(*clusterID), client, retry.DefaultBackoff)
+		mgr.updateClusterStatus(ctx, *dedicatedNamespace, string(*clusterID), client, retry.DefaultRetry)
 	}, mgr.statusReportFrequency.Duration)
 }
 
@@ -150,7 +150,15 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 				return false, nil
 			}
 		}
+
+		oldStatus := mgr.managedCluster.Status.DeepCopy()
 		mgr.managedCluster.Status = *status
+		// update with new conditions
+		hasChanged := utils.UpdateConditions(oldStatus, status.Conditions)
+		if hasChanged {
+			mgr.managedCluster.Status.Conditions = oldStatus.Conditions
+		}
+
 		mcls, lastError = client.ClustersV1beta1().ManagedClusters(namespace).UpdateStatus(ctx, mgr.managedCluster, metav1.UpdateOptions{})
 		if lastError == nil {
 			mgr.managedCluster = mcls

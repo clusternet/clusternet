@@ -20,4 +20,19 @@ const (
 	// TaintClusterUnschedulable will be added when cluster becomes unschedulable
 	// and removed when cluster becomes schedulable.
 	TaintClusterUnschedulable = "clusters.clusternet.io/unschedulable"
+
+	// TaintClusterInitialization will be added when cluster needs to be initialized after joining
+	// and removed after initialization.
+	TaintClusterInitialization = "clusters.clusternet.io/initialization"
+)
+
+const (
+	// ClusterInitWaitingReason indicates the waiting reason for ClusterInit
+	ClusterInitWaitingReason string = "ClusterInitWaiting"
+
+	// ClusterInitDisabledReason indicates the disabled reason for ClusterInit
+	ClusterInitDisabledReason string = "ClusterInitDisabled"
+
+	// ClusterInitDoneReason indicates the disabled reason for ClusterInit
+	ClusterInitDoneReason string = "ClusterInitDone"
 )

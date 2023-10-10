@@ -183,10 +183,6 @@ func (c *Controller) setClusterStatus(status clusterapi.ManagedClusterStatus) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.clusterStatus == nil {
-		c.clusterStatus = new(clusterapi.ManagedClusterStatus)
-	}
-
 	c.clusterStatus = &status
 	c.clusterStatus.LastObservedTime = metav1.Now()
 	klog.V(7).Infof("current cluster status is %#v", status)

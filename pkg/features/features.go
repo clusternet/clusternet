@@ -116,6 +116,17 @@ const (
 	// alpha: v0.16.0
 	// Setting on clusternet-scheduler side.
 	FeasibleClustersToleration featuregate.Feature = "FeasibleClustersToleration"
+
+	// ClusterInit helps initializing the cluster after joining.
+	// All the initializing jobs are defined by a default Subscription, which
+	// When a new ManagedCluster (with taint "clusters.clusternet.io/initialization:NoSchedule") joins,
+	// a default Subscription will be performed to do some
+	// TODO
+	//
+	// owner: @dixudx
+	// alpha: v0.17.0
+	// Setting on clusternet-controller-manager side.
+	ClusterInit featuregate.Feature = "ClusterInit"
 )
 
 func init() {
@@ -137,4 +148,5 @@ var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	MultiClusterService:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	FailOver:                   {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 	FeasibleClustersToleration: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	ClusterInit:                {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }

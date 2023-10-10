@@ -26,10 +26,11 @@ import (
 // ManagedClusterSpecApplyConfiguration represents an declarative configuration of the ManagedClusterSpec type for use
 // with apply.
 type ManagedClusterSpecApplyConfiguration struct {
-	ClusterID   *types.UID               `json:"clusterId,omitempty"`
-	ClusterType *v1beta1.ClusterType     `json:"clusterType,omitempty"`
-	SyncMode    *v1beta1.ClusterSyncMode `json:"syncMode,omitempty"`
-	Taints      []v1.Taint               `json:"taints,omitempty"`
+	ClusterID           *types.UID               `json:"clusterId,omitempty"`
+	ClusterType         *v1beta1.ClusterType     `json:"clusterType,omitempty"`
+	ClusterInitBaseName *string                  `json:"clusterInitBaseName,omitempty"`
+	SyncMode            *v1beta1.ClusterSyncMode `json:"syncMode,omitempty"`
+	Taints              []v1.Taint               `json:"taints,omitempty"`
 }
 
 // ManagedClusterSpecApplyConfiguration constructs an declarative configuration of the ManagedClusterSpec type for use with
@@ -51,6 +52,14 @@ func (b *ManagedClusterSpecApplyConfiguration) WithClusterID(value types.UID) *M
 // If called multiple times, the ClusterType field is set to the value of the last call.
 func (b *ManagedClusterSpecApplyConfiguration) WithClusterType(value v1beta1.ClusterType) *ManagedClusterSpecApplyConfiguration {
 	b.ClusterType = &value
+	return b
+}
+
+// WithClusterInitBaseName sets the ClusterInitBaseName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ClusterInitBaseName field is set to the value of the last call.
+func (b *ManagedClusterSpecApplyConfiguration) WithClusterInitBaseName(value string) *ManagedClusterSpecApplyConfiguration {
+	b.ClusterInitBaseName = &value
 	return b
 }
 
