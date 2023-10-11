@@ -70,6 +70,8 @@ const (
 type REST struct {
 	// name is the plural name of the resource.
 	name string
+	// singularName is the singular name of the resource.
+	singularName string
 	// shortNames is a list of suggested short names of the resource.
 	shortNames []string
 	// namespaced indicates if a resource is namespaced or not.
@@ -378,6 +380,14 @@ func (r *REST) SetName(name string) {
 	r.name = name
 }
 
+func (r *REST) SetSingularName(name string) {
+	r.singularName = name
+}
+
+func (r *REST) GetSingularName() string {
+	return r.singularName
+}
+
 func (r *REST) NamespaceScoped() bool {
 	return r.namespaced
 }
@@ -661,6 +671,7 @@ func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.C
 	}
 }
 
+var _ rest.SingularNameProvider = &REST{}
 var _ rest.GroupVersionKindProvider = &REST{}
 var _ rest.CategoriesProvider = &REST{}
 var _ rest.ShortNamesProvider = &REST{}

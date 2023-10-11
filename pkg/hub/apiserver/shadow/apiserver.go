@@ -214,6 +214,7 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)
 			resourceRest.SetKind(apiresource.Kind)
+			resourceRest.SetSingularName(apiresource.SingularName)
 			resourceRest.SetGroup(apiresource.Group)
 			resourceRest.SetVersion(apiresource.Version)
 			switch {
