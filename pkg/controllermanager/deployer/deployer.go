@@ -570,7 +570,7 @@ func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base 
 				continue
 			}
 
-			if len(replicas) < clusterIndex {
+			if len(replicas) <= clusterIndex {
 				msg := fmt.Sprintf("the length of status.Replicas for %s in Subscription %s is not matched with status.BindingClusters",
 					utils.FormatFeed(feedOrder.Feed), klog.KObj(sub))
 				klog.ErrorDepth(5, msg)
