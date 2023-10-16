@@ -160,12 +160,12 @@ func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 	return localizer, nil
 }
 
-func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
+func (l *Localizer) Run(workers int, ctx context.Context) {
 	klog.Info("starting Clusternet localizer ...")
 
 	// Wait for the caches to be synced before starting workers
 	if !cache.WaitForNamedCacheSync("localizer-controller",
-		stopCh,
+		ctx.Done(),
 		l.locSynced,
 		l.globSynced,
 		l.chartSynced,
@@ -175,10 +175,10 @@ func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
-	go l.locController.Run(workers, stopCh)
-	go l.globController.Run(workers, stopCh)
+	go l.locController.Run(workers, ctx)
+	go l.globController.Run(workers, ctx)
 
-	<-stopCh
+	<-ctx.Done()
 }
 
 func (l *Localizer) handleLocalization(locCopy *appsapi.Localization) error {

@@ -237,12 +237,12 @@ func NewDeployer(apiserverURL, systemNamespace, reservedNamespace string,
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
+func (deployer *Deployer) Run(workers int, ctx context.Context) {
 	klog.Infof("starting Clusternet deployer ...")
 
 	// Wait for the caches to be synced before starting workers
 	if !cache.WaitForNamedCacheSync("clusternet-deployer",
-		stopCh,
+		ctx.Done(),
 		deployer.chartSynced,
 		deployer.descSynced,
 		deployer.baseSynced,
@@ -255,21 +255,21 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
-	go deployer.chartController.Run(workers, stopCh)
-	go deployer.helmDeployer.Run(workers, stopCh)
-	go deployer.genericDeployer.Run(workers, stopCh)
-	go deployer.subsController.Run(workers, stopCh)
-	go deployer.mfstController.Run(workers, stopCh)
-	go deployer.baseController.Run(workers, stopCh)
-	go deployer.localizer.Run(workers, stopCh)
-	go deployer.aggregatestatusController.Run(workers, stopCh)
+	go deployer.chartController.Run(workers, ctx)
+	go deployer.helmDeployer.Run(workers, ctx)
+	go deployer.genericDeployer.Run(workers, ctx)
+	go deployer.subsController.Run(workers, ctx)
+	go deployer.mfstController.Run(workers, ctx)
+	go deployer.baseController.Run(workers, ctx)
+	go deployer.localizer.Run(workers, ctx)
+	go deployer.aggregatestatusController.Run(workers, ctx)
 
 	// When using external FeedInventory controller, this feature gate should be closed
 	if utilfeature.DefaultFeatureGate.Enabled(features.FeedInventory) {
-		go deployer.finvController.Run(workers, stopCh)
+		go deployer.finvController.Run(workers, ctx)
 	}
 
-	<-stopCh
+	<-ctx.Done()
 }
 
 func (deployer *Deployer) handleSubscription(subCopy *appsapi.Subscription) error {

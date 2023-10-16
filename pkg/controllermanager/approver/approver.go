@@ -100,15 +100,15 @@ func NewCRRApprover(kubeclient *kubernetes.Clientset, clusternetclient *clustern
 	return crrApprover, nil
 }
 
-func (crrApprover *CRRApprover) Run(threadiness int, stopCh <-chan struct{}) {
+func (crrApprover *CRRApprover) Run(threadiness int, ctx context.Context) {
 	klog.Info("starting Clusternet CRRApprover ...")
 
 	// initializing roles is really important
 	// and nothing works if the roles don't get initialized
-	crrApprover.applyDefaultRBACRules(context.TODO())
+	crrApprover.applyDefaultRBACRules(ctx)
 
 	// todo: gorountine
-	crrApprover.crrController.Run(threadiness, stopCh)
+	crrApprover.crrController.Run(threadiness, ctx)
 	return
 }
 

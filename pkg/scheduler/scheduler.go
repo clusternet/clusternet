@@ -160,8 +160,11 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 		inventorySynced:           clusternetInformerFactory.Apps().V1alpha1().FeedInventories().Informer().HasSynced,
 		registry:                  registry,
 		scheduleAlgorithm:         algorithm.NewGenericScheduler(schedulerCache, percentageOfClustersToScore),
-		SchedulingQueue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter(), "clusternet-scheduler"),
 		subscribersMap:            make(map[string][]appsapi.Subscriber),
+		SchedulingQueue: workqueue.NewRateLimitingQueueWithConfig(
+			workqueue.DefaultItemBasedRateLimiter(),
+			workqueue.RateLimitingQueueConfig{Name: "clusternet-scheduler"},
+		),
 	}
 
 	var percentageOfClustersToTolerate int32

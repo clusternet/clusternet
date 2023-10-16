@@ -201,7 +201,7 @@ func startCRRApproveController(controllerCtx *controllercontext.ControllerContex
 	if err != nil {
 		return false, err
 	}
-	go approve.Run(controllerCtx.Opts.Threadiness, ctx.Done())
+	go approve.Run(controllerCtx.Opts.Threadiness, ctx)
 	return true, nil
 }
 
@@ -220,7 +220,7 @@ func startDeployerController(controllerCtx *controllercontext.ControllerContext,
 	if err != nil {
 		return false, err
 	}
-	go deployer.Run(controllerCtx.Opts.Threadiness, ctx.Done())
+	go deployer.Run(controllerCtx.Opts.Threadiness, ctx)
 	return true, nil
 }
 
