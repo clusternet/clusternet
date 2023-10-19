@@ -10,6 +10,12 @@ metadata:
   name: clusternet-system
 
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clusternet-mcs
+
+---
 kind: ServiceAccount
 apiVersion: v1
 metadata:
