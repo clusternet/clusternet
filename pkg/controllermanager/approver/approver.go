@@ -513,6 +513,8 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 		return utilerrors.NewAggregate(allErrs)
 	}
 
+	// add some additional roles for child cluster such like mcs related role.
+	roles = append(roles, crrApprover.additionalRoles()...)
 	// then we bind these roles
 	wg.Add(len(roles))
 	for _, role := range roles {
@@ -541,6 +543,19 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 
 	wg.Wait()
 	return utilerrors.NewAggregate(allErrs)
+}
+
+func (crrApprover *CRRApprover) additionalRoles() []rbacv1.Role {
+	additionalRoles := make([]rbacv1.Role, 0)
+	// 1. mcs related role
+	roleForMCS := rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      MultiClusterServiceSyncerRole,
+			Namespace: MultiClusterServiceNamespace,
+		},
+	}
+	additionalRoles = append(additionalRoles, roleForMCS)
+	return additionalRoles
 }
 
 func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clientset, backoff wait.Backoff, saName, saNamespace string, saTokenAutoGen bool) (*corev1.Secret, error) {

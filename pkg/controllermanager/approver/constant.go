@@ -22,4 +22,9 @@ const (
 	ManagedClusterRole = "clusternet-managedcluster-role"
 	// SocketsClusterRoleNamePrefix is the prefix name of Sockets clusterrole
 	SocketsClusterRoleNamePrefix = "clusternet-"
+
+	// MultiClusterServiceSyncerRole is the default role  to syncer mcs-related resources
+	MultiClusterServiceSyncerRole = "mcs-syncer"
+	// MultiClusterServiceNamespace is the default namespace to store mcs-related resources
+	MultiClusterServiceNamespace = "clusternet-mcs"
 )
