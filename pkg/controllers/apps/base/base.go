@@ -53,6 +53,7 @@ type Controller struct {
 
 	clusternetClient clusternetclientset.Interface
 	baseLister       applisters.BaseLister
+	baseIndexer      cache.Indexer
 	recorder         record.EventRecorder
 	syncHandlerFunc  SyncHandlerFunc
 }
@@ -67,6 +68,7 @@ func NewController(
 	c := &Controller{
 		clusternetClient: clusternetClient,
 		baseLister:       baseInformer.Lister(),
+		baseIndexer:      baseInformer.Informer().GetIndexer(),
 		recorder:         recorder,
 		syncHandlerFunc:  syncHandlerFunc,
 	}
@@ -96,8 +98,17 @@ func NewController(
 			return true, nil
 		})
 
+	err := baseInformer.Informer().AddIndexers(cache.Indexers{"uid": utils.BaseUidIndexFunc})
+	if err != nil {
+		return nil, err
+	}
+	err = baseInformer.Informer().AddIndexers(cache.Indexers{"subUid": utils.BaseSubUidIndexFunc})
+	if err != nil {
+		return nil, err
+	}
+
 	// Manage the addition/update of Base
-	_, err := baseInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
+	_, err = baseInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
 	if err != nil {
 		return nil, err
 	}
@@ -254,4 +265,31 @@ func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*stri
 		types.MergePatchType,
 		patchData,
 		metav1.PatchOptions{})
+}
+
+func (c *Controller) FindBaseByUID(uid string) (*appsapi.Base, error) {
+	if objs, err := c.baseIndexer.ByIndex("uid", uid); err != nil {
+		return nil, err
+	} else {
+		if len(objs) == 1 {
+			return objs[0].(*appsapi.Base), nil
+		} else {
+			return nil, fmt.Errorf("find base by uid %s failed", uid)
+		}
+	}
+}
+
+func (c *Controller) FindBaseBySubUID(subUid string) ([]*appsapi.Base, error) {
+	var bases []*appsapi.Base
+	if objs, err := c.baseIndexer.ByIndex("subUid", subUid); err != nil {
+		return nil, err
+	} else {
+		if err != nil {
+			return nil, fmt.Errorf("find base by subUid %s failed", subUid)
+		}
+		for _, base := range objs {
+			bases = append(bases, base.(*appsapi.Base))
+		}
+	}
+	return bases, nil
 }

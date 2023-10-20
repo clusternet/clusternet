@@ -933,3 +933,21 @@ func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.Descript
 		return err2
 	})
 }
+
+func BaseUidIndexFunc(obj interface{}) ([]string, error) {
+	base := obj.(*appsapi.Base)
+	return []string{string(base.UID)}, nil
+}
+
+func BaseSubUidIndexFunc(obj interface{}) ([]string, error) {
+	base := obj.(*appsapi.Base)
+	if subUid, ok := base.Labels[known.ConfigSubscriptionUIDLabel]; ok {
+		return []string{subUid}, nil
+	}
+	return []string{""}, nil
+}
+
+func SubUidIndexFunc(obj interface{}) ([]string, error) {
+	sub := obj.(*appsapi.Subscription)
+	return []string{string(sub.UID)}, nil
+}
