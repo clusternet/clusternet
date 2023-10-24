@@ -91,11 +91,14 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 	resourceClient := utils.NewResourceClient(client, apiResource)
 
 	c := &Controller{
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), gvk.String()),
 		syncHandlerFunc:  syncHandlerFunc,
 		client:           resourceClient,
 		name:             gvk.String(),
 		clusternetClient: clusternetClient,
+		workqueue: workqueue.NewRateLimitingQueueWithConfig(
+			workqueue.DefaultControllerRateLimiter(),
+			workqueue.RateLimitingQueueConfig{Name: gvk.String()},
+		),
 	}
 
 	ri, err := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{

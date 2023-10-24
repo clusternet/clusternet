@@ -21,17 +21,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dixudx/yacht"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	coreInformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	coreListers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"github.com/clusternet/clusternet/pkg/known"
@@ -46,48 +45,44 @@ type SyncHandlerFunc func(secret *corev1.Secret) error
 // Controller is a controller that handles Secret
 // here we only focus on Secret "child-cluster-deployer" !!!
 type Controller struct {
-	kubeclient kubernetes.Interface
+	yachtController *yacht.Controller
 
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
-	workqueue workqueue.RateLimitingInterface
-
+	kubeClient   kubernetes.Interface
 	secretLister coreListers.SecretLister
-	secretSynced cache.InformerSynced
-
-	recorder    record.EventRecorder
-	SyncHandler SyncHandlerFunc
+	recorder     record.EventRecorder
+	syncHandler  SyncHandlerFunc
 }
 
-func NewController(kubeclient kubernetes.Interface, secretInformer coreInformers.SecretInformer,
-	recorder record.EventRecorder, syncHandler SyncHandlerFunc) (*Controller, error) {
-	if syncHandler == nil {
-		return nil, fmt.Errorf("syncHandler must be set")
-	}
-
+func NewController(
+	kubeClient kubernetes.Interface,
+	secretInformer coreInformers.SecretInformer,
+	recorder record.EventRecorder,
+	syncHandler SyncHandlerFunc,
+) (*Controller, error) {
 	c := &Controller{
-		kubeclient:   kubeclient,
-		workqueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Secret"),
+		kubeClient:   kubeClient,
 		secretLister: secretInformer.Lister(),
-		secretSynced: secretInformer.Informer().HasSynced,
 		recorder:     recorder,
-		SyncHandler:  syncHandler,
+		syncHandler:  syncHandler,
 	}
+	// create a yacht controller for secret
+	yachtController := yacht.NewController("secret").
+		WithCacheSynced(
+			secretInformer.Informer().HasSynced,
+		).
+		WithHandlerFunc(c.handle).
+		WithEnqueueFilterFunc(func(oldObj, newObj interface{}) (bool, error) {
+			// here we only focus on Secret "child-cluster-deployer" !!!
+			return isChildClusterDeployerSecret(oldObj) || isChildClusterDeployerSecret(newObj), nil
+		})
 
 	// Manage the addition/update of Secret
-	// here we only focus on Secret "child-cluster-deployer" !!!
-	_, err := secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addSecret,
-		UpdateFunc: c.updateSecret,
-		DeleteFunc: c.deleteSecret,
-	})
+	_, err := secretInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
 	if err != nil {
 		return nil, err
 	}
 
+	c.yachtController = yachtController
 	return c, nil
 }
 
@@ -95,150 +90,24 @@ func NewController(kubeclient kubernetes.Interface, secretInformer coreInformers
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
-	defer utilruntime.HandleCrash()
-	defer c.workqueue.ShutDown()
-
-	klog.Info("starting Secret controller...")
-	defer klog.Info("shutting down Secret controller")
-
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("secret-controller", stopCh, c.secretSynced) {
-		return
-	}
-
-	klog.V(5).Infof("starting %d worker threads", workers)
-	// Launch workers to process Secret resources
-	for i := 0; i < workers; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
-	}
-
-	<-stopCh
+func (c *Controller) Run(workers int, ctx context.Context) {
+	c.yachtController.WithWorkers(workers).Run(ctx)
 }
 
-func (c *Controller) addSecret(obj interface{}) {
-	secret := obj.(*corev1.Secret)
-
-	if secret.Name != known.ChildClusterSecretName {
-		return
-	}
-
-	klog.V(4).Infof("adding Secret %q", klog.KObj(secret))
-	c.enqueue(secret)
-}
-
-func (c *Controller) updateSecret(old, cur interface{}) {
-	secret := cur.(*corev1.Secret)
-	if secret.Name != known.ChildClusterSecretName {
-		return
-	}
-
-	if secret.DeletionTimestamp != nil {
-		klog.V(4).Infof("updating Secret %q", klog.KObj(secret))
-		c.enqueue(secret)
-		return
-	}
-}
-
-func (c *Controller) deleteSecret(obj interface{}) {
-	secret, ok := obj.(*corev1.Secret)
-	if !ok {
-		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
-		if !ok2 {
-			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
-			return
-		}
-		secret, ok2 = tombstone.Obj.(*corev1.Secret)
-		if !ok2 {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Secret %#v", obj))
-			return
-		}
-	}
-
-	if secret.Name != known.ChildClusterSecretName {
-		return
-	}
-
-	klog.V(4).Infof("deleting Secret %q", klog.KObj(secret))
-	c.enqueue(secret)
-}
-
-// runWorker is a long-running function that will continually call the
-// processNextWorkItem function in order to read and process a message on the
-// workqueue.
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
-
-// processNextWorkItem will read a single work item off the workqueue and
-// attempt to process it, by calling the syncHandler.
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	// We wrap this block in a func so we can defer c.workqueue.Done.
-	err := func(obj interface{}) error {
-		// We call Done here so the workqueue knows we have finished
-		// processing this item. We also must remember to call Forget if we
-		// do not want this work item being re-queued. For example, we do
-		// not call Forget if a transient error occurs, instead the item is
-		// put back on the workqueue and attempted again after a back-off
-		// period.
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
-		// workqueue.
-		if key, ok = obj.(string); !ok {
-			// As the item in the workqueue is actually invalid, we call
-			// Forget here else we'd go into a loop of attempting to
-			// process a work item that is invalid.
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		// Run the syncHandler, passing it the namespace/name string of the
-		// Secret resource to be synced.
-		if err := c.syncHandler(key); err != nil {
-			// Put the item back on the workqueue to handle any transient errors.
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		// Finally, if no error occurs we Forget this item so it does not
-		// get queued again until another change happens.
-		c.workqueue.Forget(obj)
-		klog.Infof("successfully synced Secret %q", key)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-// syncHandler compares the actual state with the desired, and attempts to
+// handle compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the Secret resource
 // with the current status of the resource.
-func (c *Controller) syncHandler(key string) error {
+func (c *Controller) handle(obj interface{}) (requeueAfter *time.Duration, err error) {
 	// If an error occurs during handling, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
 
 	// Convert the namespace/name string into a distinct namespace and name
+	key := obj.(string)
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
+		return nil, nil
 	}
 
 	klog.V(4).Infof("start processing Secret %q", key)
@@ -247,22 +116,22 @@ func (c *Controller) syncHandler(key string) error {
 	// The Secret resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Secret %q has been deleted", key)
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// add finalizer
 	secret := cachedSecret.DeepCopy()
 	if !utils.ContainsString(secret.Finalizers, known.AppFinalizer) && secret.DeletionTimestamp == nil {
 		secret.Finalizers = append(secret.Finalizers, known.AppFinalizer)
-		if secret, err = c.kubeclient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(),
+		if secret, err = c.kubeClient.CoreV1().Secrets(secret.Namespace).Update(context.TODO(),
 			secret, metav1.UpdateOptions{}); err != nil {
 			msg := fmt.Sprintf("failed to inject finalizer %s to Secret %s: %v", known.AppFinalizer, klog.KObj(secret), err)
 			klog.WarningDepth(4, msg)
 			c.recorder.Event(secret, corev1.EventTypeWarning, "FailedInjectingFinalizer", msg)
-			return err
+			return nil, err
 		}
 		msg := fmt.Sprintf("successfully inject finalizer %s to Secret %s", known.AppFinalizer, klog.KObj(secret))
 		klog.V(4).Info(msg)
@@ -271,23 +140,21 @@ func (c *Controller) syncHandler(key string) error {
 
 	secret.Kind = controllerKind.Kind
 	secret.APIVersion = controllerKind.Version
-	err = c.SyncHandler(secret)
+	err = c.syncHandler(secret)
 	if err != nil {
 		c.recorder.Event(secret, corev1.EventTypeWarning, "FailedSynced", err.Error())
 	} else {
 		c.recorder.Event(secret, corev1.EventTypeNormal, "Synced", "Secret synced successfully")
+		klog.Infof("successfully synced Secret %q", key)
 	}
-	return err
+	return nil, err
 }
 
-// enqueue takes a Secret resource and converts it into a namespace/name
-// string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Secret.
-func (c *Controller) enqueue(secret *corev1.Secret) {
-	key, err := cache.MetaNamespaceKeyFunc(secret)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
+func isChildClusterDeployerSecret(obj interface{}) bool {
+	if obj == nil {
+		return false
 	}
-	c.workqueue.Add(key)
+
+	secret := obj.(*corev1.Secret)
+	return secret.Name == known.ChildClusterSecretName
 }

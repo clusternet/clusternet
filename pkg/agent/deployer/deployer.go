@@ -158,8 +158,8 @@ func (d *Deployer) Run(
 	if err != nil {
 		return err
 	}
-	go genericDeployer.Run(workers, ctx.Done())
-	go helmDeployer.Run(workers, ctx.Done())
+	go genericDeployer.Run(workers, ctx)
+	go helmDeployer.Run(workers, ctx)
 
 	<-ctx.Done()
 	return nil

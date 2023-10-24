@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -69,24 +68,15 @@ var (
 // Controller is a controller that manages cluster's lifecycle
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
-
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
-	workqueue workqueue.RateLimitingInterface
-
-	recorder        record.EventRecorder
-	yachtController *yacht.Controller
-	clusterInformer clusterinformers.ManagedClusterInformer
+	recorder         record.EventRecorder
+	yachtController  *yacht.Controller
+	clusterInformer  clusterinformers.ManagedClusterInformer
 }
 
 func NewController(clusternetClient clusternetclientset.Interface,
 	clusterInformer clusterinformers.ManagedClusterInformer, recorder record.EventRecorder) (*Controller, error) {
 	c := &Controller{
 		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ManagedCluster"),
 		recorder:         recorder,
 		clusterInformer:  clusterInformer,
 	}
@@ -94,17 +84,21 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	yachtController := yacht.NewController("cluster-lifecycle").
 		WithHandlerFunc(c.handle).
 		WithEnqueueFilterFunc(func(oldObj, newObj interface{}) (bool, error) {
-			// update event
+			// UPDATE: status change
 			if oldObj != nil && newObj != nil {
 				oldMcls := oldObj.(*clusterapi.ManagedCluster)
 				newMcls := newObj.(*clusterapi.ManagedCluster)
-
+				if newMcls.DeletionTimestamp != nil {
+					return true, nil
+				}
 				// Decide whether discovery has reported a status change.
 				if equality.Semantic.DeepEqual(oldMcls.Status, newMcls.Status) {
 					klog.V(4).Infof("no updates on the status of ManagedCluster %s, skipping syncing", klog.KObj(oldMcls))
 					return false, nil
 				}
 			}
+
+			// ADD/DELETE/OTHER UPDATE
 			return true, nil
 		})
 

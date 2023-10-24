@@ -92,10 +92,15 @@ type Deployer struct {
 	deployContextMap sync.Map
 }
 
-func NewDeployer(apiserverURL, systemNamespace string,
-	clusternetClient *clusternetclientset.Clientset, kubeClient *kubernetes.Clientset,
-	clusternetInformerFactory clusternetinformers.SharedInformerFactory, kubeInformerFactory kubeinformers.SharedInformerFactory,
-	recorder record.EventRecorder, proxyingWithAnonymous bool) (*Deployer, error) {
+func NewDeployer(
+	apiserverURL, systemNamespace string,
+	clusternetClient *clusternetclientset.Clientset,
+	kubeClient *kubernetes.Clientset,
+	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
+	kubeInformerFactory kubeinformers.SharedInformerFactory,
+	recorder record.EventRecorder,
+	proxyingWithAnonymous bool,
+) (*Deployer, error) {
 
 	deployer := &Deployer{
 		apiserverURL:           apiserverURL,
@@ -148,13 +153,13 @@ func NewDeployer(apiserverURL, systemNamespace string,
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
+func (deployer *Deployer) Run(workers int, ctx context.Context) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
 
 	// Wait for the caches to be synced before starting workers
 	if !cache.WaitForNamedCacheSync("helm-deployer",
-		stopCh,
+		ctx.Done(),
 		deployer.chartSynced,
 		deployer.hrSynced,
 		deployer.descSynced,
@@ -164,12 +169,12 @@ func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
-	go deployer.helmReleaseController.Run(workers, stopCh)
-	go deployer.descriptionController.Run(workers, stopCh)
+	go deployer.helmReleaseController.Run(workers, ctx)
+	go deployer.descriptionController.Run(workers, ctx)
 	// 1 worker may get hang up, so we set minimum 2 workers here
-	go deployer.secretController.Run(2, stopCh)
+	go deployer.secretController.Run(2, ctx)
 
-	<-stopCh
+	<-ctx.Done()
 }
 
 func (deployer *Deployer) handleDescription(descCopy *appsapi.Description) error {

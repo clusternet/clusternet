@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dixudx/yacht"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,10 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -53,61 +52,78 @@ type SyncHandlerFunc func(subscription *appsapi.Subscription) error
 
 // Controller is a controller that maintains FeedInventory objects
 type Controller struct {
-	clusternetClient clusternetclientset.Interface
+	yachtController *yacht.Controller
 
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
-	workqueue workqueue.RateLimitingInterface
-
-	subLister      applisters.SubscriptionLister
-	subSynced      cache.InformerSynced
-	finvLister     applisters.FeedInventoryLister
-	finvSynced     cache.InformerSynced
-	manifestLister applisters.ManifestLister
-	manifestSynced cache.InformerSynced
-
-	recorder record.EventRecorder
-	registry Registry
+	clusternetClient      clusternetclientset.Interface
+	subLister             applisters.SubscriptionLister
+	finvLister            applisters.FeedInventoryLister
+	manifestLister        applisters.ManifestLister
+	recorder              record.EventRecorder
+	registry              Registry
+	customSyncHandlerFunc SyncHandlerFunc
 
 	// namespace where Manifests are created
-	reservedNamespace     string
-	customSyncHandlerFunc SyncHandlerFunc
+	reservedNamespace string
 }
 
-func NewController(clusternetClient clusternetclientset.Interface,
+func NewController(
+	clusternetClient clusternetclientset.Interface,
 	subsInformer appinformers.SubscriptionInformer,
 	finvInformer appinformers.FeedInventoryInformer,
 	manifestInformer appinformers.ManifestInformer,
-	recorder record.EventRecorder, registry Registry,
-	reservedNamespace string, customSyncHandlerFunc SyncHandlerFunc) (*Controller, error) {
+	recorder record.EventRecorder,
+	registry Registry,
+	reservedNamespace string,
+	customSyncHandlerFunc SyncHandlerFunc,
+) (*Controller, error) {
 	c := &Controller{
 		clusternetClient:      clusternetClient,
-		workqueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "FeedInventory"),
 		subLister:             subsInformer.Lister(),
-		subSynced:             subsInformer.Informer().HasSynced,
 		finvLister:            finvInformer.Lister(),
-		finvSynced:            finvInformer.Informer().HasSynced,
 		manifestLister:        manifestInformer.Lister(),
-		manifestSynced:        manifestInformer.Informer().HasSynced,
 		recorder:              recorder,
 		registry:              registry,
 		reservedNamespace:     reservedNamespace,
 		customSyncHandlerFunc: customSyncHandlerFunc,
 	}
+	// create a yacht controller for feedInventory
+	yachtController := yacht.NewController("feedInventory").
+		WithCacheSynced(
+			subsInformer.Informer().HasSynced,
+			finvInformer.Informer().HasSynced,
+			manifestInformer.Informer().HasSynced,
+		).
+		WithHandlerFunc(c.handle).
+		WithEnqueueFilterFunc(func(oldObj, newObj interface{}) (bool, error) {
+			// FeedInventory has the same name with Subscription
 
-	_, err := subsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addSubscription,
-		UpdateFunc: c.updateSubscription,
-	})
+			// UPDATE
+			if oldObj != nil && newObj != nil {
+				oldSub := oldObj.(*appsapi.Subscription)
+				newSub := newObj.(*appsapi.Subscription)
+
+				// Decide whether discovery has reported a spec change.
+				if reflect.DeepEqual(oldSub.Spec, newSub.Spec) {
+					klog.V(4).Infof("[FeedInventory] no updates on the spec of Subscription %s, skipping syncing", klog.KObj(newSub))
+					return false, nil
+				}
+			}
+
+			// ADD/DELETE/OTHER UPDATE
+			return true, nil
+		})
+
+	// Manage the addition/update of Subscription
+	_, err := subsInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
 	if err != nil {
 		return nil, err
 	}
 
 	_, err = finvInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		DeleteFunc: c.deleteFeedInventory,
+		DeleteFunc: func(obj interface{}) {
+			// FeedInventory has the same name with Subscription
+			yachtController.Enqueue(obj)
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -116,8 +132,22 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	// When a resource gets scaled, such as Deployment,
 	// re-enqueue all referring Subscription objects
 	_, err = manifestInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addManifest,
-		UpdateFunc: c.updateManifest,
+		AddFunc: func(obj interface{}) {
+			manifest := obj.(*appsapi.Manifest)
+			klog.V(4).Infof("[FeedInventory] adding Manifest %q", klog.KObj(manifest))
+			c.enqueueManifest(manifest)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldManifest := oldObj.(*appsapi.Manifest)
+			newManifest := newObj.(*appsapi.Manifest)
+			// Decide whether discovery has reported a spec change.
+			if reflect.DeepEqual(oldManifest.Template, newManifest.Template) {
+				klog.V(4).Infof("[FeedInventory] no updates on Manifest template %s, skipping syncing", klog.KObj(oldManifest))
+				return
+			}
+			klog.V(4).Infof("[FeedInventory] updating Manifest %q", klog.KObj(oldManifest))
+			c.enqueueManifest(newManifest)
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -125,6 +155,7 @@ func NewController(clusternetClient clusternetclientset.Interface,
 
 	// TODO: helm charts ?
 
+	c.yachtController = yachtController
 	return c, nil
 }
 
@@ -132,63 +163,59 @@ func NewController(clusternetClient clusternetclientset.Interface,
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
-	defer utilruntime.HandleCrash()
-	defer c.workqueue.ShutDown()
-
-	klog.Info("starting feedInventory controller...")
-	defer klog.Info("shutting down feedInventory controller")
-
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("feedInventory-controller", stopCh,
-		c.subSynced, c.finvSynced, c.manifestSynced) {
-		return
-	}
-
-	klog.V(5).Infof("starting %d worker threads", workers)
-	// Launch workers to process Subscription resources
-	for i := 0; i < workers; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
-	}
-
-	<-stopCh
+func (c *Controller) Run(workers int, ctx context.Context) {
+	c.yachtController.WithWorkers(workers).Run(ctx)
 }
 
-func (c *Controller) addSubscription(obj interface{}) {
-	sub := obj.(*appsapi.Subscription)
-	klog.V(4).Infof("[FeedInventory] adding Subscription %q", klog.KObj(sub))
-	c.enqueue(sub)
-}
+// handle compares the actual state with the desired, and attempts to
+// converge the two. It then updates the Status block of the Subscription resource
+// with the current status of the resource.
+func (c *Controller) handle(obj interface{}) (requeueAfter *time.Duration, err error) {
+	// If an error occurs during handling, we'll requeue the item so we can
+	// attempt processing again later. This could have been caused by a
+	// temporary network failure, or any other transient reason.
 
-func (c *Controller) updateSubscription(old, cur interface{}) {
-	oldSub := old.(*appsapi.Subscription)
-	newSub := cur.(*appsapi.Subscription)
-
-	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldSub.Spec, newSub.Spec) {
-		klog.V(4).Infof("[FeedInventory] no updates on the spec of Subscription %s, skipping syncing", klog.KObj(newSub))
-		return
-	}
-
-	klog.V(4).Infof("[FeedInventory] updating Subscription %q", klog.KObj(newSub))
-	c.enqueue(newSub)
-}
-
-// enqueue takes a Subscription resource and converts it into a namespace/name
-// string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Subscription.
-func (c *Controller) enqueue(sub *appsapi.Subscription) {
-	key, err := cache.MetaNamespaceKeyFunc(sub)
+	// Convert the namespace/name string into a distinct namespace and name
+	key := obj.(string)
+	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		utilruntime.HandleError(err)
-		return
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil, nil
 	}
-	c.workqueue.Add(key)
+
+	klog.V(4).Infof("[FeedInventory] start processing Subscription %q", key)
+	// Get the Subscription resource with this name
+	cachedSub, err := c.subLister.Subscriptions(ns).Get(name)
+	// The Subscription resource may no longer exist, in which case we stop processing.
+	if apierrors.IsNotFound(err) {
+		klog.V(2).Infof("Subscription %q has been deleted", key)
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	sub := cachedSub.DeepCopy()
+	if sub.DeletionTimestamp != nil {
+		return nil, nil
+	}
+
+	if sub.Spec.SchedulingStrategy != appsapi.DividingSchedulingStrategyType {
+		return nil, nil
+	}
+
+	sub.Kind = subKind.Kind
+	sub.APIVersion = subKind.GroupVersion().String()
+	if c.customSyncHandlerFunc != nil {
+		return nil, c.customSyncHandlerFunc(sub)
+	}
+	return nil, c.handleSubscription(sub)
 }
 
 // enqueueManifest takes a Manifest resource and converts it into a namespace/name
 // string which is then put onto the work queue.
-func (c *Controller) enqueueManifest(manifest *appsapi.Manifest) {
+func (c *Controller) enqueueManifest(obj interface{}) {
+	manifest := obj.(*appsapi.Manifest)
 	if manifest.DeletionTimestamp != nil {
 		return
 	}
@@ -213,141 +240,8 @@ func (c *Controller) enqueueManifest(manifest *appsapi.Manifest) {
 	}
 
 	for _, sub := range allSubs {
-		c.enqueue(sub)
+		c.yachtController.Enqueue(sub)
 	}
-}
-
-func (c *Controller) addManifest(obj interface{}) {
-	manifest := obj.(*appsapi.Manifest)
-	klog.V(4).Infof("[FeedInventory] adding Manifest %q", klog.KObj(manifest))
-	c.enqueueManifest(manifest)
-}
-
-func (c *Controller) updateManifest(old, cur interface{}) {
-	oldManifest := old.(*appsapi.Manifest)
-	newManifest := cur.(*appsapi.Manifest)
-
-	// Decide whether discovery has reported a spec change.
-	if reflect.DeepEqual(oldManifest.Template, newManifest.Template) {
-		klog.V(4).Infof("[FeedInventory] no updates on Manifest template %s, skipping syncing", klog.KObj(oldManifest))
-		return
-	}
-
-	klog.V(4).Infof("[FeedInventory] updating Manifest %q", klog.KObj(oldManifest))
-	c.enqueueManifest(newManifest)
-}
-
-func (c *Controller) deleteFeedInventory(obj interface{}) {
-	finv := obj.(*appsapi.FeedInventory)
-	klog.V(4).Infof("[FeedInventory] deleting FeedInventory %q", klog.KObj(finv))
-	c.workqueue.Add(klog.KObj(finv))
-}
-
-// runWorker is a long-running function that will continually call the
-// processNextWorkItem function in order to read and process a message on the
-// workqueue.
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
-
-// processNextWorkItem will read a single work item off the workqueue and
-// attempt to process it, by calling the syncHandler.
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	// We wrap this block in a func so we can defer c.workqueue.Done.
-	err := func(obj interface{}) error {
-		// We call Done here so the workqueue knows we have finished
-		// processing this item. We also must remember to call Forget if we
-		// do not want this work item being re-queued. For example, we do
-		// not call Forget if a transient error occurs, instead the item is
-		// put back on the workqueue and attempted again after a back-off
-		// period.
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
-		// workqueue.
-		if key, ok = obj.(string); !ok {
-			// As the item in the workqueue is actually invalid, we call
-			// Forget here else we'd go into a loop of attempting to
-			// process a work item that is invalid.
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		// Run the syncHandler, passing it the namespace/name string of the
-		// Subscription resource to be synced.
-		if err := c.syncHandler(key); err != nil {
-			// Put the item back on the workqueue to handle any transient errors.
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		// Finally, if no error occurs we Forget this item so it does not
-		// get queued again until another change happens.
-		c.workqueue.Forget(obj)
-		klog.Infof("[FeedInventory] successfully synced Subscription %q", key)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-// syncHandler compares the actual state with the desired, and attempts to
-// converge the two. It then updates the Status block of the Subscription resource
-// with the current status of the resource.
-func (c *Controller) syncHandler(key string) error {
-	// If an error occurs during handling, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
-
-	// Convert the namespace/name string into a distinct namespace and name
-	ns, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
-	}
-
-	klog.V(4).Infof("[FeedInventory] start processing Subscription %q", key)
-	// Get the Subscription resource with this name
-	cachedSub, err := c.subLister.Subscriptions(ns).Get(name)
-	// The Subscription resource may no longer exist, in which case we stop processing.
-	if apierrors.IsNotFound(err) {
-		klog.V(2).Infof("Subscription %q has been deleted", key)
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	sub := cachedSub.DeepCopy()
-	if sub.DeletionTimestamp != nil {
-		return nil
-	}
-
-	if sub.Spec.SchedulingStrategy != appsapi.DividingSchedulingStrategyType {
-		return nil
-	}
-
-	sub.Kind = subKind.Kind
-	sub.APIVersion = subKind.GroupVersion().String()
-	if c.customSyncHandlerFunc != nil {
-		return c.customSyncHandlerFunc(sub)
-	}
-	return c.handleSubscription(sub)
 }
 
 func (c *Controller) handleSubscription(sub *appsapi.Subscription) error {
@@ -444,6 +338,7 @@ func (c *Controller) handleSubscription(sub *appsapi.Subscription) error {
 		c.recorder.Event(sub, corev1.EventTypeWarning, "FeedInventoryNotSynced", err.Error())
 	} else {
 		c.recorder.Event(sub, corev1.EventTypeNormal, "FeedInventorySynced", "FeedInventory synced successfully")
+		klog.Infof("[FeedInventory] successfully synced Subscription %q", klog.KObj(sub).String())
 	}
 	return err
 }
