@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  fossa-key: cdfdc6e7b23f5026369e7a22767043ec # This is a public key only for pushing, it's safe here
-
 jobs:
   build:
     if: github.repository_owner == 'clusternet'
@@ -25,10 +22,10 @@ jobs:
       - uses: fossas/fossa-action@main
         name: Scanning with FOSSA
         with:
-          api-key: ${{ env.fossa-key }}
+          api-key: ${{ secrets.FOSSAAPIKEY }}
           branch: ${{ steps.branch-name.outputs.current_branch }}
       - uses: fossas/fossa-action@main
         name: Executing tests with FOSSA
         with:
-          api-key: ${{ env.fossa-key }}
+          api-key: ${{ secrets.FOSSAAPIKEY }}
           run-tests: true
