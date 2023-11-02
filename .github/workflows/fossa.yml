@@ -22,10 +22,10 @@ jobs:
       - uses: fossas/fossa-action@main
         name: Scanning with FOSSA
         with:
-          api-key: ${{ secrets.FOSSAAPIKEY }}
+          api-key: fd54541712e36e546e713482332962f7
           branch: ${{ steps.branch-name.outputs.current_branch }}
       - uses: fossas/fossa-action@main
         name: Executing tests with FOSSA
         with:
-          api-key: ${{ secrets.FOSSAAPIKEY }}
+          api-key: fd54541712e36e546e713482332962f7
           run-tests: true
