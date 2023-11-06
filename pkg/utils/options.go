@@ -58,6 +58,9 @@ func NewControllerOptions(resourceName, resourceNamespace string) (*ControllerOp
 		LeaderElection:   componentbaseconfig.LeaderElectionConfiguration{},
 		Logs:             logs.NewOptions(),
 	}
+	// Set the default log level to 2
+	// k8s.io/apimachinery/pkg/util/runtime uses 2 as the default level for runtime errors
+	o.Logs.Verbosity = logsapi.VerbosityLevel(2)
 
 	controllerScheme := runtime.NewScheme()
 	utilruntime.Must(componentbaseconfigv1alpha1.AddToScheme(controllerScheme))
