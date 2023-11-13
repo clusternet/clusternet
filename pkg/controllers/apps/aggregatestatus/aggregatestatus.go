@@ -18,13 +18,13 @@ package aggregatestatus
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/dixudx/yacht"
+	jsoniter "github.com/json-iterator/go"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -53,6 +53,8 @@ const (
 	// JobKind defined resource is a job
 	JobKind = "Job"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Controller is a controller that handles Description
 type Controller struct {

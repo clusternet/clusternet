@@ -18,11 +18,11 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
 
+	jsoniter "github.com/json-iterator/go"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -43,6 +43,8 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type Manager struct {
 	// statusReportFrequency is the frequency at which the agent reports current cluster's status

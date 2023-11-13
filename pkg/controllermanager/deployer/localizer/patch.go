@@ -17,7 +17,6 @@ limitations under the License.
 package localizer
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"

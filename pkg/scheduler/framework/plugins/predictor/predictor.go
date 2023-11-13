@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	restclient "k8s.io/client-go/rest"
@@ -50,6 +50,8 @@ const (
 	// DefaultTimeout is the default timeout for a predictor request.
 	DefaultTimeout = time.Second * 20
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var _ framework.PredictPlugin = &Predictor{}
 

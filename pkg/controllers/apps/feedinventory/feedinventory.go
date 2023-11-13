@@ -18,13 +18,13 @@ package feedinventory
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
 	"time"
 
 	"github.com/dixudx/yacht"
+	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +44,8 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var subKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
 

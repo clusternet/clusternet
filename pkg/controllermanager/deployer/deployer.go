@@ -18,7 +18,6 @@ package deployer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -26,6 +25,7 @@ import (
 	"strings"
 	"sync"
 
+	jsoniter "github.com/json-iterator/go"
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/repo"
@@ -73,6 +73,8 @@ var (
 	baseKind                    = appsapi.SchemeGroupVersion.WithKind("Base")
 	deletePropagationBackground = metav1.DeletePropagationBackground
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Deployer defines configuration for the application deployer
 type Deployer struct {

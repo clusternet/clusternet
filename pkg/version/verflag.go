@@ -17,15 +17,17 @@ limitations under the License.
 package version
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
+	jsoniter "github.com/json-iterator/go"
 	flag "github.com/spf13/pflag"
 	apimachineryversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/pkg/version"
 	"sigs.k8s.io/yaml"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var (
 	versionFlag *string

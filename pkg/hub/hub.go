@@ -18,7 +18,6 @@ package hub
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -27,6 +26,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/rancher/remotedialer"
 	coordinationapi "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -65,6 +65,8 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	// peerLeasePrefix specifies the prefix name for clusternet-hub lease objects

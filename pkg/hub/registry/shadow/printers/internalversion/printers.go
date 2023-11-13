@@ -20,7 +20,6 @@ package internalversion
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -28,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apiserverinternalv1alpha1 "k8s.io/api/apiserverinternal/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -67,6 +67,8 @@ import (
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers"
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	loadBalancerWidth = 16

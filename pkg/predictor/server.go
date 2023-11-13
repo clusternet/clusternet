@@ -18,13 +18,13 @@ package predictor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sync/atomic"
 
 	"github.com/emicklei/go-restful/v3"
+	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -48,6 +48,8 @@ import (
 	frameworkruntime "github.com/clusternet/clusternet/pkg/predictor/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	nodeNameKeyIndex = "spec.nodeName"

@@ -19,14 +19,16 @@ limitations under the License.
 package apis
 
 import (
-	"encoding/json"
 	"math"
 
+	jsoniter "github.com/json-iterator/go"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // SchedulerConfiguration configures a scheduler
 type SchedulerConfiguration struct {

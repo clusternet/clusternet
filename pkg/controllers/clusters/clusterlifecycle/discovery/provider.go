@@ -18,10 +18,10 @@ package discovery
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	jsoniter "github.com/json-iterator/go"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -33,6 +33,8 @@ import (
 
 	"github.com/clusternet/clusternet/pkg/known"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	clusterAPISecret = "clusternet-cluster-api"

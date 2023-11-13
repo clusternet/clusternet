@@ -17,7 +17,6 @@ limitations under the License.
 package utils
 
 import (
-	"encoding/json"
 	"testing"
 
 	utilpointer "k8s.io/utils/pointer"

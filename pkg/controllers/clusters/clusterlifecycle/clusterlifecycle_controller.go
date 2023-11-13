@@ -18,11 +18,11 @@ package clusterlifecycle
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/dixudx/yacht"
+	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -64,6 +64,8 @@ var (
 		known.TaintClusterUnschedulable: clusterapi.ClusterReady,
 	}
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Controller is a controller that manages cluster's lifecycle
 type Controller struct {

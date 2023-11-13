@@ -17,13 +17,14 @@ limitations under the License.
 package deployment
 
 import (
-	"encoding/json"
-
+	jsoniter "github.com/json-iterator/go"
 	k8sappsv1 "k8s.io/api/apps/v1"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/feedinventory/utils"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type Plugin struct {
 	name string

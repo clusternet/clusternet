@@ -18,13 +18,13 @@ package helm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 
+	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +54,8 @@ import (
 var (
 	descriptionKind = appsapi.SchemeGroupVersion.WithKind("Description")
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type Deployer struct {
 	helmReleaseController *helmrelease.Controller
