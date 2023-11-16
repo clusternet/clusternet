@@ -27,7 +27,6 @@ import (
 	"strings"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apiserverinternalv1alpha1 "k8s.io/api/apiserverinternal/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -66,9 +65,8 @@ import (
 
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers"
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
+	pkgutils "github.com/clusternet/clusternet/pkg/utils"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	loadBalancerWidth = 16
@@ -3089,7 +3087,7 @@ func SubjectsStrings(subjects []rbacv1.Subject) ([]string, []string, []string, [
 func ObjectConvertToUnstructured(object runtime.Object) (*unstructured.Unstructured, error) {
 	var raw []byte
 	var err error
-	if raw, err = json.Marshal(object); err != nil {
+	if raw, err = pkgutils.Marshal(object); err != nil {
 		return nil, err
 	}
 	unstructed := &unstructured.Unstructured{}

@@ -25,7 +25,6 @@ import (
 	"strings"
 	"sync"
 
-	jsoniter "github.com/json-iterator/go"
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/repo"
@@ -73,8 +72,6 @@ var (
 	baseKind                    = appsapi.SchemeGroupVersion.WithKind("Base")
 	deletePropagationBackground = metav1.DeletePropagationBackground
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Deployer defines configuration for the application deployer
 type Deployer struct {
@@ -860,7 +857,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		desc.Spec.Deployer = appsapi.DescriptionHelmDeployer
 		desc.Spec.Charts = allChartRefs
 		for _, chart2 := range allCharts {
-			chartByte, err2 := json.Marshal(chart2)
+			chartByte, err2 := utils.Marshal(chart2)
 			if err2 != nil {
 				allErrs = append(allErrs, err2)
 				continue

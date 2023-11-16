@@ -24,7 +24,6 @@ import (
 	"sync/atomic"
 
 	"github.com/emicklei/go-restful/v3"
-	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -47,9 +46,8 @@ import (
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/predictor/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	nodeNameKeyIndex = "spec.nodeName"
@@ -217,7 +215,7 @@ func (s *Server) installDefaultHandlers(ctx context.Context) {
 		}
 
 		var require appsapi.ReplicaRequirements
-		err = json.Unmarshal(data, &require)
+		err = utils.Unmarshal(data, &require)
 		if err != nil {
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return

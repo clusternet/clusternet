@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/dixudx/yacht"
-	jsoniter "github.com/json-iterator/go"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -43,6 +42,7 @@ import (
 	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -53,8 +53,6 @@ const (
 	// JobKind defined resource is a job
 	JobKind = "Job"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Controller is a controller that handles Description
 type Controller struct {
@@ -399,7 +397,7 @@ func (c *Controller) getDeploymentReplicaStatus(manifeststatus appsapi.ManifestS
 	}
 
 	temp := &appsv1.DeploymentStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal ObservedStatus status")
 		return nil, err
 	}
@@ -425,7 +423,7 @@ func (c *Controller) getStatefulSetReplicaStatus(manifeststatus appsapi.Manifest
 	}
 
 	temp := &appsv1.StatefulSetStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal status")
 		return nil, err
 	}
@@ -450,7 +448,7 @@ func (c *Controller) getJobReplicaStatus(manifeststatus appsapi.ManifestStatus) 
 	}
 
 	temp := &batchv1.JobStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal status")
 		return nil, err
 	}

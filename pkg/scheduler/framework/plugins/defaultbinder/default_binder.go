@@ -22,7 +22,6 @@ import (
 	"sort"
 
 	jsonpatch "github.com/evanphx/json-patch"
-	jsoniter "github.com/json-iterator/go"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -33,8 +32,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Name is the name of the plugin used in the plugin registry and configurations.
 const Name = names.DefaultBinder
@@ -70,11 +67,11 @@ func (pl *DefaultBinder) Bind(ctx context.Context, state *framework.CycleState, 
 	subCopy.Status.SpecHash = utils.HashSubscriptionSpec(&subCopy.Spec)
 	subCopy.Status.DesiredReleases = len(targetClusters.BindingClusters)
 
-	oldData, err := json.Marshal(sub)
+	oldData, err := utils.Marshal(sub)
 	if err != nil {
 		return framework.AsStatus(fmt.Errorf("failed to marshal original subscription: %v", err))
 	}
-	newData, err := json.Marshal(subCopy)
+	newData, err := utils.Marshal(subCopy)
 	if err != nil {
 		return framework.AsStatus(fmt.Errorf("failed to marshal new subscription: %v", err))
 	}

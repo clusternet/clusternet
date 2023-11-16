@@ -27,7 +27,6 @@ import (
 	"strings"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	restclient "k8s.io/client-go/rest"
@@ -41,6 +40,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/features"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -50,8 +50,6 @@ const (
 	// DefaultTimeout is the default timeout for a predictor request.
 	DefaultTimeout = time.Second * 20
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var _ framework.PredictPlugin = &Predictor{}
 
@@ -145,7 +143,7 @@ func predictMaxAcceptableReplicas(
 	address string,
 	require appsapi.ReplicaRequirements,
 ) (map[string]int32, error) {
-	payload, err := json.Marshal(require)
+	payload, err := utils.Marshal(require)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +170,7 @@ func predictMaxAcceptableReplicas(
 	}
 
 	predictorResults := &schedulerapi.PredictorResults{}
-	err = json.Unmarshal(data, predictorResults)
+	err = utils.Unmarshal(data, predictorResults)
 	if err != nil {
 		return nil, err
 	}

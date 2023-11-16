@@ -21,14 +21,13 @@ package apis
 import (
 	"math"
 
-	jsoniter "github.com/json-iterator/go"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
-)
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	"github.com/clusternet/clusternet/pkg/utils"
+)
 
 // SchedulerConfiguration configures a scheduler
 type SchedulerConfiguration struct {
@@ -106,7 +105,7 @@ func (r *RawExtension) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 	var err error
-	r.Raw, err = json.Marshal(tmp)
+	r.Raw, err = utils.Marshal(tmp)
 	return err
 }
 

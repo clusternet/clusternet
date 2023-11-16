@@ -22,7 +22,6 @@ import (
 	"os"
 	"reflect"
 
-	jsoniter "github.com/json-iterator/go"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -43,8 +42,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type Manager struct {
 	// statusReportFrequency is the frequency at which the agent reports current cluster's status
@@ -189,12 +186,12 @@ func patchManagedClusterTwoWayMergeLabels(client clusternetclientset.Interface, 
 	actualCopy := mcls.DeepCopy()
 	actualCopy.Labels = newLabels
 
-	oldData, err := json.Marshal(mcls)
+	oldData, err := utils.Marshal(mcls)
 	if err != nil {
 		return nil, err
 	}
 
-	newData, err := json.Marshal(actualCopy)
+	newData, err := utils.Marshal(actualCopy)
 	if err != nil {
 		return nil, err
 	}

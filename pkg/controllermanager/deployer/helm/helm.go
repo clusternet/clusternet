@@ -24,7 +24,6 @@ import (
 	"strings"
 	"sync"
 
-	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,8 +53,6 @@ import (
 var (
 	descriptionKind = appsapi.SchemeGroupVersion.WithKind("Description")
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 type Deployer struct {
 	helmReleaseController *helmrelease.Controller
@@ -256,7 +253,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 	var allErrs []error
 	for idx, chartRef := range desc.Spec.Charts {
 		chart := &appsapi.HelmChart{}
-		if err = json.Unmarshal(desc.Spec.ChartRaw[idx], chart); err != nil {
+		if err = utils.Unmarshal(desc.Spec.ChartRaw[idx], chart); err != nil {
 			return err
 		}
 		defaultLabels := map[string]string{

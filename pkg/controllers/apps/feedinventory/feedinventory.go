@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/dixudx/yacht"
-	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,8 +43,6 @@ import (
 	"github.com/clusternet/clusternet/pkg/known"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var subKind = appsapi.SchemeGroupVersion.WithKind("Subscription")
 
@@ -347,7 +344,7 @@ func (c *Controller) handleSubscription(sub *appsapi.Subscription) error {
 
 func getGroupVersionKind(rawData []byte) (schema.GroupVersionKind, error) {
 	object := &unstructured.Unstructured{}
-	if err := json.Unmarshal(rawData, object); err != nil {
+	if err := utils.Unmarshal(rawData, object); err != nil {
 		return schema.GroupVersionKind{}, err
 	}
 

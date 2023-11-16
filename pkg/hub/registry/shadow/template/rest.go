@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"strings"
 
-	jsoniter "github.com/json-iterator/go"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
@@ -54,9 +53,8 @@ import (
 	printerstorage "github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/storage"
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	CoreGroupPrefix  = "api"
@@ -187,7 +185,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 
 	oldObj := &unstructured.Unstructured{}
-	if err = json.Unmarshal(manifest.Template.Raw, oldObj); err != nil {
+	if err = utils.Unmarshal(manifest.Template.Raw, oldObj); err != nil {
 		return nil, false, errors.NewInternalError(err)
 	}
 

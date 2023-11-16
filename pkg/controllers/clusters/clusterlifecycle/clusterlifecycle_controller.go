@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/dixudx/yacht"
-	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -38,6 +37,7 @@ import (
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusterinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 	taintutils "github.com/clusternet/clusternet/pkg/utils/taints"
 )
 
@@ -64,8 +64,6 @@ var (
 		known.TaintClusterUnschedulable: clusterapi.ClusterReady,
 	}
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Controller is a controller that manages cluster's lifecycle
 type Controller struct {
@@ -242,11 +240,11 @@ func patchClusterTaints(ctx context.Context, client clusternetclientset.Interfac
 	}
 
 	// patch ManagedCluster
-	oldData, err := json.Marshal(cluster)
+	oldData, err := utils.Marshal(cluster)
 	if err != nil {
 		return err
 	}
-	newData, err := json.Marshal(newCluster)
+	newData, err := utils.Marshal(newCluster)
 	if err != nil {
 		return err
 	}

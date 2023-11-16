@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"sort"
 
-	jsoniter "github.com/json-iterator/go"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,8 +81,6 @@ var (
 		},
 	}
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Localizer defines configuration for the application localization
 type Localizer struct {
@@ -342,7 +339,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 	case appsapi.DescriptionGenericDeployer:
 		for idx, rawObject := range desc.Spec.Raw {
 			obj := &unstructured.Unstructured{}
-			if err := json.Unmarshal(rawObject, obj); err != nil {
+			if err := utils.Unmarshal(rawObject, obj); err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}

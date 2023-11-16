@@ -21,3 +21,18 @@ import (
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
+
+// Marshal is a shadow function.
+func Marshal(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+// Unmarshal is a shadow function.
+func Unmarshal(data []byte, v any) error {
+	return json.Unmarshal(data, v)
+}
+
+// MarshalIndent is a shadow function.
+func MarshalIndent(v interface{}, prefix, indent string) ([]byte, error) {
+	return json.MarshalIndent(v, prefix, indent)
+}

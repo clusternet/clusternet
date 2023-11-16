@@ -20,14 +20,13 @@ import (
 	"fmt"
 	"os"
 
-	jsoniter "github.com/json-iterator/go"
 	flag "github.com/spf13/pflag"
 	apimachineryversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/pkg/version"
 	"sigs.k8s.io/yaml"
-)
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	"github.com/clusternet/clusternet/pkg/utils"
+)
 
 var (
 	versionFlag *string
@@ -65,7 +64,7 @@ func PrintAndExitIfRequested(programName string) error {
 		}
 		fmt.Printf("%s\n", string(y))
 	case "json":
-		y, err := json.MarshalIndent(&curVersion, "", "  ")
+		y, err := utils.MarshalIndent(&curVersion, "", "  ")
 		if err != nil {
 			return err
 		}
