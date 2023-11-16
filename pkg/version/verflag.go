@@ -17,7 +17,6 @@ limitations under the License.
 package version
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -25,6 +24,8 @@ import (
 	apimachineryversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/pkg/version"
 	"sigs.k8s.io/yaml"
+
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 var (
@@ -63,7 +64,7 @@ func PrintAndExitIfRequested(programName string) error {
 		}
 		fmt.Printf("%s\n", string(y))
 	case "json":
-		y, err := json.MarshalIndent(&curVersion, "", "  ")
+		y, err := utils.MarshalIndent(&curVersion, "", "  ")
 		if err != nil {
 			return err
 		}

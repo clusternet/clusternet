@@ -18,7 +18,6 @@ package feedinventory
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -345,7 +344,7 @@ func (c *Controller) handleSubscription(sub *appsapi.Subscription) error {
 
 func getGroupVersionKind(rawData []byte) (schema.GroupVersionKind, error) {
 	object := &unstructured.Unstructured{}
-	if err := json.Unmarshal(rawData, object); err != nil {
+	if err := utils.Unmarshal(rawData, object); err != nil {
 		return schema.GroupVersionKind{}, err
 	}
 

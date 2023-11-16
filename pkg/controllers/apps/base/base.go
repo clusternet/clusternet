@@ -18,7 +18,6 @@ package base
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -244,7 +243,7 @@ func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*stri
 
 	klog.V(5).Infof("patching Base %s labels", klog.KObj(base))
 	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
-	patchData, err := json.Marshal(option)
+	patchData, err := utils.Marshal(option)
 	if err != nil {
 		return nil, err
 	}

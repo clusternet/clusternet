@@ -18,7 +18,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -187,12 +186,12 @@ func patchManagedClusterTwoWayMergeLabels(client clusternetclientset.Interface, 
 	actualCopy := mcls.DeepCopy()
 	actualCopy.Labels = newLabels
 
-	oldData, err := json.Marshal(mcls)
+	oldData, err := utils.Marshal(mcls)
 	if err != nil {
 		return nil, err
 	}
 
-	newData, err := json.Marshal(actualCopy)
+	newData, err := utils.Marshal(actualCopy)
 	if err != nil {
 		return nil, err
 	}

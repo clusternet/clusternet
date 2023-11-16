@@ -18,7 +18,6 @@ package aggregatestatus
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -43,6 +42,7 @@ import (
 	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -397,7 +397,7 @@ func (c *Controller) getDeploymentReplicaStatus(manifeststatus appsapi.ManifestS
 	}
 
 	temp := &appsv1.DeploymentStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal ObservedStatus status")
 		return nil, err
 	}
@@ -423,7 +423,7 @@ func (c *Controller) getStatefulSetReplicaStatus(manifeststatus appsapi.Manifest
 	}
 
 	temp := &appsv1.StatefulSetStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal status")
 		return nil, err
 	}
@@ -448,7 +448,7 @@ func (c *Controller) getJobReplicaStatus(manifeststatus appsapi.ManifestStatus) 
 	}
 
 	temp := &batchv1.JobStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal status")
 		return nil, err
 	}

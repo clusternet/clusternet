@@ -18,7 +18,6 @@ package globalization
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -239,7 +238,7 @@ func (c *Controller) patchGlobalizationLabels(glob *appsapi.Globalization, label
 
 	klog.V(5).Infof("patching Globalization %s labels", klog.KObj(glob))
 	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
-	patchData, err := json.Marshal(option)
+	patchData, err := utils.Marshal(option)
 	if err != nil {
 		return nil, err
 	}

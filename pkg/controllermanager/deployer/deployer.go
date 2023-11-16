@@ -18,7 +18,6 @@ package deployer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -858,7 +857,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		desc.Spec.Deployer = appsapi.DescriptionHelmDeployer
 		desc.Spec.Charts = allChartRefs
 		for _, chart2 := range allCharts {
-			chartByte, err2 := json.Marshal(chart2)
+			chartByte, err2 := utils.Marshal(chart2)
 			if err2 != nil {
 				allErrs = append(allErrs, err2)
 				continue

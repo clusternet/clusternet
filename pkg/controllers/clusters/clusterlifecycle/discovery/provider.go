@@ -18,7 +18,6 @@ package discovery
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -32,6 +31,7 @@ import (
 	utilpointer "k8s.io/utils/pointer"
 
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -66,13 +66,13 @@ func fetchRegistrationConfig(ctx context.Context, secretInterface corev1.SecretI
 
 // getRegistrationConfigFromSecret parses RegistrationConfig from secret data
 func getRegistrationConfigFromSecret(secret *v1.Secret) (*RegistrationConfig, error) {
-	data, err := json.Marshal(secret.Data)
+	data, err := utils.Marshal(secret.Data)
 	if err != nil {
 		return nil, err
 	}
 
 	regConfig := &RegistrationConfig{}
-	err = json.Unmarshal(data, regConfig)
+	err = utils.Unmarshal(data, regConfig)
 	if err != nil {
 		return nil, err
 	}

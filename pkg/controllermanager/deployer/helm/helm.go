@@ -18,7 +18,6 @@ package helm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -254,7 +253,7 @@ func (deployer *Deployer) populateHelmRelease(desc *appsapi.Description) error {
 	var allErrs []error
 	for idx, chartRef := range desc.Spec.Charts {
 		chart := &appsapi.HelmChart{}
-		if err = json.Unmarshal(desc.Spec.ChartRaw[idx], chart); err != nil {
+		if err = utils.Unmarshal(desc.Spec.ChartRaw[idx], chart); err != nil {
 			return err
 		}
 		defaultLabels := map[string]string{
