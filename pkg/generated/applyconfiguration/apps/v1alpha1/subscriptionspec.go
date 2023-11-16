@@ -29,6 +29,8 @@ type SubscriptionSpecApplyConfiguration struct {
 	SchedulingBySubGroup *bool                                 `json:"schedulingBySubGroup,omitempty"`
 	SchedulingStrategy   *v1alpha1.SchedulingStrategyType      `json:"schedulingStrategy,omitempty"`
 	DividingScheduling   *DividingSchedulingApplyConfiguration `json:"dividingScheduling,omitempty"`
+	Priority             *int32                                `json:"priority,omitempty"`
+	PreemptionPolicy     *v1alpha1.PreemptionPolicy            `json:"preemptionPolicy,omitempty"`
 	Subscribers          []SubscriberApplyConfiguration        `json:"subscribers,omitempty"`
 	ClusterTolerations   []v1.Toleration                       `json:"clusterTolerations,omitempty"`
 	Feeds                []FeedApplyConfiguration              `json:"feeds,omitempty"`
@@ -69,6 +71,22 @@ func (b *SubscriptionSpecApplyConfiguration) WithSchedulingStrategy(value v1alph
 // If called multiple times, the DividingScheduling field is set to the value of the last call.
 func (b *SubscriptionSpecApplyConfiguration) WithDividingScheduling(value *DividingSchedulingApplyConfiguration) *SubscriptionSpecApplyConfiguration {
 	b.DividingScheduling = value
+	return b
+}
+
+// WithPriority sets the Priority field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Priority field is set to the value of the last call.
+func (b *SubscriptionSpecApplyConfiguration) WithPriority(value int32) *SubscriptionSpecApplyConfiguration {
+	b.Priority = &value
+	return b
+}
+
+// WithPreemptionPolicy sets the PreemptionPolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PreemptionPolicy field is set to the value of the last call.
+func (b *SubscriptionSpecApplyConfiguration) WithPreemptionPolicy(value v1alpha1.PreemptionPolicy) *SubscriptionSpecApplyConfiguration {
+	b.PreemptionPolicy = &value
 	return b
 }
 
