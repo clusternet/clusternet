@@ -440,6 +440,21 @@ spec:
                   - name
                   type: object
                 type: array
+              preemptionPolicy:
+                default: PreemptLowerPriority
+                description: PreemptionPolicy is the Policy for preempting subscriptions
+                  with lower priority. One of Never, PreemptLowerPriority. Defaults
+                  to PreemptLowerPriority if unset.
+                enum:
+                - PreemptLowerPriority
+                - PreemptNever
+                type: string
+              priority:
+                description: The priority value. clusternet-scheduler use this field
+                  to find the priority of the subscription. The higher the value,
+                  the higher the priority.
+                format: int32
+                type: integer
               schedulerName:
                 default: default
                 description: If specified, the Subscription will be handled by specified
