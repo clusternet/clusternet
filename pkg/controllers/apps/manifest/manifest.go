@@ -52,6 +52,7 @@ type Controller struct {
 	clusternetClient    clusternetclientset.Interface
 	manifestLister      applisters.ManifestLister
 	baseLister          applisters.BaseLister
+	baseIndexer         cache.Indexer
 	feedInUseProtection bool
 	recorder            record.EventRecorder
 	syncHandlerFunc     SyncHandlerFunc
@@ -72,6 +73,7 @@ func NewController(
 		clusternetClient:    clusternetClient,
 		manifestLister:      manifestInformer.Lister(),
 		baseLister:          baseInformer.Lister(),
+		baseIndexer:         baseInformer.Informer().GetIndexer(),
 		feedInUseProtection: feedInUseProtection,
 		recorder:            recorder,
 		syncHandlerFunc:     syncHandlerFunc,
@@ -206,7 +208,7 @@ func (c *Controller) handle(obj interface{}) (requeueAfter *time.Duration, err e
 		}
 
 		// prune redundant labels
-		pruneLabels(updatedManifest, c.baseLister)
+		pruneLabels(updatedManifest, c.baseIndexer)
 
 		// only update on changed
 		if !reflect.DeepEqual(manifest, updatedManifest) {
@@ -235,7 +237,7 @@ func (c *Controller) handle(obj interface{}) (requeueAfter *time.Duration, err e
 	return nil, err
 }
 
-func pruneLabels(manifest *appsapi.Manifest, baseLister applisters.BaseLister) {
+func pruneLabels(manifest *appsapi.Manifest, baseIndexer cache.Indexer) {
 	// find all Bases
 	baseUIDs := []string{}
 	for key, val := range manifest.Labels {
@@ -246,7 +248,7 @@ func pruneLabels(manifest *appsapi.Manifest, baseLister applisters.BaseLister) {
 		baseUIDs = append(baseUIDs, key)
 	}
 
-	for _, base := range utils.FindBasesFromUIDs(baseLister, baseUIDs) {
+	for _, base := range utils.FindBasesFromUIDs(baseIndexer, baseUIDs) {
 		if utils.HasFeed(appsapi.Feed{
 			Kind:      manifest.Labels[known.ConfigKindLabel],
 			Namespace: manifest.Labels[known.ConfigNamespaceLabel],

@@ -52,6 +52,7 @@ type Controller struct {
 
 	clusternetClient clusternetclientset.Interface
 	baseLister       applisters.BaseLister
+	baseIndexer      cache.Indexer
 	recorder         record.EventRecorder
 	syncHandlerFunc  SyncHandlerFunc
 }
@@ -66,6 +67,7 @@ func NewController(
 	c := &Controller{
 		clusternetClient: clusternetClient,
 		baseLister:       baseInformer.Lister(),
+		baseIndexer:      baseInformer.Informer().GetIndexer(),
 		recorder:         recorder,
 		syncHandlerFunc:  syncHandlerFunc,
 	}
@@ -95,8 +97,17 @@ func NewController(
 			return true, nil
 		})
 
+	err := baseInformer.Informer().AddIndexers(cache.Indexers{known.IndexKeyForBaseUID: utils.BaseUidIndexFunc})
+	if err != nil {
+		return nil, err
+	}
+	err = baseInformer.Informer().AddIndexers(cache.Indexers{known.IndexKeyForSubscriptionUID: utils.BaseSubUidIndexFunc})
+	if err != nil {
+		return nil, err
+	}
+
 	// Manage the addition/update of Base
-	_, err := baseInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
+	_, err = baseInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
 	if err != nil {
 		return nil, err
 	}
@@ -253,4 +264,26 @@ func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*stri
 		types.MergePatchType,
 		patchData,
 		metav1.PatchOptions{})
+}
+
+func (c *Controller) FindBaseByUID(uid string) (*appsapi.Base, error) {
+	objs, err := c.baseIndexer.ByIndex(known.IndexKeyForBaseUID, uid)
+	if err != nil || len(objs) == 0 {
+		return nil, fmt.Errorf("find base by uid %s failed: %v %d", uid, err, len(objs))
+	}
+
+	return objs[0].(*appsapi.Base), nil
+}
+
+func (c *Controller) FindBaseBySubUID(subUid string) ([]*appsapi.Base, error) {
+	objs, err := c.baseIndexer.ByIndex(known.IndexKeyForSubscriptionUID, subUid)
+	if err != nil {
+		return nil, fmt.Errorf("find base by subUid %s failed: %v", subUid, err)
+	}
+
+	var bases []*appsapi.Base
+	for _, base := range objs {
+		bases = append(bases, base.(*appsapi.Base))
+	}
+	return bases, nil
 }

@@ -274,11 +274,7 @@ func (deployer *Deployer) Run(workers int, ctx context.Context) {
 func (deployer *Deployer) handleSubscription(subCopy *appsapi.Subscription) error {
 	klog.V(5).Infof("handle Subscription %s", klog.KObj(subCopy))
 	if subCopy.DeletionTimestamp != nil {
-		bases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
-			known.ConfigKindLabel:      subscriptionKind.Kind,
-			known.ConfigNamespaceLabel: subCopy.Namespace,
-			known.ConfigUIDLabel:       string(subCopy.UID),
-		}))
+		bases, err := deployer.baseController.FindBaseBySubUID(string(subCopy.UID))
 		if err != nil {
 			return err
 		}
@@ -326,13 +322,9 @@ func (deployer *Deployer) handleSubscription(subCopy *appsapi.Subscription) erro
 // Localization(s) will be populated as well for dividing scheduling.
 func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscription) error {
 	klog.V(5).Infof("Start populating bases and localizations for subscription %s/%s ", sub.Namespace, sub.Name)
-	allExistingBases, listErr := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
-		known.ConfigKindLabel:      subscriptionKind.Kind,
-		known.ConfigNamespaceLabel: sub.Namespace,
-		known.ConfigUIDLabel:       string(sub.UID),
-	}))
-	if listErr != nil {
-		return listErr
+	allExistingBases, err := deployer.baseController.FindBaseBySubUID(string(sub.UID))
+	if err != nil {
+		return err
 	}
 	// Bases to be deleted
 	basesToBeDeleted := sets.String{}
@@ -343,8 +335,8 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 	var allErrs []error
 	for idx, namespacedName := range sub.Status.BindingClusters {
 		// Convert the namespacedName/name string into a distinct namespacedName and name
-		namespace, _, err := cache.SplitMetaNamespaceKey(namespacedName)
-		if err != nil {
+		namespace, _, err2 := cache.SplitMetaNamespaceKey(namespacedName)
+		if err2 != nil {
 			allErrs = append(allErrs, fmt.Errorf("invalid resource key: %s", namespacedName))
 			continue
 		}
@@ -354,7 +346,7 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 			if apierrors.IsNotFound(err2) {
 				continue
 			}
-			return fmt.Errorf("failed to populate Bases for Subscription %s: %v", klog.KObj(sub), err)
+			return fmt.Errorf("failed to populate Bases for Subscription %s: %v", klog.KObj(sub), err2)
 		}
 		var basesInCurrentNamespace []*appsapi.Base
 		for _, b := range allExistingBases {
@@ -414,10 +406,10 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 			klog.Infof("reuse latest existed Base %s for Subscription %s", klog.KObj(baseTemplate), klog.KObj(sub))
 		}
 
-		base, err := deployer.syncBase(sub, baseTemplate)
-		if err != nil {
-			allErrs = append(allErrs, err)
-			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(baseTemplate), err)
+		base, err2 := deployer.syncBase(sub, baseTemplate)
+		if err2 != nil {
+			allErrs = append(allErrs, err2)
+			msg := fmt.Sprintf("Failed to sync Base %s: %v", klog.KObj(baseTemplate), err2)
 			klog.ErrorDepth(5, msg)
 			deployer.recorder.Event(sub, corev1.EventTypeWarning, "FailedSyncingBase", msg)
 			continue
@@ -432,7 +424,7 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 	}
 
 	for key := range basesToBeDeleted {
-		err := deployer.deleteBase(context.TODO(), key)
+		err = deployer.deleteBase(context.TODO(), key)
 		if err != nil {
 			allErrs = append(allErrs, err)
 		}
@@ -701,7 +693,7 @@ func (deployer *Deployer) deleteLocalization(ctx context.Context, namespacedKey 
 func (deployer *Deployer) handleBase(baseCopy *appsapi.Base) error {
 	klog.V(5).Infof("handle Base %s", klog.KObj(baseCopy))
 	if baseCopy.DeletionTimestamp != nil {
-		descs, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
+		descs, err := deployer.descLister.Descriptions(baseCopy.Namespace).List(labels.SelectorFromSet(labels.Set{
 			known.ConfigKindLabel:      baseKind.Kind,
 			known.ConfigNameLabel:      baseCopy.Name,
 			known.ConfigNamespaceLabel: baseCopy.Namespace,
@@ -812,7 +804,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 		return err
 	}
 
-	allExistingDescriptions, err := deployer.descLister.List(labels.SelectorFromSet(labels.Set{
+	allExistingDescriptions, err := deployer.descLister.Descriptions(base.Namespace).List(labels.SelectorFromSet(labels.Set{
 		known.ConfigKindLabel:      baseKind.Kind,
 		known.ConfigNamespaceLabel: base.Namespace,
 		known.ConfigUIDLabel:       string(base.UID),
@@ -1110,21 +1102,16 @@ func (deployer *Deployer) resyncBase(baseUIDs ...string) error {
 	wg.Add(len(baseUIDs))
 	errCh := make(chan error, len(baseUIDs))
 	for _, baseuid := range baseUIDs {
-		bases, err := deployer.baseLister.List(labels.SelectorFromSet(labels.Set{
-			baseuid: baseKind.Kind,
-		}))
-
+		base, err := deployer.baseController.FindBaseByUID(baseuid)
 		if err != nil {
-			return err
+			wg.Done()
+			klog.Warning(fmt.Sprintf("failed to resyncBase %s: %v", baseuid, err))
+			continue
 		}
 
 		go func() {
 			defer wg.Done()
-			if len(bases) == 0 {
-				return
-			}
-			// here the length should always be 1
-			if err = deployer.populateDescriptions(bases[0]); err != nil {
+			if err = deployer.populateDescriptions(base); err != nil {
 				errCh <- err
 			}
 		}()

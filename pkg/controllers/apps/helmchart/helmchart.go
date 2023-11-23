@@ -53,6 +53,7 @@ type Controller struct {
 	clusternetClient    clusternetclientset.Interface
 	helmChartLister     applisters.HelmChartLister
 	baseLister          applisters.BaseLister
+	baseIndexer         cache.Indexer
 	feedInUseProtection bool
 	recorder            record.EventRecorder
 	syncHandlerFunc     SyncHandlerFunc
@@ -70,6 +71,7 @@ func NewController(
 		clusternetClient:    clusternetClient,
 		helmChartLister:     helmChartInformer.Lister(),
 		baseLister:          baseInformer.Lister(),
+		baseIndexer:         baseInformer.Informer().GetIndexer(),
 		feedInUseProtection: feedInUseProtection,
 		recorder:            recorder,
 		syncHandlerFunc:     syncHandlerFunc,
@@ -198,7 +200,7 @@ func (c *Controller) handle(obj interface{}) (requeueAfter *time.Duration, err e
 		chart.Labels[known.ConfigNamespaceLabel] = chart.Namespace
 
 		// prune redundant labels
-		pruneLabels(chart, c.baseLister)
+		pruneLabels(chart, c.baseIndexer)
 
 		// only update on changed
 		if !reflect.DeepEqual(chart, cachedChart) {
@@ -248,7 +250,7 @@ func (c *Controller) UpdateChartStatus(chartCopy *appsapi.HelmChart, status *app
 	})
 }
 
-func pruneLabels(chart *appsapi.HelmChart, baseLister applisters.BaseLister) {
+func pruneLabels(chart *appsapi.HelmChart, baseIndexer cache.Indexer) {
 	// find all Bases
 	baseUIDs := []string{}
 	for key, val := range chart.Labels {
@@ -259,7 +261,7 @@ func pruneLabels(chart *appsapi.HelmChart, baseLister applisters.BaseLister) {
 		baseUIDs = append(baseUIDs, key)
 	}
 
-	for _, base := range utils.FindBasesFromUIDs(baseLister, baseUIDs) {
+	for _, base := range utils.FindBasesFromUIDs(baseIndexer, baseUIDs) {
 		if utils.HasFeed(appsapi.Feed{
 			Kind:      controllerKind.Kind,
 			Namespace: chart.Namespace,

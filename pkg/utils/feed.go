@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -135,17 +136,15 @@ func FindObsoletedFeeds(oldFeeds []appsapi.Feed, newFeeds []appsapi.Feed) []apps
 	return obsoleteFeeds
 }
 
-func FindBasesFromUIDs(baseLister applisters.BaseLister, uids []string) []*appsapi.Base {
+func FindBasesFromUIDs(baseIndexer cache.Indexer, uids []string) []*appsapi.Base {
 	allBases := []*appsapi.Base{}
 	for _, uid := range uids {
-		bases, err := baseLister.List(labels.SelectorFromSet(labels.Set{
-			uid: "Base",
-		}))
-		if err != nil {
-			klog.ErrorDepth(5, err)
-			continue
+		objs, err := baseIndexer.ByIndex(known.IndexKeyForBaseUID, uid)
+		if err != nil || len(objs) == 0 {
+			klog.ErrorDepth(5, fmt.Errorf("find base by uid %s failed: %v %d", uid, err, len(objs)))
+		} else {
+			allBases = append(allBases, objs[0].(*appsapi.Base))
 		}
-		allBases = append(allBases, bases...)
 	}
 
 	return allBases
