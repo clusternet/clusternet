@@ -949,10 +949,10 @@ func BaseSubUidIndexFunc(obj interface{}) ([]string, error) {
 	}
 
 	subUid, ok := base.Labels[known.ConfigSubscriptionUIDLabel]
-	if ok {
-		return []string{subUid}, nil
+	if !ok {
+		return nil, fmt.Errorf("no subUid found for Base %#v", obj)
 	}
-	return []string{""}, nil
+	return []string{subUid}, nil
 }
 
 func SubUidIndexFunc(obj interface{}) ([]string, error) {
