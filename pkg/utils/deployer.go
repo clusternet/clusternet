@@ -935,12 +935,19 @@ func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.Descript
 }
 
 func BaseUidIndexFunc(obj interface{}) ([]string, error) {
-	base := obj.(*appsapi.Base)
+	base, ok := obj.(*appsapi.Base)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Base %#v", obj)
+	}
 	return []string{string(base.UID)}, nil
 }
 
 func BaseSubUidIndexFunc(obj interface{}) ([]string, error) {
-	base := obj.(*appsapi.Base)
+	base, ok := obj.(*appsapi.Base)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Base %#v", obj)
+	}
+
 	if subUid, ok := base.Labels[known.ConfigSubscriptionUIDLabel]; ok {
 		return []string{subUid}, nil
 	}
@@ -948,6 +955,9 @@ func BaseSubUidIndexFunc(obj interface{}) ([]string, error) {
 }
 
 func SubUidIndexFunc(obj interface{}) ([]string, error) {
-	sub := obj.(*appsapi.Subscription)
+	sub, ok := obj.(*appsapi.Subscription)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Subscription %#v", obj)
+	}
 	return []string{string(sub.UID)}, nil
 }

@@ -1112,7 +1112,6 @@ func (deployer *Deployer) resyncBase(baseUIDs ...string) error {
 
 		go func() {
 			defer wg.Done()
-			// here the length should always be 1
 			if err = deployer.populateDescriptions(base); err != nil {
 				errCh <- err
 			}

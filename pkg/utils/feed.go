@@ -140,15 +140,11 @@ func FindObsoletedFeeds(oldFeeds []appsapi.Feed, newFeeds []appsapi.Feed) []apps
 func FindBasesFromUIDs(baseIndexer cache.Indexer, uids []string) []*appsapi.Base {
 	allBases := []*appsapi.Base{}
 	for _, uid := range uids {
-		if objs, err := baseIndexer.ByIndex("uid", uid); err != nil {
-			klog.ErrorDepth(5, err)
-			continue
+		objs, err := baseIndexer.ByIndex(known.IndexKeyForBaseUID, uid)
+		if err != nil || len(objs) == 0 {
+			klog.ErrorDepth(5, fmt.Errorf("find base by uid %s failed: %v %d", uid, err, len(objs)))
 		} else {
-			if len(objs) == 1 {
-				allBases = append(allBases, objs[0].(*appsapi.Base))
-			} else {
-				klog.ErrorDepth(5, fmt.Errorf("find base by uid %s failed", uid))
-			}
+			allBases = append(allBases, objs[0].(*appsapi.Base))
 		}
 	}
 

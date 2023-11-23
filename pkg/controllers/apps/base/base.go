@@ -98,11 +98,11 @@ func NewController(
 			return true, nil
 		})
 
-	err := baseInformer.Informer().AddIndexers(cache.Indexers{"uid": utils.BaseUidIndexFunc})
+	err := baseInformer.Informer().AddIndexers(cache.Indexers{known.IndexKeyForBaseUID: utils.BaseUidIndexFunc})
 	if err != nil {
 		return nil, err
 	}
-	err = baseInformer.Informer().AddIndexers(cache.Indexers{"subUid": utils.BaseSubUidIndexFunc})
+	err = baseInformer.Informer().AddIndexers(cache.Indexers{known.IndexKeyForSubscriptionUID: utils.BaseSubUidIndexFunc})
 	if err != nil {
 		return nil, err
 	}
@@ -268,28 +268,23 @@ func (c *Controller) patchBaseLabels(base *appsapi.Base, labels map[string]*stri
 }
 
 func (c *Controller) FindBaseByUID(uid string) (*appsapi.Base, error) {
-	if objs, err := c.baseIndexer.ByIndex("uid", uid); err != nil {
-		return nil, err
-	} else {
-		if len(objs) == 1 {
-			return objs[0].(*appsapi.Base), nil
-		} else {
-			return nil, fmt.Errorf("find base by uid %s failed", uid)
-		}
+	objs, err := c.baseIndexer.ByIndex(known.IndexKeyForBaseUID, uid)
+	if err != nil || len(objs) == 0 {
+		return nil, fmt.Errorf("find base by uid %s failed: %v %d", uid, err, len(objs))
 	}
+
+	return objs[0].(*appsapi.Base), nil
 }
 
 func (c *Controller) FindBaseBySubUID(subUid string) ([]*appsapi.Base, error) {
+	objs, err := c.baseIndexer.ByIndex(known.IndexKeyForSubscriptionUID, subUid)
+	if err != nil {
+		return nil, fmt.Errorf("find base by subUid %s failed: %v", subUid, err)
+	}
+
 	var bases []*appsapi.Base
-	if objs, err := c.baseIndexer.ByIndex("subUid", subUid); err != nil {
-		return nil, err
-	} else {
-		if err != nil {
-			return nil, fmt.Errorf("find base by subUid %s failed", subUid)
-		}
-		for _, base := range objs {
-			bases = append(bases, base.(*appsapi.Base))
-		}
+	for _, base := range objs {
+		bases = append(bases, base.(*appsapi.Base))
 	}
 	return bases, nil
 }

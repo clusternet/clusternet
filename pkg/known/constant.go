@@ -97,3 +97,8 @@ const (
 	// DefaultRandomIDLength is the default length for random id
 	DefaultRandomIDLength = 5
 )
+
+const (
+	IndexKeyForSubscriptionUID = "subUid"
+	IndexKeyForBaseUID         = "baseUid"
+)
