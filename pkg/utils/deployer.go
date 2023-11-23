@@ -948,7 +948,8 @@ func BaseSubUidIndexFunc(obj interface{}) ([]string, error) {
 		return nil, fmt.Errorf("object is not a Base %#v", obj)
 	}
 
-	if subUid, ok := base.Labels[known.ConfigSubscriptionUIDLabel]; ok {
+	subUid, ok := base.Labels[known.ConfigSubscriptionUIDLabel]
+	if ok {
 		return []string{subUid}, nil
 	}
 	return []string{""}, nil
