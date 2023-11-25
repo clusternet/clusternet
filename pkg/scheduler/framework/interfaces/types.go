@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -187,4 +188,53 @@ func (f *FitError) Error() string {
 	}
 	reasonMsg := fmt.Sprintf(NoClusterAvailableMsg+": %v.", f.NumAllClusters, strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
+}
+
+// SubscriptionInfo is a wrapper to a Subscription for tracking
+// the timestamp when it's added to the queue or recording per subscription metrics.
+type SubscriptionInfo struct {
+	Subscription *appsapi.Subscription
+	// The time subscription added to the scheduling queue.
+	Timestamp time.Time
+	// Number of schedule attempts before successfully scheduled.
+	// It's used to record the # attempts metric.
+	Attempts int
+	// The time when the subscription is added to the queue for the first time. The subscription may be added
+	// back to the queue multiple times before it's successfully scheduled.
+	// It shouldn't be updated once initialized. It's used to record the e2e scheduling
+	// latency for a subscription.
+	InitialAttemptTimestamp time.Time
+}
+
+// DeepCopy returns a deep copy of the SubscriptionInfo object.
+func (subInfo *SubscriptionInfo) DeepCopy() *SubscriptionInfo {
+	return &SubscriptionInfo{
+		Subscription:            subInfo.Subscription.DeepCopy(),
+		Timestamp:               subInfo.Timestamp,
+		Attempts:                subInfo.Attempts,
+		InitialAttemptTimestamp: subInfo.InitialAttemptTimestamp,
+	}
+}
+
+// LessFunc is the function to sort subscription info
+type LessFunc func(subInfo1, subInfo2 *SubscriptionInfo) bool
+
+// Less is the function used by the activeQ heap algorithm to sort subscriptions.
+// It sorts subscriptions based on their priority. When priorities are equal, it uses
+// SubscriptionInfo.timestamp.
+func Less(sInfo1, sInfo2 *SubscriptionInfo) bool {
+	s1 := subscriptionPriority(sInfo1.Subscription)
+	s2 := subscriptionPriority(sInfo2.Subscription)
+	return (s1 > s2) || (s1 == s2 && sInfo1.Timestamp.Before(sInfo2.Timestamp))
+}
+
+// subscriptionPriority returns priority of the given subscription.
+func subscriptionPriority(sub *appsapi.Subscription) int32 {
+	if sub.Spec.Priority != nil {
+		return *sub.Spec.Priority
+	}
+	// When priority of a running subscription is nil, it means it was created at a time
+	// that there was no global default priority class and the priority class
+	// name of the subscription was empty. So, we resolve to the static default priority.
+	return 0
 }
