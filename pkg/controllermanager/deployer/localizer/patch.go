@@ -17,7 +17,6 @@ limitations under the License.
 package localizer
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -118,13 +118,13 @@ func applyJSONPatch(cur, overrideBytes []byte) ([]byte, error) {
 
 func applyHelmValuesOverride(currentByte, overrideByte []byte) ([]byte, error) {
 	currentObj := map[string]interface{}{}
-	if err := json.Unmarshal(currentByte, &currentObj); err != nil {
+	if err := utils.Unmarshal(currentByte, &currentObj); err != nil {
 		return nil, err
 	}
 
 	var overrideValues map[string]interface{}
-	if err := json.Unmarshal(overrideByte, &overrideValues); err != nil {
+	if err := utils.Unmarshal(overrideByte, &overrideValues); err != nil {
 		return nil, err
 	}
-	return json.Marshal(chartutil.CoalesceTables(overrideValues, currentObj))
+	return utils.Marshal(chartutil.CoalesceTables(overrideValues, currentObj))
 }

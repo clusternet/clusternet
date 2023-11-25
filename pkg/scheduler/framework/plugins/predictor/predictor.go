@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,6 +40,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/features"
 	framework "github.com/clusternet/clusternet/pkg/scheduler/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/scheduler/framework/plugins/names"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -143,7 +143,7 @@ func predictMaxAcceptableReplicas(
 	address string,
 	require appsapi.ReplicaRequirements,
 ) (map[string]int32, error) {
-	payload, err := json.Marshal(require)
+	payload, err := utils.Marshal(require)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func predictMaxAcceptableReplicas(
 	}
 
 	predictorResults := &schedulerapi.PredictorResults{}
-	err = json.Unmarshal(data, predictorResults)
+	err = utils.Unmarshal(data, predictorResults)
 	if err != nil {
 		return nil, err
 	}

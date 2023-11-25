@@ -18,7 +18,6 @@ package subscription
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -245,7 +244,7 @@ func (c *Controller) patchSubscriptionLabels(sub *appsapi.Subscription, labels m
 
 	klog.V(5).Infof("patching Subscription %s labels", klog.KObj(sub))
 	option := utils.MetaOption{MetaData: utils.MetaData{Labels: labels}}
-	patchData, err := json.Marshal(option)
+	patchData, err := utils.Marshal(option)
 	if err != nil {
 		return nil, err
 	}

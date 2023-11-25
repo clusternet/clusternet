@@ -20,7 +20,6 @@ package internalversion
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -66,6 +65,7 @@ import (
 
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers"
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
+	pkgutils "github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -3087,7 +3087,7 @@ func SubjectsStrings(subjects []rbacv1.Subject) ([]string, []string, []string, [
 func ObjectConvertToUnstructured(object runtime.Object) (*unstructured.Unstructured, error) {
 	var raw []byte
 	var err error
-	if raw, err = json.Marshal(object); err != nil {
+	if raw, err = pkgutils.Marshal(object); err != nil {
 		return nil, err
 	}
 	unstructed := &unstructured.Unstructured{}

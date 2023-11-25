@@ -248,6 +248,8 @@ func startClusterLifecycleController(controllerCtx *controllercontext.Controller
 	clusterLifecycle, err := clusterlifecycle.NewController(
 		controllerCtx.ClusternetClient,
 		controllerCtx.ClusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
+		controllerCtx.ClusternetInformerFactory.Apps().V1alpha1().Bases(),
+		controllerCtx.ClusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
 		controllerCtx.EventRecorder,
 	)
 	if err != nil {

@@ -18,7 +18,6 @@ package hub
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -295,7 +294,7 @@ func createPeerLease(peer peerInfo, leaderOption componentbaseconfig.LeaderElect
 	clientset kubernetes.Interface) (*leaderelection.LeaderElector, error) {
 	peerLeaseName := fmt.Sprintf("%s-%s", peerLeasePrefix, peer.ID)
 
-	peerBytes, err := json.Marshal(peer)
+	peerBytes, err := utils.Marshal(peer)
 	if err != nil {
 		return nil, err
 	}
@@ -439,7 +438,7 @@ func getPeerInfo(lease *coordinationapi.Lease) (*peerInfo, error) {
 	}
 
 	pi := &peerInfo{}
-	err := json.Unmarshal([]byte(*lease.Spec.HolderIdentity), pi)
+	err := utils.Unmarshal([]byte(*lease.Spec.HolderIdentity), pi)
 	return pi, err
 }
 

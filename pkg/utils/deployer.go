@@ -18,7 +18,6 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -932,4 +931,33 @@ func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.Descript
 		utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err2))
 		return err2
 	})
+}
+
+func BaseUidIndexFunc(obj interface{}) ([]string, error) {
+	base, ok := obj.(*appsapi.Base)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Base %#v", obj)
+	}
+	return []string{string(base.UID)}, nil
+}
+
+func BaseSubUidIndexFunc(obj interface{}) ([]string, error) {
+	base, ok := obj.(*appsapi.Base)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Base %#v", obj)
+	}
+
+	subUid, ok := base.Labels[known.ConfigSubscriptionUIDLabel]
+	if !ok {
+		return nil, fmt.Errorf("no subUid found for Base %#v", obj)
+	}
+	return []string{subUid}, nil
+}
+
+func SubUidIndexFunc(obj interface{}) ([]string, error) {
+	sub, ok := obj.(*appsapi.Subscription)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Subscription %#v", obj)
+	}
+	return []string{string(sub.UID)}, nil
 }

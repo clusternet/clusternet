@@ -30,6 +30,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1Lister "k8s.io/client-go/listers/core/v1"
@@ -40,6 +41,7 @@ import (
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterregistrationrequest"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
@@ -368,6 +370,16 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 			ClusterType: clusterType,
 			SyncMode:    clusterSyncMode,
 		},
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.ClusterInit) {
+		managedCluster.Spec.Taints = []corev1.Taint{
+			{
+				Key:    known.TaintClusterInitialization,
+				Value:  known.ClusterInitWaitingReason,
+				Effect: corev1.TaintEffectNoSchedule,
+			},
+		}
 	}
 
 	//add additional labels

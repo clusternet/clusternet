@@ -18,7 +18,6 @@ package template
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -54,6 +53,7 @@ import (
 	printerstorage "github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/storage"
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -185,7 +185,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 
 	oldObj := &unstructured.Unstructured{}
-	if err = json.Unmarshal(manifest.Template.Raw, oldObj); err != nil {
+	if err = utils.Unmarshal(manifest.Template.Raw, oldObj); err != nil {
 		return nil, false, errors.NewInternalError(err)
 	}
 

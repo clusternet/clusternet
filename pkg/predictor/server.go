@@ -18,7 +18,6 @@ package predictor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,6 +46,7 @@ import (
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins"
 	frameworkruntime "github.com/clusternet/clusternet/pkg/predictor/framework/runtime"
 	"github.com/clusternet/clusternet/pkg/scheduler/parallelize"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -215,7 +215,7 @@ func (s *Server) installDefaultHandlers(ctx context.Context) {
 		}
 
 		var require appsapi.ReplicaRequirements
-		err = json.Unmarshal(data, &require)
+		err = utils.Unmarshal(data, &require)
 		if err != nil {
 			http.Error(response, err.Error(), http.StatusBadRequest)
 			return
