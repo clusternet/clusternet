@@ -207,6 +207,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 
 // Run begins watching and scheduling. It starts scheduling and blocked until the context is done.
 func (sched *Scheduler) Run(ctx context.Context) error {
+	sched.SchedulingQueue.Run()
 	err := sched.schedulerOptions.Config()
 	if err != nil {
 		return err
