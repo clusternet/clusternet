@@ -285,6 +285,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	subInfo, err := sched.SchedulingQueue.Pop()
 	if err != nil {
 		klog.Errorf("Error while retrieving next subscription from scheduling queue: %v", err)
+		return
 	}
 	ns := subInfo.Subscription.Namespace
 	name := subInfo.Subscription.Name
