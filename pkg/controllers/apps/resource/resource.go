@@ -136,7 +136,22 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			resource := obj.(*unstructured.Unstructured)
+			var resource *unstructured.Unstructured
+			switch t := obj.(type) {
+			case *unstructured.Unstructured:
+				resource = obj.(*unstructured.Unstructured)
+			case cache.DeletedFinalStateUnknown:
+				var ok bool
+				resource, ok = t.Obj.(*unstructured.Unstructured)
+				if !ok {
+					utilruntime.HandleError(fmt.Errorf("unable to convert object %T to *unstructured.Unstructured", obj))
+					return
+				}
+			default:
+				utilruntime.HandleError(fmt.Errorf("unable to handle object %T", obj))
+				return
+			}
+
 			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
 			resAttrs, err := getResourceAttrs(val, ObjectDelete)
 			if ok && err == nil {
