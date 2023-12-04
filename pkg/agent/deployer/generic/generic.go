@@ -206,7 +206,7 @@ func (deployer *Deployer) handleResource(resAttrs *resourcecontroller.ResourceAt
 	}
 
 	if resAttrs.ObjectAction != resourcecontroller.ObjectDelete {
-		err = deployer.SyncDescriptionStatus(deployer.clusternetClient, deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
+		err = deployer.SyncDescriptionStatus(deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
 		if err != nil {
 			klog.Errorf("Failed Sync Description Status. %v", err)
 			return err
@@ -243,8 +243,11 @@ func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller 
 	}
 }
 
-func (deployer *Deployer) SyncDescriptionStatus(clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
-	restMapper meta.RESTMapper, desc *appsapi.Description) error {
+func (deployer *Deployer) SyncDescriptionStatus(
+	dynamicClient dynamic.Interface,
+	restMapper meta.RESTMapper,
+	desc *appsapi.Description,
+) error {
 	descStatus := desc.Status.DeepCopy()
 	// descStatusMap for check and update exsit ManifestStatus
 	descStatusMap := make(map[string]int)
