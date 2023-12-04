@@ -308,7 +308,7 @@ func (deployer *Deployer) SyncDescriptionStatus(clusternetClient *clusternetclie
 	// try to update Descriptions Status
 	var err error
 	if !reflect.DeepEqual(desc.Status.ManifestStatuses, descStatus.ManifestStatuses) {
-		err = utils.UpdateDescriptionStatus(desc, descStatus, deployer.clusternetClient, false)
+		err = utils.UpdateDescriptionStatus(context.TODO(), desc, descStatus, deployer.clusternetClient, false)
 		klog.V(5).Infof("SyncDescriptionStatus Descriptions manifestStatus has changed, UpdateStatus. err: %s", err)
 	}
 
