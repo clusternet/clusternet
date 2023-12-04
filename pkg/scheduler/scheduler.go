@@ -691,7 +691,7 @@ func admit(sub *appsapi.Subscription, finv *appsapi.FeedInventory) bool {
 	if sub.Spec.SchedulingStrategy == appsapi.ReplicaSchedulingStrategyType {
 		return true
 	}
-	specHashChanged := utils.HashSubscriptionSpec(&sub.Spec) == sub.Status.SpecHash
+	specHashChanged := utils.HashSubscriptionSpec(&sub.Spec) != sub.Status.SpecHash
 	feedChanged := isFeedChanged(sub, finv)
 	return specHashChanged || feedChanged
 }
