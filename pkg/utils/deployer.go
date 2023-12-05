@@ -279,72 +279,70 @@ func GenerateHelmReleaseName(descName string, chartRef appsapi.ChartReference) s
 func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetclientset.Clientset,
 	hrLister applisters.HelmReleaseLister, descLister applisters.DescriptionLister,
 	hr *appsapi.HelmRelease, status *appsapi.HelmReleaseStatus) error {
+	if hr == nil || status == nil {
+		return nil
+	}
+
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update HelmRelease %q status", hr.Name)
-
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	hr = hr.DeepCopy()
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultRetry, func(ctx context.Context) (done bool, err error) {
+		klog.V(5).Infof("try to update HelmRelease %q status", hr.Name)
 		hr.Status = *status
-		_, err := clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).UpdateStatus(ctx, hr, metav1.UpdateOptions{})
+		_, err = clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).UpdateStatus(ctx, hr, metav1.UpdateOptions{})
 		if err == nil {
-			return nil
+			return true, nil
 		}
 
 		updated, err2 := hrLister.HelmReleases(hr.Namespace).Get(hr.Name)
 		if err2 == nil {
 			// make a copy, so we don't mutate the shared cache
 			hr = updated.DeepCopy()
-			return nil
+			return false, nil
 		}
 		utilruntime.HandleError(fmt.Errorf("error getting updated HelmRelease %q from lister: %v", hr.Name, err2))
-		return err2
+		return false, err
 	})
 
 	if err != nil {
 		return err
 	}
 
-	klog.V(5).Infof("try to update HelmRelease %q owner Description status", hr.Name)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		controllerRef := metav1.GetControllerOf(hr)
-		if controllerRef == nil {
-			// No controller should care about orphans being deleted.
-			return nil
-		}
-		desc := resolveControllerRef(descLister, hr.Namespace, controllerRef)
-		if desc == nil {
-			return nil
-		}
-		switch status.Phase {
-		case release.StatusDeployed:
-			desc.Status.Phase = appsapi.DescriptionPhaseSuccess
-			desc.Status.Reason = ""
-		case release.StatusPendingInstall:
-			desc.Status.Phase = appsapi.DescriptionPhaseInstalling
-		case release.StatusPendingUpgrade:
-			desc.Status.Phase = appsapi.DescriptionPhaseUpgrading
-		case release.StatusUninstalling:
-			desc.Status.Phase = appsapi.DescriptionPhaseUninstalling
-		case release.StatusSuperseded:
-			desc.Status.Phase = appsapi.DescriptionPhaseSuperseded
-			desc.Status.Reason = status.Notes
-		case release.StatusFailed:
-			desc.Status.Phase = appsapi.DescriptionPhaseFailure
-			desc.Status.Reason = status.Notes
-		default:
-			desc.Status.Phase = appsapi.DescriptionPhaseUnknown
-			desc.Status.Reason = status.Notes
-		}
-		_, err = clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
-		if err == nil {
-			return nil
-		}
+	// update status of controller owner Description
+	controllerRef := metav1.GetControllerOf(hr)
+	if controllerRef == nil {
+		// No controller should care about orphans being deleted.
+		return nil
+	}
+	desc := resolveControllerRef(descLister, hr.Namespace, controllerRef)
+	if desc == nil {
+		return nil
+	}
+	descStatus := desc.Status.DeepCopy()
+	switch status.Phase {
+	case release.StatusDeployed:
+		descStatus.Phase = appsapi.DescriptionPhaseSuccess
+		descStatus.Reason = ""
+	case release.StatusPendingInstall:
+		descStatus.Phase = appsapi.DescriptionPhaseInstalling
+	case release.StatusPendingUpgrade:
+		descStatus.Phase = appsapi.DescriptionPhaseUpgrading
+	case release.StatusUninstalling:
+		descStatus.Phase = appsapi.DescriptionPhaseUninstalling
+	case release.StatusSuperseded:
+		descStatus.Phase = appsapi.DescriptionPhaseSuperseded
+		descStatus.Reason = status.Notes
+	case release.StatusFailed:
+		descStatus.Phase = appsapi.DescriptionPhaseFailure
+		descStatus.Reason = status.Notes
+	default:
+		descStatus.Phase = appsapi.DescriptionPhaseUnknown
+		descStatus.Reason = status.Notes
+	}
 
-		utilruntime.HandleError(fmt.Errorf("error updating status for Description %q: %v", klog.KObj(desc), err))
-		return err
-	})
+	klog.V(5).Infof("try to update HelmRelease %q owner Description status", hr.Name)
+	return UpdateDescriptionStatus(ctx, desc, descStatus, clusternetClient, true)
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
@@ -365,7 +363,7 @@ func resolveControllerRef(descLister applisters.DescriptionLister, namespace str
 		// ControllerRef points to.
 		return nil
 	}
-	return desc
+	return desc.DeepCopy()
 }
 
 type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
@@ -476,7 +474,7 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 
 	var err error
 	if !reflect.DeepEqual(desc.Status.Phase, descStatus.Phase) || !reflect.DeepEqual(desc.Status.Reason, descStatus.Reason) {
-		err = UpdateDescriptionStatus(desc, descStatus, clusternetClient, true)
+		err = UpdateDescriptionStatus(ctx, desc, descStatus, clusternetClient, true)
 		klog.V(5).Infof("ApplyDescription phaseStatus has changed, UpdateStatus. err: %s", err)
 	}
 
@@ -900,36 +898,42 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, i
 	return false
 }
 
-func UpdateDescriptionStatus(desc *appsapi.Description, status *appsapi.DescriptionStatus, clusternetClient *clusternetclientset.Clientset, deployerTrigger bool) error {
+func UpdateDescriptionStatus(
+	ctx context.Context,
+	desc *appsapi.Description,
+	status *appsapi.DescriptionStatus,
+	clusternetClient *clusternetclientset.Clientset,
+	deployerTrigger bool,
+) error {
+	if desc == nil || status == nil {
+		return nil
+	}
+
+	if !deployerTrigger && reflect.DeepEqual(desc.Status, appsapi.DescriptionStatus{}) {
+		return fmt.Errorf("waiting for the deployer to update description status first")
+	}
+
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update Description %q status", desc.Name)
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	desc = desc.DeepCopy()
+	return wait.ExponentialBackoffWithContext(ctx, retry.DefaultRetry, func(ctx context.Context) (done bool, err error) {
+		klog.V(5).Infof("try to update Description %q status", desc.Name)
 		desc.Status = *status
-		if !deployerTrigger {
-			if reflect.DeepEqual(desc.Status, appsapi.DescriptionStatus{}) {
-				return fmt.Errorf("waiting for deployer update desc status at first")
-			}
-			desc.Status.ManifestStatuses = status.ManifestStatuses
-		}
-		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+		_, err = clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
-			return nil
+			return true, nil
 		}
 
-		updated, err2 := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(context.TODO(), desc.Name,
-			metav1.GetOptions{})
+		updated, err2 := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(ctx, desc.Name, metav1.GetOptions{})
 		if err2 == nil {
 			// make a copy, so we don't mutate the shared cache
 			desc = updated.DeepCopy()
-			return nil
+			return false, nil
 		}
-		utilruntime.HandleError(fmt.Errorf("error getting updated Description %q from lister: %v", desc.Name, err2))
-		return err2
+		utilruntime.HandleError(fmt.Errorf("error getting updated Description %q: %v", desc.Name, err2))
+		return false, err
 	})
 }
 
