@@ -60,6 +60,7 @@ const (
 	score                   = "Score"
 	preAssign               = "PreAssign"
 	assign                  = "Assign"
+	postAssign              = "PostAssign"
 	scoreExtensionNormalize = "ScoreExtensionNormalize"
 	preBind                 = "PreBind"
 	bind                    = "Bind"
@@ -83,6 +84,7 @@ type frameworkImpl struct {
 	scorePlugins         []framework.ScorePlugin
 	preAssignPlugins     []framework.PreAssignPlugin
 	assignPlugins        []framework.AssignPlugin
+	postAssignPlugins    []framework.PostAssignPlugin
 	reservePlugins       []framework.ReservePlugin
 	preBindPlugins       []framework.PreBindPlugin
 	bindPlugins          []framework.BindPlugin
@@ -667,6 +669,29 @@ func (f *frameworkImpl) runAssignPlugin(ctx context.Context, ap framework.Assign
 	result, status := ap.Assign(ctx, state, sub, finv, availableReplicas)
 	f.metricsRecorder.observePluginDurationAsync(assign, ap.Name(), status, metrics.SinceInSeconds(startTime))
 	return result, status
+}
+
+func (f *frameworkImpl) RunPostAssignPlugins(ctx context.Context, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) (status *framework.Status) {
+	startTime := time.Now()
+	defer func() {
+		metrics.FrameworkExtensionPointDuration.WithLabelValues(postAssign, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
+	}()
+	for _, pl := range f.postAssignPlugins {
+		status = f.runPostAssignPlugin(ctx, pl, state, sub, finv, availableReplicas)
+		if !status.IsSuccess() {
+			err := status.AsError()
+			klog.ErrorS(err, "Failed running PostAssign plugin", "plugin", pl.Name(), "sub", klog.KObj(sub))
+			return framework.AsStatus(fmt.Errorf("running PostAssign plugin %q: %w", pl.Name(), err))
+		}
+	}
+	return nil
+}
+
+func (f *frameworkImpl) runPostAssignPlugin(ctx context.Context, pl framework.PostAssignPlugin, state *framework.CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas framework.TargetClusters) *framework.Status {
+	startTime := time.Now()
+	status := pl.PostAssign(ctx, state, sub, finv, availableReplicas)
+	f.metricsRecorder.observePluginDurationAsync(postAssign, pl.Name(), status, metrics.SinceInSeconds(startTime))
+	return status
 }
 
 // RunPreBindPlugins runs the set of configured prebind plugins. It returns a
