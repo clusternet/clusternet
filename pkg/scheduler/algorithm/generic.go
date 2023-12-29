@@ -203,14 +203,20 @@ func (g *genericScheduler) selectClusters(ctx context.Context, state *framework.
 
 	// Run the Assign plugins.
 	selected, assignStatus := fwk.RunAssignPlugins(ctx, state, sub, finv, selected)
-	if assignStatus.IsSuccess() {
-		return selected, nil
-	}
-	if assignStatus.Code() == framework.Error {
-		return framework.TargetClusters{}, assignStatus.AsError()
+	if !assignStatus.IsSuccess() {
+		if assignStatus.Code() == framework.Error {
+			return framework.TargetClusters{}, assignStatus.AsError()
+		}
+		return framework.TargetClusters{}, fmt.Errorf("assign status: %s, %v", assignStatus.Code().String(), assignStatus.Message())
 	}
 
-	return framework.TargetClusters{}, fmt.Errorf("assign status: %s, %v", assignStatus.Code().String(), assignStatus.Message())
+	// Run PostAssign plugins
+	postAssignStatus := fwk.RunPostAssignPlugins(ctx, state, sub, finv, selected)
+	if !postAssignStatus.IsSuccess() {
+		return framework.TargetClusters{}, postAssignStatus.AsError()
+	}
+
+	return selected, nil
 }
 
 // numFeasibleClustersToFind returns the number of feasible clusters that once found, the scheduler stops
