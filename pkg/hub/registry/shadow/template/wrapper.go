@@ -20,13 +20,13 @@ import (
 	"context"
 	"sync"
 
-	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/klog/v2"
+
+	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
 const (
@@ -85,6 +85,7 @@ func (w *WatchWrapper) Run() {
 			obj := event.Object
 			switch event.Type {
 			case watch.Bookmark:
+				obj = w.transformBookMarkEvent(obj)
 			case watch.Error:
 				klog.Warningf("got a watch error: %v", event)
 			default:
