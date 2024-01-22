@@ -290,7 +290,7 @@ func (r *REST) Watch(ctx context.Context, options *internalversion.ListOptions) 
 		}
 
 		return object
-	}, defaultSize)
+	}, r.GroupVersion().WithKind(r.kind), defaultSize)
 	if err == nil {
 		go watchWrapper.Run()
 	}
