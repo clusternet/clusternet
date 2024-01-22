@@ -1202,6 +1202,16 @@ func (in *SubscriptionSpec) DeepCopyInto(out *SubscriptionSpec) {
 		*out = new(DividingScheduling)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.Priority != nil {
+		in, out := &in.Priority, &out.Priority
+		*out = new(int32)
+		**out = **in
+	}
+	if in.PreemptionPolicy != nil {
+		in, out := &in.PreemptionPolicy, &out.PreemptionPolicy
+		*out = new(PreemptionPolicy)
+		**out = **in
+	}
 	if in.Subscribers != nil {
 		in, out := &in.Subscribers, &out.Subscribers
 		*out = make([]Subscriber, len(*in))

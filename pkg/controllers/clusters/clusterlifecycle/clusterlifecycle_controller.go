@@ -18,8 +18,9 @@ package clusterlifecycle
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/dixudx/yacht"
@@ -27,23 +28,32 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	utilptr "k8s.io/utils/pointer"
 
+	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternetclientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
+	appsinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	clusterinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/clusters/v1beta1"
+	appslister "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 	taintutils "github.com/clusternet/clusternet/pkg/utils/taints"
 )
 
 const (
 	DefaultClusterMonitorGracePeriod = 9 * time.Minute
+
+	defaultClusterInitGracePeriod = 30 * time.Second
 
 	// ClusterNotReadyThreshold indicate the threshold for cluster not ready period
 	ClusterNotReadyThreshold = 3
@@ -59,45 +69,86 @@ var (
 			metav1.ConditionFalse:   known.TaintClusterUnschedulable,
 			metav1.ConditionUnknown: known.TaintClusterUnschedulable,
 		},
+		clusterapi.ClusterInit: {
+			metav1.ConditionFalse:   known.TaintClusterInitialization,
+			metav1.ConditionUnknown: known.TaintClusterInitialization,
+		},
 	}
 
 	taintKeyToNodeConditionMap = map[string]string{
-		known.TaintClusterUnschedulable: clusterapi.ClusterReady,
+		known.TaintClusterUnschedulable:  clusterapi.ClusterReady,
+		known.TaintClusterInitialization: clusterapi.ClusterInit,
 	}
+)
+
+var (
+	// subtleClusterInitAnnotations includes some known annotations that we care for cluster initialization
+	subtleClusterInitAnnotations = []string{
+		known.ClusterInitSkipAnnotation,
+		known.ClusterInitBaseAnnotation,
+	}
+)
+
+var (
+	baseKind = appsapi.SchemeGroupVersion.WithKind("Base")
 )
 
 // Controller is a controller that manages cluster's lifecycle
 type Controller struct {
 	clusternetClient clusternetclientset.Interface
+	recorder         record.EventRecorder
+	yachtController  *yacht.Controller
+	clusterInformer  clusterinformers.ManagedClusterInformer
+	baseInformer     appsinformers.BaseInformer
+	descLister       appslister.DescriptionLister
 
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
-	workqueue workqueue.RateLimitingInterface
-
-	recorder        record.EventRecorder
-	yachtController *yacht.Controller
-	clusterInformer clusterinformers.ManagedClusterInformer
+	clusterInitBaseMap map[string]baseInfo
+	lock               *sync.Mutex
 }
 
-func NewController(clusternetClient clusternetclientset.Interface,
-	clusterInformer clusterinformers.ManagedClusterInformer, recorder record.EventRecorder) (*Controller, error) {
+type baseInfo struct {
+	baseName    string
+	createdTime metav1.Time
+}
+
+func NewController(
+	clusternetClient clusternetclientset.Interface,
+	clusterInformer clusterinformers.ManagedClusterInformer,
+	baseInformer appsinformers.BaseInformer,
+	descLister appslister.DescriptionLister,
+	recorder record.EventRecorder,
+) (*Controller, error) {
 	c := &Controller{
-		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ManagedCluster"),
-		recorder:         recorder,
-		clusterInformer:  clusterInformer,
+		clusternetClient:   clusternetClient,
+		recorder:           recorder,
+		clusterInformer:    clusterInformer,
+		baseInformer:       baseInformer,
+		descLister:         descLister,
+		clusterInitBaseMap: make(map[string]baseInfo),
+		lock:               &sync.Mutex{},
 	}
 
 	yachtController := yacht.NewController("cluster-lifecycle").
 		WithHandlerFunc(c.handle).
 		WithEnqueueFilterFunc(func(oldObj, newObj interface{}) (bool, error) {
-			// update event
+			// UPDATE: status change
 			if oldObj != nil && newObj != nil {
 				oldMcls := oldObj.(*clusterapi.ManagedCluster)
 				newMcls := newObj.(*clusterapi.ManagedCluster)
+				if newMcls.DeletionTimestamp != nil {
+					return true, nil
+				}
+
+				if oldMcls.Spec.ClusterInitBaseName != newMcls.Spec.ClusterInitBaseName {
+					return true, nil
+				}
+
+				// For cluster init, we care some known annotation changes
+				for _, annotation := range subtleClusterInitAnnotations {
+					if oldMcls.Annotations[annotation] != newMcls.Annotations[annotation] {
+						return true, nil
+					}
+				}
 
 				// Decide whether discovery has reported a status change.
 				if equality.Semantic.DeepEqual(oldMcls.Status, newMcls.Status) {
@@ -105,6 +156,8 @@ func NewController(clusternetClient clusternetclientset.Interface,
 					return false, nil
 				}
 			}
+
+			// ADD/DELETE/OTHER UPDATE
 			return true, nil
 		})
 
@@ -115,6 +168,20 @@ func NewController(clusternetClient clusternetclientset.Interface,
 	if err != nil {
 		return nil, err
 	}
+
+	_, err = baseInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			// we always return false in this filter func
+			c.cacheClusterInitBaseInfo(obj)
+			return false
+		},
+		// we don't need any special handlers here, since we always return false in FilterFunc
+		Handler: cache.ResourceEventHandlerFuncs{},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	c.yachtController = yachtController
 	return c, nil
 }
@@ -152,7 +219,7 @@ func (c *Controller) handle(key interface{}) (requeueAfter *time.Duration, err e
 		return nil, nil
 	}
 
-	updatedMcls, err := c.updateClusterCondition(context.TODO(), mcls.DeepCopy())
+	updatedMcls, err := c.updateClusterConditions(context.TODO(), mcls.DeepCopy())
 	if err != nil {
 		msg := fmt.Sprintf("failed to update conditions of ManagedCluster status: %v", err)
 		klog.WarningDepth(2, msg)
@@ -160,44 +227,56 @@ func (c *Controller) handle(key interface{}) (requeueAfter *time.Duration, err e
 		return nil, err
 	}
 
-	err = c.updateClusterTaints(context.TODO(), updatedMcls)
+	err = c.updateClusterTaintsAndInitBase(context.TODO(), updatedMcls)
 	if err != nil {
 		return nil, err
 	}
 
-	// requeueAfter is the duration that we consider a cluster to be Unknown
-	// the duration is the same as the grace period for cluster monitoring
-	return getClusterMonitorGracePeriod(mcls.Status), nil
+	// requeueAfter is the duration that we consider a cluster to be requeued, such as cluster lost, cluster init, etc.
+	return getGracefulRequeuePeriod(updatedMcls.Status), nil
 }
 
-func (c *Controller) updateClusterCondition(ctx context.Context, cluster *clusterapi.ManagedCluster) (*clusterapi.ManagedCluster, error) {
-	currentReadyCondition := GetClusterCondition(&cluster.Status, clusterapi.ClusterReady)
+func (c *Controller) updateClusterConditions(ctx context.Context, cluster *clusterapi.ManagedCluster) (*clusterapi.ManagedCluster, error) {
+	var newConditions []metav1.Condition
 	observedReadyCondition := generateClusterReadyCondition(cluster)
-	if observedReadyCondition == nil || equality.Semantic.DeepEqual(currentReadyCondition, observedReadyCondition) {
+	if observedReadyCondition != nil {
+		newConditions = append(newConditions, *observedReadyCondition)
+
+		// update Readyz/Livez/Healthz to false when cluster status is not ready
+		if observedReadyCondition.Status != metav1.ConditionTrue {
+			cluster.Status.Readyz = false
+			cluster.Status.Livez = false
+			cluster.Status.Healthz = false
+		}
+	}
+
+	clusterInitCondition := generateClusterInitCondition(cluster, c.baseInformer.Lister(), c.descLister)
+	if clusterInitCondition != nil {
+		newConditions = append(newConditions, *clusterInitCondition)
+	}
+
+	hasChanged := utils.UpdateConditions(&cluster.Status, newConditions)
+	if !hasChanged {
 		return cluster, nil
 	}
 
-	// update Readyz,Livez,Healthz to false when cluster status is not ready
-	if observedReadyCondition.Status != metav1.ConditionTrue {
-		cluster.Status.Readyz = false
-		cluster.Status.Livez = false
-		cluster.Status.Healthz = false
-	}
-
-	// TODO: multiple cluster conditions
-	cluster.Status.Conditions = []metav1.Condition{*observedReadyCondition}
 	return c.clusternetClient.ClustersV1beta1().ManagedClusters(cluster.Namespace).UpdateStatus(ctx,
 		cluster, metav1.UpdateOptions{})
 }
 
-func (c *Controller) updateClusterTaints(ctx context.Context, cluster *clusterapi.ManagedCluster) error {
+func (c *Controller) updateClusterTaintsAndInitBase(ctx context.Context, cluster *clusterapi.ManagedCluster) error {
 	// Map cluster's condition to Taints.
 	var taints []corev1.Taint
 	for _, condition := range cluster.Status.Conditions {
+		if !utilfeature.DefaultFeatureGate.Enabled(features.ClusterInit) && condition.Type == clusterapi.ClusterInit {
+			continue
+		}
+
 		if taintMap, found := clusterConditionToTaintKeyStatusMap[condition.Type]; found {
 			if taintKey, found2 := taintMap[condition.Status]; found2 {
 				taints = append(taints, corev1.Taint{
 					Key:    taintKey,
+					Value:  condition.Reason,
 					Effect: corev1.TaintEffectNoSchedule,
 				})
 			}
@@ -219,19 +298,63 @@ func (c *Controller) updateClusterTaints(ctx context.Context, cluster *clusterap
 		return found
 	})
 	taintsToAdd, taintsToDel := taintutils.TaintSetDiff(taints, clusterTaints)
-	// If nothing to add or delete, return true directly.
-	if len(taintsToAdd) == 0 && len(taintsToDel) == 0 {
+
+	// patch taints & initBase
+	return patchClusterTaintsAndInitBase(ctx, c.clusternetClient, cluster, taintsToAdd, taintsToDel,
+		c.getClusterInitBase(cluster))
+}
+
+func (c *Controller) cacheClusterInitBaseInfo(obj interface{}) {
+	base, ok := obj.(*appsapi.Base)
+	if !ok || base.DeletionTimestamp != nil {
+		return
+	}
+
+	isDefault, ok2 := base.Annotations[known.IsDefaultClusterInitAnnotation]
+	if !ok2 || isDefault != "true" {
+		return
+	}
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	cur, ok3 := c.clusterInitBaseMap[base.Namespace]
+	if !ok3 || base.CreationTimestamp.Time.Before(cur.createdTime.Time) {
+		return
+	}
+
+	// select the latest from default Base candidates
+	c.clusterInitBaseMap[base.Namespace] = baseInfo{baseName: base.Name, createdTime: base.CreationTimestamp}
+	return
+}
+
+func (c *Controller) getClusterInitBase(cluster *clusterapi.ManagedCluster) *string {
+	if isTrue, ok := cluster.Annotations[known.ClusterInitSkipAnnotation]; ok && isTrue == "true" {
 		return nil
 	}
 
-	// patch taints
-	return patchClusterTaints(ctx, c.clusternetClient, cluster, taintsToAdd, taintsToDel)
+	// For legacy clusters, it is strongly suggested to perform ClusterInit through annotation.
+	if base, ok := cluster.Annotations[known.ClusterInitBaseAnnotation]; ok {
+		return utilptr.String(base)
+	}
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if info, ok := c.clusterInitBaseMap[cluster.Namespace]; ok {
+		return utilptr.String(info.baseName)
+	}
+
+	return nil
 }
 
-func patchClusterTaints(ctx context.Context, client clusternetclientset.Interface, cluster *clusterapi.ManagedCluster,
-	taintsToAdd, taintsToRemove []*corev1.Taint) error {
+func patchClusterTaintsAndInitBase(
+	ctx context.Context,
+	client clusternetclientset.Interface,
+	cluster *clusterapi.ManagedCluster,
+	taintsToAdd, taintsToRemove []*corev1.Taint,
+	initBase *string,
+) error {
 	var err error
-	var newCluster *clusterapi.ManagedCluster = cluster
+	newCluster := cluster.DeepCopy()
 	for _, taint := range taintsToRemove {
 		newCluster, _, err = taintutils.RemoveTaint(cluster, taint)
 		if err != nil {
@@ -245,12 +368,25 @@ func patchClusterTaints(ctx context.Context, client clusternetclientset.Interfac
 		}
 	}
 
+	// we won't mutate ClusterInitBaseName
+	if initBase != nil && newCluster.Spec.ClusterInitBaseName == nil {
+		newCluster.Spec.ClusterInitBaseName = initBase
+	}
+
+	return patchCluster(ctx, client, cluster, newCluster)
+}
+
+func patchCluster(
+	ctx context.Context,
+	client clusternetclientset.Interface,
+	oldCluster, newCluster *clusterapi.ManagedCluster,
+) error {
 	// patch ManagedCluster
-	oldData, err := json.Marshal(cluster)
+	oldData, err := utils.Marshal(oldCluster)
 	if err != nil {
 		return err
 	}
-	newData, err := json.Marshal(newCluster)
+	newData, err := utils.Marshal(newCluster)
 	if err != nil {
 		return err
 	}
@@ -261,8 +397,13 @@ func patchClusterTaints(ctx context.Context, client clusternetclientset.Interfac
 	if len(patchBytes) == 0 {
 		return nil
 	}
-	_, err = client.ClustersV1beta1().ManagedClusters(cluster.Namespace).Patch(ctx, cluster.Name, types.MergePatchType,
-		patchBytes, metav1.PatchOptions{})
+	_, err = client.ClustersV1beta1().ManagedClusters(oldCluster.Namespace).Patch(
+		ctx,
+		oldCluster.Name,
+		types.MergePatchType,
+		patchBytes,
+		metav1.PatchOptions{},
+	)
 	return err
 }
 
@@ -276,7 +417,7 @@ func generateClusterReadyCondition(cluster *clusterapi.ManagedCluster) *metav1.C
 		probeTimestamp = cluster.CreationTimestamp
 	}
 
-	if !metav1.Now().After(probeTimestamp.Add(*getClusterMonitorGracePeriod(cluster.Status))) {
+	if !metav1.Now().After(probeTimestamp.Add(*getHeartbeatThresholdPeriod(cluster.Status))) {
 		return nil
 	}
 
@@ -300,21 +441,108 @@ func generateClusterReadyCondition(cluster *clusterapi.ManagedCluster) *metav1.C
 	}
 }
 
-// GetClusterCondition extracts the provided condition from the given status and returns that.
-func GetClusterCondition(status *clusterapi.ManagedClusterStatus, conditionType string) *metav1.Condition {
-	if status == nil {
-		return nil
+func generateClusterInitCondition(
+	cluster *clusterapi.ManagedCluster,
+	baseLister appslister.BaseLister,
+	descLister appslister.DescriptionLister,
+) *metav1.Condition {
+	condition := &metav1.Condition{
+		Type:               clusterapi.ClusterInit,
+		LastTransitionTime: metav1.Now(),
 	}
-	for i := range status.Conditions {
-		if status.Conditions[i].Type == conditionType {
-			return &status.Conditions[i]
-		}
+
+	if !utilfeature.DefaultFeatureGate.Enabled(features.ClusterInit) {
+		// always return true condition
+		// Don't bother to prune this condition when this feature gate is disabled
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = known.ClusterInitDisabledReason
+		condition.Message = "feature gate ClusterInit is not enabled"
+		return condition
 	}
-	return nil
+
+	// skip initializing the cluster when annotation ClusterInitSkipAnnotation is seen
+	if isTrue, ok := cluster.Annotations[known.ClusterInitSkipAnnotation]; ok && isTrue == "true" {
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = known.ClusterInitDisabledReason
+		condition.Message = "cluster initialization is skipped"
+		return condition
+	}
+
+	clusterInitResult, msg := getClusterInitResult(cluster.Namespace, cluster.Spec.ClusterInitBaseName, baseLister, descLister)
+	if !clusterInitResult {
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = known.ClusterInitWaitingReason
+		condition.Message = msg
+		return condition
+	}
+
+	// on success
+	condition.Status = metav1.ConditionTrue
+	condition.Reason = known.ClusterInitDoneReason
+	condition.Message = "cluster has been initialized successfully"
+	return condition
 }
 
-// getClusterMonitorGracePeriod calculate grace period for cluster monitoring, use DefaultClusterMonitorGracePeriod if HeartbeatFrequencySeconds is undefined.
-func getClusterMonitorGracePeriod(status clusterapi.ManagedClusterStatus) *time.Duration {
+func getClusterInitResult(
+	baseNamespace string,
+	baseName *string,
+	baseLister appslister.BaseLister,
+	descLister appslister.DescriptionLister,
+) (bool, string) {
+	if baseName == nil {
+		return false, "still waiting for cluster getting initialized"
+	}
+
+	if len(*baseName) == 0 {
+		klog.Errorf("[cluster-init] found empty base in namespace %s", baseNamespace)
+		return false, "found empty base"
+	}
+
+	base, err := baseLister.Bases(baseNamespace).Get(*baseName)
+	if err != nil {
+		klog.Errorf("[cluster-init] failed to get Base %s/%s", baseNamespace, *baseName)
+		return false, "failed to get Base, will retry"
+	}
+
+	descs, err := descLister.Descriptions(baseNamespace).List(labels.SelectorFromSet(labels.Set{
+		known.ConfigKindLabel:      baseKind.Kind,
+		known.ConfigNamespaceLabel: base.Namespace,
+		known.ConfigUIDLabel:       string(base.UID),
+	}))
+	if err != nil {
+		klog.Errorf("[cluster-init] failed to list Description matching Base %s/%s", baseNamespace, *baseName)
+		return false, "failed to list Description, will retry"
+	}
+	if len(descs) == 0 {
+		return false, "no matching Descriptions are found. will retry"
+	}
+
+	successStatus := true
+	var msg []string
+	for _, desc := range descs {
+		successStatus = successStatus && (desc.Status.Phase == appsapi.DescriptionPhaseSuccess)
+		if !successStatus {
+			msg = append(msg, desc.Status.Reason)
+		}
+	}
+
+	return successStatus, strings.Join(msg, ", ")
+}
+
+// getGracefulRequeuePeriod calculate grace period for cluster initialization and monitoring.
+func getGracefulRequeuePeriod(status clusterapi.ManagedClusterStatus) *time.Duration {
+	if utilfeature.DefaultFeatureGate.Enabled(features.ClusterInit) {
+		clusterInitGracePeriod := defaultClusterInitGracePeriod
+		clusterInitCondition := utils.GetCondition(status.Conditions, clusterapi.ClusterInit)
+		if clusterInitCondition == nil || clusterInitCondition.Status != metav1.ConditionTrue {
+			return &clusterInitGracePeriod
+		}
+	}
+	return getHeartbeatThresholdPeriod(status)
+}
+
+func getHeartbeatThresholdPeriod(status clusterapi.ManagedClusterStatus) *time.Duration {
+	// use DefaultClusterMonitorGracePeriod if HeartbeatFrequencySeconds is undefined.
 	gracePeriod := DefaultClusterMonitorGracePeriod
 	if status.HeartbeatFrequencySeconds != nil {
 		gracePeriod = time.Second * time.Duration(*status.HeartbeatFrequencySeconds) * ClusterNotReadyThreshold

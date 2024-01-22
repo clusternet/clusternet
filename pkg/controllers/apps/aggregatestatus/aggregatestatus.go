@@ -18,12 +18,12 @@ package aggregatestatus
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
 
+	"github.com/dixudx/yacht"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -32,11 +32,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
@@ -44,6 +42,7 @@ import (
 	appinformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/apps/v1alpha1"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -57,46 +56,85 @@ const (
 
 // Controller is a controller that handles Description
 type Controller struct {
+	yachtController *yacht.Controller
+
 	clusternetClient clusternetClientSet.Interface
-
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
-	workqueue workqueue.RateLimitingInterface
-
-	descLister applisters.DescriptionLister
-	descSynced cache.InformerSynced
-	subsLister applisters.SubscriptionLister
-	subsSynced cache.InformerSynced
-
-	recorder record.EventRecorder
+	subsLister       applisters.SubscriptionLister
+	descLister       applisters.DescriptionLister
+	recorder         record.EventRecorder
 }
 
-func NewController(clusternetClient clusternetClientSet.Interface,
-	subsInformer appinformers.SubscriptionInformer, descInformer appinformers.DescriptionInformer,
-	recorder record.EventRecorder) (*Controller, error) {
-
+func NewController(
+	clusternetClient clusternetClientSet.Interface,
+	subsInformer appinformers.SubscriptionInformer,
+	descInformer appinformers.DescriptionInformer,
+	recorder record.EventRecorder,
+) (*Controller, error) {
 	c := &Controller{
 		clusternetClient: clusternetClient,
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "aggregating_status"),
 		subsLister:       subsInformer.Lister(),
-		subsSynced:       subsInformer.Informer().HasSynced,
 		descLister:       descInformer.Lister(),
-		descSynced:       descInformer.Informer().HasSynced,
 		recorder:         recorder,
 	}
+	// create a yacht controller for aggregateStatus
+	yachtController := yacht.NewController("aggregateStatus").
+		WithCacheSynced(
+			subsInformer.Informer().HasSynced,
+			descInformer.Informer().HasSynced,
+		).
+		WithHandlerFunc(c.handle)
 
-	// Manage the update/delete of Description
-	_, err := descInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: c.updateDescription,
-		DeleteFunc: c.deleteDescription,
+	yachtController.WithEnqueueFilterFunc(func(oldObj, newObj interface{}) (bool, error) {
+		// we explicitly call yachtController.Enqueue to only enqueue Subscription
+		var oldDesc, newDesc *appsapi.Description
+		var oldSubs, newSubs *appsapi.Subscription
+		if oldObj != nil {
+			oldDesc = oldObj.(*appsapi.Description)
+			oldSubs = c.resolveControllerRef(
+				oldDesc.Labels[known.ConfigSubscriptionNameLabel],
+				oldDesc.Labels[known.ConfigSubscriptionNamespaceLabel],
+				types.UID(oldDesc.Labels[known.ConfigSubscriptionUIDLabel]),
+			)
+		}
+		if newObj != nil {
+			newDesc = newObj.(*appsapi.Description)
+			newSubs = c.resolveControllerRef(
+				newDesc.Labels[known.ConfigSubscriptionNameLabel],
+				newDesc.Labels[known.ConfigSubscriptionNamespaceLabel],
+				types.UID(newDesc.Labels[known.ConfigSubscriptionUIDLabel]),
+			)
+		}
+
+		// Decide whether discovery has reported a status change.
+		if oldDesc != nil && newDesc != nil && reflect.DeepEqual(oldDesc.Status, newDesc.Status) {
+			klog.V(4).Infof("no updates on the spec of Description %s, skipping syncing", klog.KObj(oldDesc))
+			return false, nil
+		}
+
+		if oldSubs == nil && newSubs == nil {
+			return false, nil
+		}
+		if oldSubs != nil {
+			yachtController.Enqueue(oldSubs)
+			return false, nil
+		}
+		if newSubs != nil {
+			yachtController.Enqueue(newSubs)
+			return false, nil
+		}
+
+		// always return false, since we are not enqueueing Description
+		return false, nil
 	})
+
+	// Manage the addition/update of Description
+	// We get informed of Description changes, but will enqueue matching Subscription instead
+	_, err := descInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
 	if err != nil {
 		return nil, err
 	}
 
+	c.yachtController = yachtController
 	return c, nil
 }
 
@@ -104,76 +142,8 @@ func NewController(clusternetClient clusternetClientSet.Interface,
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) {
-	defer utilruntime.HandleCrash()
-	defer c.workqueue.ShutDown()
-
-	klog.Info("starting aggregateStatus controller...")
-	defer klog.Info("shutting down aggregatestatus controller")
-
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("aggregatestatus-controller", stopCh, c.subsSynced, c.descSynced) {
-		return
-	}
-
-	klog.V(5).Infof("starting %d worker threads", workers)
-	// Launch workers to process Subscription resources
-	for i := 0; i < workers; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
-	}
-
-	<-stopCh
-}
-
-func (c *Controller) updateDescription(old, cur interface{}) {
-	oldDesc := old.(*appsapi.Description)
-	newDesc := cur.(*appsapi.Description)
-
-	sub := c.resolveControllerRef(oldDesc.Labels[known.ConfigSubscriptionNameLabel], oldDesc.Labels[known.ConfigSubscriptionNamespaceLabel],
-		types.UID(oldDesc.Labels[known.ConfigSubscriptionUIDLabel]))
-	if sub == nil {
-		return
-	}
-
-	if newDesc.DeletionTimestamp != nil {
-		c.enqueue(sub)
-		return
-	}
-
-	// Decide whether discovery has reported a status change.
-	if reflect.DeepEqual(oldDesc.Status, newDesc.Status) {
-		klog.V(4).Infof("no updates on the spec of Description %s, skipping syncing", klog.KObj(oldDesc))
-		return
-	}
-
-	klog.V(4).Infof("updating Description Status %q", klog.KObj(oldDesc))
-	c.enqueue(sub)
-
-}
-
-func (c *Controller) deleteDescription(obj interface{}) {
-	desc, ok := obj.(*appsapi.Description)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
-			return
-		}
-		desc, ok = tombstone.Obj.(*appsapi.Description)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a Description %#v", obj))
-			return
-		}
-	}
-
-	sub := c.resolveControllerRef(desc.Labels[known.ConfigSubscriptionNameLabel], desc.Labels[known.ConfigSubscriptionNamespaceLabel],
-		types.UID(desc.Labels[known.ConfigSubscriptionUIDLabel]))
-	if sub == nil {
-		return
-	}
-
-	klog.V(4).Infof("deleting Description %q", klog.KObj(desc))
-	c.enqueue(sub)
+func (c *Controller) Run(workers int, ctx context.Context) {
+	c.yachtController.WithWorkers(workers).Run(ctx)
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
@@ -192,160 +162,85 @@ func (c *Controller) resolveControllerRef(name, namespace string, uid types.UID)
 	return sub
 }
 
-// runWorker is a long-running function that will continually call the
-// processNextWorkItem function in order to read and process a message on the
-// workqueue.
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
-
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	// We wrap this block in a func so we can defer c.workqueue.Done.
-	err := func(obj interface{}) error {
-		// We call Done here so the workqueue knows we have finished
-		// processing this item. We also must remember to call Forget if we
-		// do not want this work item being re-queued. For example, we do
-		// not call Forget if a transient error occurs, instead the item is
-		// put back on the workqueue and attempted again after a back-off
-		// period.
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
-		// workqueue.
-		if key, ok = obj.(string); !ok {
-			// As the item in the workqueue is actually invalid, we call
-			// Forget here else we'd go into a loop of attempting to
-			// process a work item that is invalid.
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		// Run the syncHandler, passing it the namespace/name string of the
-		// Subscription resource to be synced.
-		if err := c.syncHandler(key); err != nil {
-			// Put the item back on the workqueue to handle any transient errors.
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		// Finally, if no error occurs we Forget this item so it does not
-		// get queued again until another change happens.
-		c.workqueue.Forget(obj)
-		klog.Infof("successfully synced Subscription %q", key)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-// syncHandler compares the actual state with the desired, and attempts to
+// handle compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the Subscription resource
 // with the current status of the resource.
-func (c *Controller) syncHandler(key string) error {
+func (c *Controller) handle(obj interface{}) (requeueAfter *time.Duration, err error) {
 	// If an error occurs during handling, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
 
 	// Convert the namespace/name string into a distinct namespace and name
+	key := obj.(string)
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
+		return nil, nil
 	}
 
 	klog.V(4).Infof("start processing Subscription %q", key)
 	// Get the Subscription resource with this name
-	sub, err := c.subsLister.Subscriptions(ns).Get(name)
+	cachedSub, err := c.subsLister.Subscriptions(ns).Get(name)
 	// The Subscription resource may no longer exist, in which case we stop processing.
 	if errors.IsNotFound(err) {
 		klog.V(2).Infof("Subscription %q has been deleted", key)
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = c.handleAggregateStatus(sub)
+	subCopy := cachedSub.DeepCopy()
+	err = c.handleAggregateStatus(subCopy)
 	if err != nil {
-		c.recorder.Event(sub, corev1.EventTypeWarning, "FailedAggregateStatus", err.Error())
+		c.recorder.Event(subCopy, corev1.EventTypeWarning, "FailedAggregateStatus", err.Error())
 	} else {
-		c.recorder.Event(sub, corev1.EventTypeNormal, "AggregateStatus", "Subscription synced successfully")
+		c.recorder.Event(subCopy, corev1.EventTypeNormal, "AggregateStatus", "Subscription synced successfully")
+		klog.Infof("successfully synced Subscription %q", key)
 	}
-	return err
+	return nil, err
 }
 
-func (c *Controller) updateSubscriptionStatus(sub *appsapi.Subscription, status *appsapi.SubscriptionStatus) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update Subscription %q status", sub.Name)
-	subsCopy := sub.DeepCopy()
+func (c *Controller) updateSubscriptionStatus(subCopy *appsapi.Subscription) error {
+	klog.V(5).Infof("try to update Subscription %q status", subCopy.Name)
+	status := subCopy.Status
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		subsCopy.Status = *status
-		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subsCopy.Namespace).UpdateStatus(context.TODO(), subsCopy, metav1.UpdateOptions{})
+		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subCopy.Namespace).UpdateStatus(context.TODO(), subCopy, metav1.UpdateOptions{})
 		if err == nil {
 			//TODO
 			return nil
 		}
 
-		if updated, err := c.subsLister.Subscriptions(subsCopy.Namespace).Get(subsCopy.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
-			subsCopy = updated.DeepCopy()
+		updated, err2 := c.subsLister.Subscriptions(subCopy.Namespace).Get(subCopy.Name)
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
+			subCopy = updated.DeepCopy()
+			subCopy.Status = status
 		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", subsCopy.Name, err))
+			utilruntime.HandleError(fmt.Errorf("error getting updated Subscription %q from lister: %v", subCopy.Name, err2))
 		}
-		return err
+		return err2
 	})
 }
 
-// enqueue takes a Subscription resource and converts it into a namespace/name
-// string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Subscription.
-func (c *Controller) enqueue(sub *appsapi.Subscription) {
-	key, err := cache.MetaNamespaceKeyFunc(sub)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.workqueue.Add(key)
-}
-
 // handleAggregateStatus
-func (c *Controller) handleAggregateStatus(sub *appsapi.Subscription) error {
-	klog.Infof("handle AggregateStatus %s", klog.KObj(sub))
-	if sub.DeletionTimestamp != nil {
+func (c *Controller) handleAggregateStatus(subCopy *appsapi.Subscription) error {
+	klog.Infof("handle AggregateStatus %s", klog.KObj(subCopy))
+	if subCopy.DeletionTimestamp != nil {
 		return nil
 	}
 
-	aggregatedStatuses, err := c.descriptionStatusChanged(sub)
+	aggregatedStatuses, err := c.descriptionStatusChanged(subCopy)
 	if err == nil {
 		if aggregatedStatuses != nil {
-			subStatus := sub.Status.DeepCopy()
-			subStatus.AggregatedStatuses = aggregatedStatuses
-
-			err = c.updateSubscriptionStatus(sub, subStatus)
+			subCopy.Status.AggregatedStatuses = aggregatedStatuses
+			err = c.updateSubscriptionStatus(subCopy)
 			if err != nil {
-				klog.Errorf("Failed to aggregate baseStatus to Subscriptions(%s/%s). Error: %v.", sub.Namespace, sub.Name, err)
+				klog.Errorf("Failed to aggregate baseStatus to Subscriptions(%s/%s). Error: %v.", subCopy.Namespace, subCopy.Name, err)
 			}
 		} else {
-			klog.V(5).Infof("AggregateStatus %s does not change, skip it.", klog.KObj(sub))
+			klog.V(5).Infof("AggregateStatus %s does not change, skip it.", klog.KObj(subCopy))
 		}
 	}
 	return err
@@ -375,12 +270,13 @@ func (c *Controller) descriptionStatusChanged(sub *appsapi.Subscription) ([]apps
 				Available: true,
 			}
 
-			ReplicaStatus, err := c.getWorkloadReplicaStatus(manifeststatus)
+			var replicaStatus *appsapi.ReplicaStatus
+			replicaStatus, err = c.getWorkloadReplicaStatus(manifeststatus)
 			if err != nil {
 				return nil, err
 			}
-			if ReplicaStatus != nil {
-				feedStatus.ReplicaStatus = *ReplicaStatus
+			if replicaStatus != nil {
+				feedStatus.ReplicaStatus = *replicaStatus
 			}
 
 			feedStatusOneCluster := appsapi.FeedStatusPerCluster{
@@ -501,7 +397,7 @@ func (c *Controller) getDeploymentReplicaStatus(manifeststatus appsapi.ManifestS
 	}
 
 	temp := &appsv1.DeploymentStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal ObservedStatus status")
 		return nil, err
 	}
@@ -527,7 +423,7 @@ func (c *Controller) getStatefulSetReplicaStatus(manifeststatus appsapi.Manifest
 	}
 
 	temp := &appsv1.StatefulSetStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal status")
 		return nil, err
 	}
@@ -552,7 +448,7 @@ func (c *Controller) getJobReplicaStatus(manifeststatus appsapi.ManifestStatus) 
 	}
 
 	temp := &batchv1.JobStatus{}
-	if err := json.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
+	if err := utils.Unmarshal(manifeststatus.ObservedStatus.Raw, temp); err != nil {
 		klog.Errorf("Failed to unmarshal status")
 		return nil, err
 	}

@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeDescriptions struct {
 	ns   string
 }
 
-var descriptionsResource = schema.GroupVersionResource{Group: "apps.clusternet.io", Version: "v1alpha1", Resource: "descriptions"}
+var descriptionsResource = v1alpha1.SchemeGroupVersion.WithResource("descriptions")
 
-var descriptionsKind = schema.GroupVersionKind{Group: "apps.clusternet.io", Version: "v1alpha1", Kind: "Description"}
+var descriptionsKind = v1alpha1.SchemeGroupVersion.WithKind("Description")
 
 // Get takes name of the description, and returns the corresponding description object, and an error if there is any.
 func (c *FakeDescriptions) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Description, err error) {
@@ -133,6 +135,51 @@ func (c *FakeDescriptions) DeleteCollection(ctx context.Context, opts v1.DeleteO
 func (c *FakeDescriptions) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Description, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(descriptionsResource, c.ns, name, pt, data, subresources...), &v1alpha1.Description{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Description), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied description.
+func (c *FakeDescriptions) Apply(ctx context.Context, description *appsv1alpha1.DescriptionApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Description, err error) {
+	if description == nil {
+		return nil, fmt.Errorf("description provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(description)
+	if err != nil {
+		return nil, err
+	}
+	name := description.Name
+	if name == nil {
+		return nil, fmt.Errorf("description.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(descriptionsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.Description{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Description), err
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *FakeDescriptions) ApplyStatus(ctx context.Context, description *appsv1alpha1.DescriptionApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Description, err error) {
+	if description == nil {
+		return nil, fmt.Errorf("description provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(description)
+	if err != nil {
+		return nil, err
+	}
+	name := description.Name
+	if name == nil {
+		return nil, fmt.Errorf("description.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(descriptionsResource, c.ns, *name, types.ApplyPatchType, data, "status"), &v1alpha1.Description{})
 
 	if obj == nil {
 		return nil, err

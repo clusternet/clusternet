@@ -72,7 +72,11 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	appDeployerConfig *rest.Config, clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
-	mapper, err := apiutil.NewDynamicRESTMapper(appDeployerConfig, apiutil.WithLazyDiscovery)
+	httpClient, err := rest.HTTPClientFor(appDeployerConfig)
+	if err != nil {
+		return nil, err
+	}
+	mapper, err := apiutil.NewDynamicRESTMapper(appDeployerConfig, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -107,18 +111,18 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
+func (deployer *Deployer) Run(workers int, ctx context.Context) {
 	klog.Info("starting generic deployer...")
 	defer klog.Info("shutting generic deployer")
 
 	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("generic-deployer", stopCh, deployer.descSynced) {
+	if !cache.WaitForNamedCacheSync("generic-deployer", ctx.Done(), deployer.descSynced) {
 		return
 	}
 
-	go deployer.descController.Run(workers, stopCh)
+	go deployer.descController.Run(workers, ctx)
 
-	<-stopCh
+	<-ctx.Done()
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
@@ -202,7 +206,7 @@ func (deployer *Deployer) handleResource(resAttrs *resourcecontroller.ResourceAt
 	}
 
 	if resAttrs.ObjectAction != resourcecontroller.ObjectDelete {
-		err = deployer.SyncDescriptionStatus(deployer.clusternetClient, deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
+		err = deployer.SyncDescriptionStatus(deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
 		if err != nil {
 			klog.Errorf("Failed Sync Description Status. %v", err)
 			return err
@@ -239,8 +243,11 @@ func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller 
 	}
 }
 
-func (deployer *Deployer) SyncDescriptionStatus(clusternetClient *clusternetclientset.Clientset, dynamicClient dynamic.Interface,
-	restMapper meta.RESTMapper, desc *appsapi.Description) error {
+func (deployer *Deployer) SyncDescriptionStatus(
+	dynamicClient dynamic.Interface,
+	restMapper meta.RESTMapper,
+	desc *appsapi.Description,
+) error {
 	descStatus := desc.Status.DeepCopy()
 	// descStatusMap for check and update exsit ManifestStatus
 	descStatusMap := make(map[string]int)
@@ -304,7 +311,7 @@ func (deployer *Deployer) SyncDescriptionStatus(clusternetClient *clusternetclie
 	// try to update Descriptions Status
 	var err error
 	if !reflect.DeepEqual(desc.Status.ManifestStatuses, descStatus.ManifestStatuses) {
-		err = utils.UpdateDescriptionStatus(desc, descStatus, deployer.clusternetClient, false)
+		err = utils.UpdateDescriptionStatus(context.TODO(), desc, descStatus, deployer.clusternetClient, false)
 		klog.V(5).Infof("SyncDescriptionStatus Descriptions manifestStatus has changed, UpdateStatus. err: %s", err)
 	}
 

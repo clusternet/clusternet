@@ -96,7 +96,7 @@ func (d *Deployer) Run(
 	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet, d.systemNamespace, d.saTokenAutoGen)
 
 	// creating credentials to parent cluster is also required in the pull mode,
-	// because the cleaning of redundant objects in the description is performed in the hub
+	// because the cleaning of redundant objects in the description is performed by clusternet-controller-manager
 	klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
 	createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
 
@@ -158,8 +158,8 @@ func (d *Deployer) Run(
 	if err != nil {
 		return err
 	}
-	go genericDeployer.Run(workers, ctx.Done())
-	go helmDeployer.Run(workers, ctx.Done())
+	go genericDeployer.Run(workers, ctx)
+	go helmDeployer.Run(workers, ctx)
 
 	<-ctx.Done()
 	return nil
@@ -205,7 +205,8 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 				klog.V(5).Infof("found existed Secret %s in parent cluster, will try to update it", klog.KObj(secret))
 
 				// try to auto update existing object
-				sct, err := parentClientSet.CoreV1().Secrets(dedicatedNamespace).Get(ctx, secret.Name, metav1.GetOptions{})
+				var sct *corev1.Secret
+				sct, err = parentClientSet.CoreV1().Secrets(dedicatedNamespace).Get(ctx, secret.Name, metav1.GetOptions{})
 				if err != nil {
 					klog.ErrorDepth(5, fmt.Sprintf("failed to get Secret %s in parent cluster: %v, will retry",
 						klog.KObj(secret), err))

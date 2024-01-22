@@ -201,6 +201,91 @@ func TestTrimCoreService(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Service HealthCheckNodePort",
+			resultRaw: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "Service",
+					"metadata": map[string]interface{}{
+						"creationTimestamp": "2021-11-01T08:12:43Z",
+						"labels": map[string]string{
+							"clusternet.io/created-by": "clusternet-hub",
+						},
+						"name":            "my-test-healthchecknodeport-svc",
+						"namespace":       "nginx-test",
+						"resourceVersion": "4457294",
+						"selfLink":        "test-link",
+						"uid":             "28f5ae38-9eea-431c-918b-68ffdf263c24",
+					},
+					"spec": map[string]interface{}{
+						"clusterIP":             "None",
+						"externalTrafficPolicy": "Local",
+						"ipFamilies": []string{
+							"IPv4",
+						},
+						"ipFamilyPolicy":      "SingleStack",
+						"healthCheckNodePort": int64(32770),
+						"ports": []interface{}{
+							map[string]interface{}{
+								"name":       "tcp-80-80",
+								"port":       int64(80),
+								"protocol":   "TCP",
+								"targetPort": int64(80),
+							},
+							map[string]interface{}{
+								"name":       "tcp-443-443",
+								"port":       int64(443),
+								"protocol":   "TCP",
+								"targetPort": int64(443),
+							},
+						},
+						"sessionAffinity": "None",
+						"type":            "LoadBalancer",
+					},
+					"status": map[string]interface{}{},
+				},
+			},
+			resultDesired: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "Service",
+					"metadata": map[string]interface{}{
+						"labels": map[string]string{
+							"clusternet.io/created-by": "clusternet-hub",
+						},
+						"name":      "my-test-healthchecknodeport-svc",
+						"namespace": "nginx-test",
+						"uid":       "28f5ae38-9eea-431c-918b-68ffdf263c24",
+					},
+					"spec": map[string]interface{}{
+						"clusterIP":             "None",
+						"externalTrafficPolicy": "Local",
+						"ipFamilies": []string{
+							"IPv4",
+						},
+						"ipFamilyPolicy": "SingleStack",
+						"ports": []interface{}{
+							map[string]interface{}{
+								"name":       "tcp-80-80",
+								"port":       int64(80),
+								"protocol":   "TCP",
+								"targetPort": int64(80),
+							},
+							map[string]interface{}{
+								"name":       "tcp-443-443",
+								"port":       int64(443),
+								"protocol":   "TCP",
+								"targetPort": int64(443),
+							},
+						},
+						"sessionAffinity": "None",
+						"type":            "LoadBalancer",
+					},
+					"status": map[string]interface{}{},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

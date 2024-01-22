@@ -250,7 +250,7 @@ func TestClusterHasReadyCondition(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{},
 				Spec:       clusterapi.ManagedClusterSpec{},
 			},
-			clusterReady: true,
+			clusterReady: false,
 		},
 		{
 			mc: &clusterapi.ManagedCluster{

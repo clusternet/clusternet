@@ -26,7 +26,7 @@ const (
 	NamePrefixForClusternetObjects = "clusternet-"
 
 	// ChildClusterSecretName is the secret that stores credentials of child cluster, which will be used by deployer
-	// in clusternet-hub
+	// in clusternet-controller-manager
 	ChildClusterSecretName = "child-cluster-deployer"
 
 	// ClusterAPIServerURLKey denotes the apiserver address
@@ -91,4 +91,14 @@ const (
 	// NoteLengthLimit denotes the maximum note length.
 	// copied from k8s.io/kubernetes/pkg/apis/core/validation/events.go
 	NoteLengthLimit = 1024
+)
+
+const (
+	// DefaultRandomIDLength is the default length for random id
+	DefaultRandomIDLength = 5
+)
+
+const (
+	IndexKeyForSubscriptionUID = "subUid"
+	IndexKeyForBaseUID         = "baseUid"
 )

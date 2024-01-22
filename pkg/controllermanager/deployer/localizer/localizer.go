@@ -18,7 +18,6 @@ package localizer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -160,12 +159,12 @@ func NewLocalizer(clusternetClient *clusternetclientset.Clientset,
 	return localizer, nil
 }
 
-func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
+func (l *Localizer) Run(workers int, ctx context.Context) {
 	klog.Info("starting Clusternet localizer ...")
 
 	// Wait for the caches to be synced before starting workers
 	if !cache.WaitForNamedCacheSync("localizer-controller",
-		stopCh,
+		ctx.Done(),
 		l.locSynced,
 		l.globSynced,
 		l.chartSynced,
@@ -175,21 +174,21 @@ func (l *Localizer) Run(workers int, stopCh <-chan struct{}) {
 		return
 	}
 
-	go l.locController.Run(workers, stopCh)
-	go l.globController.Run(workers, stopCh)
+	go l.locController.Run(workers, ctx)
+	go l.globController.Run(workers, ctx)
 
-	<-stopCh
+	<-ctx.Done()
 }
 
-func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
-	switch loc.Spec.OverridePolicy {
+func (l *Localizer) handleLocalization(locCopy *appsapi.Localization) error {
+	switch locCopy.Spec.OverridePolicy {
 	case appsapi.ApplyNow:
-		klog.V(5).Infof("apply Localization %s now", klog.KObj(loc))
-		if loc.Spec.Kind == chartKind.Kind {
-			chart, err := l.chartLister.HelmCharts(loc.Spec.Namespace).Get(loc.Spec.Name)
+		klog.V(5).Infof("apply Localization %s now", klog.KObj(locCopy))
+		if locCopy.Spec.Kind == chartKind.Kind {
+			chart, err := l.chartLister.HelmCharts(locCopy.Spec.Namespace).Get(locCopy.Spec.Name)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
-					klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
+					klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(locCopy), utils.FormatFeed(locCopy.Spec.Feed))
 					break
 				}
 				return err
@@ -201,12 +200,12 @@ func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 			}
 			break
 		}
-		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, loc.Spec.Feed)
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, locCopy.Spec.Feed)
 		if err != nil {
 			return err
 		}
 		if manifests == nil {
-			klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(loc), utils.FormatFeed(loc.Spec.Feed))
+			klog.V(5).Infof("skipping apply Localization %s to not found %s", klog.KObj(locCopy), utils.FormatFeed(locCopy.Spec.Feed))
 			break
 		}
 		err = l.manifestCallback(manifests[0])
@@ -215,17 +214,16 @@ func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 		}
 	case appsapi.ApplyLater:
 	default:
-		msg := fmt.Sprintf("unsupported OverridePolicy %s", loc.Spec.OverridePolicy)
-		l.recorder.Event(loc, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
+		msg := fmt.Sprintf("unsupported OverridePolicy %s", locCopy.Spec.OverridePolicy)
+		l.recorder.Event(locCopy, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
 		klog.ErrorDepth(2, msg)
 		// will not sync such invalid objects again
 		return nil
 	}
 
 	// remove finalizer
-	if loc.DeletionTimestamp != nil {
+	if locCopy.DeletionTimestamp != nil {
 		// remove finalizer
-		locCopy := loc.DeepCopy()
 		locCopy.Finalizers = utils.RemoveString(locCopy.Finalizers, known.AppFinalizer)
 		_, err := l.clusternetClient.AppsV1alpha1().Localizations(locCopy.Namespace).Update(context.TODO(), locCopy, metav1.UpdateOptions{})
 		if err != nil {
@@ -237,15 +235,15 @@ func (l *Localizer) handleLocalization(loc *appsapi.Localization) error {
 	return nil
 }
 
-func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
-	switch glob.Spec.OverridePolicy {
+func (l *Localizer) handleGlobalization(globCopy *appsapi.Globalization) error {
+	switch globCopy.Spec.OverridePolicy {
 	case appsapi.ApplyNow:
-		klog.V(5).Infof("apply Globalization %s now", klog.KObj(glob), appsapi.ApplyNow)
-		if glob.Spec.Kind == chartKind.Kind {
-			chart, err := l.chartLister.HelmCharts(glob.Spec.Namespace).Get(glob.Spec.Name)
+		klog.V(5).Infof("apply Globalization %s now", klog.KObj(globCopy), appsapi.ApplyNow)
+		if globCopy.Spec.Kind == chartKind.Kind {
+			chart, err := l.chartLister.HelmCharts(globCopy.Spec.Namespace).Get(globCopy.Spec.Name)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
-					klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(glob), utils.FormatFeed(glob.Spec.Feed))
+					klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(globCopy), utils.FormatFeed(globCopy.Spec.Feed))
 					break
 				}
 				return err
@@ -257,12 +255,12 @@ func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 			}
 			break
 		}
-		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, glob.Spec.Feed)
+		manifests, err := utils.ListManifestsBySelector(l.reservedNamespace, l.manifestLister, globCopy.Spec.Feed)
 		if err != nil {
 			return err
 		}
 		if manifests == nil {
-			klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(glob), utils.FormatFeed(glob.Spec.Feed))
+			klog.V(5).Infof("skipping apply Globalization %s to not found %s", klog.KObj(globCopy), utils.FormatFeed(globCopy.Spec.Feed))
 			break
 		}
 		err = l.manifestCallback(manifests[0])
@@ -271,16 +269,15 @@ func (l *Localizer) handleGlobalization(glob *appsapi.Globalization) error {
 		}
 	case appsapi.ApplyLater:
 	default:
-		msg := fmt.Sprintf("unsupported OverridePolicy %s", glob.Spec.OverridePolicy)
-		l.recorder.Event(glob, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
+		msg := fmt.Sprintf("unsupported OverridePolicy %s", globCopy.Spec.OverridePolicy)
+		l.recorder.Event(globCopy, corev1.EventTypeWarning, "InvalidOverridePolicy", msg)
 		klog.ErrorDepth(2, msg)
 		// will not sync such invalid objects again until the spec gets changed
 		return nil
 	}
 
-	if glob.DeletionTimestamp != nil {
+	if globCopy.DeletionTimestamp != nil {
 		// remove finalizer
-		globCopy := glob.DeepCopy()
 		globCopy.Finalizers = utils.RemoveString(globCopy.Finalizers, known.AppFinalizer)
 		_, err := l.clusternetClient.AppsV1alpha1().Globalizations().Update(context.TODO(), globCopy, metav1.UpdateOptions{})
 		if err != nil {
@@ -342,7 +339,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 	case appsapi.DescriptionGenericDeployer:
 		for idx, rawObject := range desc.Spec.Raw {
 			obj := &unstructured.Unstructured{}
-			if err := json.Unmarshal(rawObject, obj); err != nil {
+			if err := utils.Unmarshal(rawObject, obj); err != nil {
 				allErrs = append(allErrs, err)
 				continue
 			}
@@ -401,9 +398,9 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 	globs := make([]*appsapi.Globalization, 0)
 	for _, glob := range feedGlobs {
 		if glob.Spec.ClusterAffinity != nil {
-			selector, err := metav1.LabelSelectorAsSelector(glob.Spec.ClusterAffinity)
-			if err != nil {
-				return nil, err
+			selector, err2 := metav1.LabelSelectorAsSelector(glob.Spec.ClusterAffinity)
+			if err2 != nil {
+				return nil, err2
 			}
 			clusters, listErr := l.mclsLister.ManagedClusters(namespace).List(selector)
 			if listErr != nil {

@@ -28,16 +28,6 @@ metadata:
 type: kubernetes.io/service-account-token
 
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: clusternet-hub-proxy
-  namespace: clusternet-system
-  annotations:
-    kubernetes.io/service-account.name: clusternet-hub-proxy
-type: kubernetes.io/service-account-token
-
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -61,7 +51,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-agent
-          image: ghcr.io/clusternet/clusternet-agent:v0.15.2
+          image: ghcr.io/clusternet/clusternet-agent:v0.16.0
           imagePullPolicy: IfNotPresent
           env:
             - name: PARENT_URL
@@ -95,3 +85,5 @@ spec:
             - --use-metrics-server=false
             - --predictor-direct-access=false
             - --predictor-port=8080
+            - --kube-api-burst=100
+            - --kube-api-qps=50

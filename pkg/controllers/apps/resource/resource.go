@@ -91,14 +91,17 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 	resourceClient := utils.NewResourceClient(client, apiResource)
 
 	c := &Controller{
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), gvk.String()),
 		syncHandlerFunc:  syncHandlerFunc,
 		client:           resourceClient,
 		name:             gvk.String(),
 		clusternetClient: clusternetClient,
+		workqueue: workqueue.NewRateLimitingQueueWithConfig(
+			workqueue.DefaultControllerRateLimiter(),
+			workqueue.RateLimitingQueueConfig{Name: gvk.String()},
+		),
 	}
 
-	ri := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
+	ri, err := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
 			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
@@ -133,7 +136,22 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			resource := obj.(*unstructured.Unstructured)
+			var resource *unstructured.Unstructured
+			switch t := obj.(type) {
+			case *unstructured.Unstructured:
+				resource = obj.(*unstructured.Unstructured)
+			case cache.DeletedFinalStateUnknown:
+				var ok bool
+				resource, ok = t.Obj.(*unstructured.Unstructured)
+				if !ok {
+					utilruntime.HandleError(fmt.Errorf("unable to convert object %T to *unstructured.Unstructured", obj))
+					return
+				}
+			default:
+				utilruntime.HandleError(fmt.Errorf("unable to handle object %T", obj))
+				return
+			}
+
 			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
 			resAttrs, err := getResourceAttrs(val, ObjectDelete)
 			if ok && err == nil {
@@ -142,6 +160,9 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 			}
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
 	ri.Start()
 	c.resourceSynced = ri.HasSynced
 

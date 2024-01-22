@@ -58,7 +58,7 @@ func NewMap(cfgs []apis.SchedulerProfile, r frameworkruntime.Registry,
 		if err != nil {
 			return nil, fmt.Errorf("creating profile for scheduler name %s: %v", cfg.SchedulerName, err)
 		}
-		if err := v.validate(cfg, p); err != nil {
+		if err = v.validate(cfg, p); err != nil {
 			return nil, err
 		}
 		m[cfg.SchedulerName] = p

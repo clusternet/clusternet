@@ -18,7 +18,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -104,7 +103,7 @@ func (mgr *Manager) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Con
 			os.Exit(1)
 			return
 		}
-		mgr.updateClusterStatus(ctx, *dedicatedNamespace, string(*clusterID), client, retry.DefaultBackoff)
+		mgr.updateClusterStatus(ctx, *dedicatedNamespace, string(*clusterID), client, retry.DefaultRetry)
 	}, mgr.statusReportFrequency.Duration)
 }
 
@@ -135,7 +134,7 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 	// in case the network is not stable, retry with backoff
 	var lastError error
 	var mcls *clusterapi.ManagedCluster
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
 		status := mgr.clusterStatusController.GetClusterStatus()
 		if status == nil {
 			lastError = errors.New("cluster status is not ready, will retry later")
@@ -151,7 +150,15 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 				return false, nil
 			}
 		}
+
+		oldStatus := mgr.managedCluster.Status.DeepCopy()
 		mgr.managedCluster.Status = *status
+		// update with new conditions
+		hasChanged := utils.UpdateConditions(oldStatus, status.Conditions)
+		if hasChanged {
+			mgr.managedCluster.Status.Conditions = oldStatus.Conditions
+		}
+
 		mcls, lastError = client.ClustersV1beta1().ManagedClusters(namespace).UpdateStatus(ctx, mgr.managedCluster, metav1.UpdateOptions{})
 		if lastError == nil {
 			mgr.managedCluster = mcls
@@ -187,12 +194,12 @@ func patchManagedClusterTwoWayMergeLabels(client clusternetclientset.Interface, 
 	actualCopy := mcls.DeepCopy()
 	actualCopy.Labels = newLabels
 
-	oldData, err := json.Marshal(mcls)
+	oldData, err := utils.Marshal(mcls)
 	if err != nil {
 		return nil, err
 	}
 
-	newData, err := json.Marshal(actualCopy)
+	newData, err := utils.Marshal(actualCopy)
 	if err != nil {
 		return nil, err
 	}

@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeHelmReleases struct {
 	ns   string
 }
 
-var helmreleasesResource = schema.GroupVersionResource{Group: "apps.clusternet.io", Version: "v1alpha1", Resource: "helmreleases"}
+var helmreleasesResource = v1alpha1.SchemeGroupVersion.WithResource("helmreleases")
 
-var helmreleasesKind = schema.GroupVersionKind{Group: "apps.clusternet.io", Version: "v1alpha1", Kind: "HelmRelease"}
+var helmreleasesKind = v1alpha1.SchemeGroupVersion.WithKind("HelmRelease")
 
 // Get takes name of the helmRelease, and returns the corresponding helmRelease object, and an error if there is any.
 func (c *FakeHelmReleases) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.HelmRelease, err error) {
@@ -133,6 +135,51 @@ func (c *FakeHelmReleases) DeleteCollection(ctx context.Context, opts v1.DeleteO
 func (c *FakeHelmReleases) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.HelmRelease, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(helmreleasesResource, c.ns, name, pt, data, subresources...), &v1alpha1.HelmRelease{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.HelmRelease), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied helmRelease.
+func (c *FakeHelmReleases) Apply(ctx context.Context, helmRelease *appsv1alpha1.HelmReleaseApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmRelease, err error) {
+	if helmRelease == nil {
+		return nil, fmt.Errorf("helmRelease provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(helmRelease)
+	if err != nil {
+		return nil, err
+	}
+	name := helmRelease.Name
+	if name == nil {
+		return nil, fmt.Errorf("helmRelease.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(helmreleasesResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.HelmRelease{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.HelmRelease), err
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *FakeHelmReleases) ApplyStatus(ctx context.Context, helmRelease *appsv1alpha1.HelmReleaseApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmRelease, err error) {
+	if helmRelease == nil {
+		return nil, fmt.Errorf("helmRelease provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(helmRelease)
+	if err != nil {
+		return nil, err
+	}
+	name := helmRelease.Name
+	if name == nil {
+		return nil, fmt.Errorf("helmRelease.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(helmreleasesResource, c.ns, *name, types.ApplyPatchType, data, "status"), &v1alpha1.HelmRelease{})
 
 	if obj == nil {
 		return nil, err

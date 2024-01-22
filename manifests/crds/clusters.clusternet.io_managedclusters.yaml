@@ -70,6 +70,18 @@ spec:
                   allowed to change on PUT operations.
                 pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
                 type: string
+              clusterInitBaseName:
+                description: ClusterInitBaseName denotes the name of a Base used for
+                  initialization. Also a taint "clusters.clusternet.io/initialization:NoSchedule"
+                  will be added during the operation and removed after successful
+                  initialization. If this cluster has got an annotation "clusters.clusternet.io/skip-cluster-init",
+                  this field will be empty. Normally this field is fully managed by
+                  clusternet-controller-manager and immutable.
+                maxLength: 512
+                type: string
+                x-kubernetes-validations:
+                - message: clusterInitBaseName is immutable
+                  rule: self == oldSelf
               clusterType:
                 description: ClusterType denotes the type of the child cluster.
                 type: string
@@ -113,6 +125,9 @@ spec:
             - clusterId
             - syncMode
             type: object
+            x-kubernetes-validations:
+            - message: clusterInitSubName is required once set
+              rule: '!has(oldSelf.clusterInitSubName) || has(self.clusterInitSubName)'
           status:
             description: ManagedClusterStatus defines the observed state of ManagedCluster
             properties:

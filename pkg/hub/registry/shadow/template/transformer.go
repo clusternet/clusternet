@@ -17,18 +17,17 @@ limitations under the License.
 package template
 
 import (
-	"encoding/json"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 func transformManifest(manifest *appsapi.Manifest) (*unstructured.Unstructured, error) {
 	result := &unstructured.Unstructured{}
-	if err := json.Unmarshal(manifest.Template.Raw, result); err != nil {
+	if err := utils.Unmarshal(manifest.Template.Raw, result); err != nil {
 		return nil, errors.NewInternalError(err)
 	}
 	result.SetGeneration(manifest.Generation)

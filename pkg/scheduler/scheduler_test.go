@@ -176,3 +176,67 @@ func TestIsFeedChanged(t *testing.T) {
 		})
 	}
 }
+
+func Test_Admint(t *testing.T) {
+	feeds := []appsapi.Feed{
+		{
+			Kind:       "Deployment",
+			APIVersion: "apps/v1",
+			Namespace:  "default",
+			Name:       "deploy",
+		},
+	}
+
+	type args struct {
+		subs *appsapi.Subscription
+		finv *appsapi.FeedInventory
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "only change sub spec",
+			args: args{
+				subs: &appsapi.Subscription{
+					Spec: appsapi.SubscriptionSpec{
+						DividingScheduling: &appsapi.DividingScheduling{
+							Type: appsapi.DynamicReplicaDividingType,
+							DynamicDividing: &appsapi.DynamicDividing{
+								Strategy: appsapi.SpreadDividingStrategy,
+							},
+						},
+						Feeds:              feeds,
+						SchedulerName:      "default",
+						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
+					},
+					Status: appsapi.SubscriptionStatus{
+						BindingClusters: []string{"cluster1"},
+						Replicas:        map[string][]int32{utils.GetFeedKey(feeds[0]): {4}},
+						SpecHash:        0000000001,
+					},
+				},
+
+				finv: &appsapi.FeedInventory{
+					Spec: appsapi.FeedInventorySpec{
+						Feeds: []appsapi.FeedOrder{{
+							Feed:            feeds[0],
+							DesiredReplicas: pointer.Int32(2),
+						}},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := admit(tt.args.subs, tt.args.finv); got != tt.want {
+				t.Errorf("test %s want %v, but got %v", tt.name, tt.want, got)
+			}
+		})
+	}
+
+}

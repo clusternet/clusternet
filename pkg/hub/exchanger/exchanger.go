@@ -229,9 +229,9 @@ func (e *Exchanger) ClusterLocation(id string, opts *proxies.Socket) (*url.URL, 
 			return nil, nil, apierrors.NewServiceUnavailable(fmt.Sprintf("cannot retrieve valid apiserver url for cluster %s", id))
 		}
 
-		loc, err := url.Parse(apiserverURL)
-		if err != nil {
-			return nil, nil, apierrors.NewInternalError(err)
+		loc, err2 := url.Parse(apiserverURL)
+		if err2 != nil {
+			return nil, nil, apierrors.NewInternalError(err2)
 		}
 
 		location.Scheme = loc.Scheme

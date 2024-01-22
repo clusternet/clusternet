@@ -253,7 +253,7 @@ func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.Re
 	}
 	if initializers, err := o.RecommendedOptions.ExtraAdmissionInitializers(config); err != nil {
 		return err
-	} else if err := o.RecommendedOptions.Admission.ApplyTo(&config.Config, config.SharedInformerFactory, config.ClientConfig, o.RecommendedOptions.FeatureGate, initializers...); err != nil {
+	} else if err = o.RecommendedOptions.Admission.ApplyTo(&config.Config, config.SharedInformerFactory, config.ClientConfig, o.RecommendedOptions.FeatureGate, initializers...); err != nil {
 		return err
 	}
 	if utilfeature.DefaultFeatureGate.Enabled(features.APIPriorityAndFairness) {

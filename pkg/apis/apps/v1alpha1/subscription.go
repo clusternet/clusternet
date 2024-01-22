@@ -69,6 +69,22 @@ type SubscriptionSpec struct {
 	// +optional
 	DividingScheduling *DividingScheduling `json:"dividingScheduling,omitempty"`
 
+	// The priority value. clusternet-scheduler use this field to find the
+	// priority of the subscription.
+	// The higher the value, the higher the priority.
+	// +optional
+	Priority *int32 `json:"priority,omitempty"`
+
+	// PreemptionPolicy is the Policy for preempting subscriptions with lower priority.
+	// One of Never, PreemptLowerPriority.
+	// Defaults to PreemptLowerPriority if unset.
+	//
+	// +optional
+	// +kubebuilder:validation:Enum=PreemptLowerPriority;PreemptNever
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:default=PreemptLowerPriority
+	PreemptionPolicy *PreemptionPolicy `json:"preemptionPolicy,omitempty"`
+
 	// Subscribers subscribes
 	//
 	// +required
@@ -367,6 +383,15 @@ const (
 
 	// BinpackDividingStrategy aggregates replicas as much as possible.
 	BinpackDividingStrategy DynamicDividingStrategy = "Binpack"
+)
+
+type PreemptionPolicy string
+
+const (
+	// PreemptLowerPriority means that subscription can preempt other subscriptions with lower priority.
+	PreemptLowerPriority PreemptionPolicy = "PreemptLowerPriority"
+	// PreemptNever means that subscription never preempts other subscriptions with lower priority.
+	PreemptNever PreemptionPolicy = "Never"
 )
 
 // +kubebuilder:object:root=true

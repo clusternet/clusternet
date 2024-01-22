@@ -41,6 +41,10 @@ type REST struct {
 	socketConnection bool
 }
 
+func (r *REST) GetSingularName() string {
+	return "socket"
+}
+
 func (r *REST) ShortNames() []string {
 	return []string{"ss"}
 }
@@ -108,6 +112,7 @@ func NewREST(socketConnection bool, ec *exchanger.Exchanger) *REST {
 	}
 }
 
+var _ rest.SingularNameProvider = &REST{}
 var _ rest.CategoriesProvider = &REST{}
 var _ rest.ShortNamesProvider = &REST{}
 var _ rest.Connecter = &REST{}

@@ -10,6 +10,12 @@ metadata:
   name: clusternet-system
 
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clusternet-mcs
+
+---
 kind: ServiceAccount
 apiVersion: v1
 metadata:
@@ -74,7 +80,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-hub
-          image: ghcr.io/clusternet/clusternet-hub:v0.15.2
+          image: ghcr.io/clusternet/clusternet-hub:v0.16.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE

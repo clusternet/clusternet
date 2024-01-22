@@ -18,7 +18,6 @@ package template
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -54,6 +53,7 @@ import (
 	printerstorage "github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/storage"
 	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/printers/util"
 	"github.com/clusternet/clusternet/pkg/known"
+	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 const (
@@ -70,6 +70,8 @@ const (
 type REST struct {
 	// name is the plural name of the resource.
 	name string
+	// singularName is the singular name of the resource.
+	singularName string
 	// shortNames is a list of suggested short names of the resource.
 	shortNames []string
 	// namespaced indicates if a resource is namespaced or not.
@@ -183,7 +185,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 
 	oldObj := &unstructured.Unstructured{}
-	if err = json.Unmarshal(manifest.Template.Raw, oldObj); err != nil {
+	if err = utils.Unmarshal(manifest.Template.Raw, oldObj); err != nil {
 		return nil, false, errors.NewInternalError(err)
 	}
 
@@ -193,7 +195,7 @@ func (r *REST) Update(ctx context.Context, name string, objInfo rest.UpdatedObje
 	}
 	// Now we've got a fully formed object. Validators that apiserver handling chain wants to enforce can be called.
 	if updateValidation != nil {
-		if err := updateValidation(ctx, newObj.DeepCopyObject(), oldObj.DeepCopyObject()); err != nil {
+		if err = updateValidation(ctx, newObj.DeepCopyObject(), oldObj.DeepCopyObject()); err != nil {
 			return nil, false, err
 		}
 	}
@@ -329,9 +331,9 @@ func (r *REST) List(ctx context.Context, options *internalversion.ListOptions) (
 		return result, nil
 	}
 	for _, manifest := range manifests.Items {
-		obj, err := transformManifest(&manifest)
-		if err != nil {
-			return nil, err
+		obj, err2 := transformManifest(&manifest)
+		if err2 != nil {
+			return nil, err2
 		}
 		result.Items = append(result.Items, *obj)
 	}
@@ -376,6 +378,14 @@ func (r *REST) SetShortNames(ss []string) {
 
 func (r *REST) SetName(name string) {
 	r.name = name
+}
+
+func (r *REST) SetSingularName(name string) {
+	r.singularName = name
+}
+
+func (r *REST) GetSingularName() string {
+	return r.singularName
 }
 
 func (r *REST) NamespaceScoped() bool {
@@ -621,9 +631,9 @@ func (r *REST) convertListOptionsToLabels(ctx context.Context, options *internal
 	// apply default namespace label
 	namespace := request.NamespaceValue(ctx)
 	if len(namespace) > 0 {
-		nsRequirement, err := labels.NewRequirement(known.ConfigNamespaceLabel, selection.Equals, []string{namespace})
-		if err != nil {
-			return nil, err
+		nsRequirement, err2 := labels.NewRequirement(known.ConfigNamespaceLabel, selection.Equals, []string{namespace})
+		if err2 != nil {
+			return nil, err2
 		}
 		label = label.Add(*nsRequirement)
 	}
@@ -661,6 +671,7 @@ func NewREST(dryRunClient clientgorest.Interface, clusternetclient *clusternet.C
 	}
 }
 
+var _ rest.SingularNameProvider = &REST{}
 var _ rest.GroupVersionKindProvider = &REST{}
 var _ rest.CategoriesProvider = &REST{}
 var _ rest.ShortNamesProvider = &REST{}

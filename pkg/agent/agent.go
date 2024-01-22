@@ -60,7 +60,6 @@ const (
 	// default number of threads
 	defaultThreadiness = 2
 
-	legacyLeaseName           = "self-cluster"
 	legacyClusterIDAnnotation = "legacy-cluster-id"
 
 	httpPrefix  = "http://"
@@ -361,12 +360,12 @@ func (agent *Agent) registerSelfCluster(ctx context.Context) {
 						agent.agentOptions.ClusterRegistrationOptions.ParentURL)
 					klog.Warningf("will try to re-register current cluster")
 				} else {
-					parentDedicatedKubeConfig, err := utils.GenerateKubeConfigFromToken(
+					parentDedicatedKubeConfig, err2 := utils.GenerateKubeConfigFromToken(
 						agent.agentOptions.ClusterRegistrationOptions.ParentURL,
 						string(secret.Data[corev1.ServiceAccountTokenKey]),
 						secret.Data[corev1.ServiceAccountRootCAKey],
 					)
-					if err == nil {
+					if err2 == nil {
 						agent.parentDedicatedKubeConfig = parentDedicatedKubeConfig
 					}
 				}
@@ -398,45 +397,14 @@ func (agent *Agent) getClusterID(ctx context.Context, childClientSet kubernetes.
 		return "", err
 	}
 
-	// TODO: remove below legacy logic in release v0.17.0
-	// prefer to use legacy lease id
+	// for cluster registrations using clusternet-agent <= v0.14.0, please first upgrade to v0.15.0/v0.16.0, which
+	// migrates the legacy cluster id.
 	if legacyID, ok := lease.GetAnnotations()[legacyClusterIDAnnotation]; ok {
+		// fallback to use legacy lease id
 		return types.UID(legacyID), nil
 	}
-	// check whether legacy lease exists
-	leagcyLease, err := childClientSet.CoordinationV1().
-		Leases(agent.agentOptions.ControllerOptions.LeaderElection.ResourceNamespace).
-		Get(ctx, legacyLeaseName, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return lease.UID, nil
-		}
-		klog.Errorf("unable to retrieve %s/%s Lease object: %v",
-			agent.agentOptions.ControllerOptions.LeaderElection.ResourceNamespace,
-			legacyLeaseName, err)
-		return "", err
-	}
-	// migrate legacy lease
-	patchData, err := utils.GetPatchDataForLabelsAndAnnotations(nil, map[string]*string{
-		legacyClusterIDAnnotation: utilpointer.StringPtr(string(leagcyLease.UID)),
-	})
-	if err != nil {
-		klog.Errorf("failed to create patch data for legacy lease: %v", err)
-		return "", err
-	}
-	_, err = childClientSet.CoordinationV1().
-		Leases(agent.agentOptions.ControllerOptions.LeaderElection.ResourceNamespace).
-		Patch(ctx,
-			agent.agentOptions.ControllerOptions.LeaderElection.ResourceName,
-			types.MergePatchType,
-			patchData,
-			metav1.PatchOptions{})
-	if err != nil {
-		klog.Errorf("failed to migrate legacy lease %s/%s: %v",
-			agent.agentOptions.ControllerOptions.LeaderElection.ResourceNamespace, legacyLeaseName, err)
-		return "", err
-	}
-	return leagcyLease.UID, nil
+
+	return lease.UID, nil
 }
 
 func (agent *Agent) bootstrapClusterRegistrationIfNeeded(ctx context.Context) error {
@@ -630,7 +598,7 @@ func generateClusterRegistrationRequestName(clusterID types.UID) string {
 
 func generateClusterName(clusterName, clusterNamePrefix string) string {
 	if len(clusterName) == 0 {
-		clusterName = fmt.Sprintf("%s-%s", clusterNamePrefix, utilrand.String(options.DefaultRandomUIDLength))
+		clusterName = fmt.Sprintf("%s-%s", clusterNamePrefix, utilrand.String(known.DefaultRandomIDLength))
 		klog.V(4).Infof("generate a random string %q as cluster name for later use", clusterName)
 	}
 	return clusterName

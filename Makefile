@@ -16,13 +16,13 @@ CRD_OPTIONS ?= "crd:crdVersions=v1,allowDangerousTypes=true"
 
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
-BASEIMAGE ?= alpine:3.16.2
-GOVERSION ?= 1.19.6
+BASEIMAGE ?= alpine:3.18.4
+GOVERSION ?= 1.20.4
 REGISTRY ?= ghcr.io
 
 # Run tests
 .PHONY: test
-test: generated vet
+test: generated
 	go test -race -coverprofile coverage.out -covermode=atomic ./...
 
 # Generate CRDs
@@ -42,14 +42,10 @@ verify:
 fmt:
 	@find . -type f -name '*.go'| grep -v "/vendor/" | grep -v "/pkg/generated/" | xargs gofmt -w -s
 
-# Run go vet against code
-.PHONY: vet
-vet:
-	go vet ./...
-
 # Run golang lint against code
 .PHONY: lint
 lint: golangci-lint
+	@$(GOLANG_LINT) --version
 	@$(GOLANG_LINT) run
 
 # Run mod tidy against code
@@ -121,7 +117,7 @@ ifeq (, $(shell which golangci-lint))
 	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
 	cd $$GOLANG_LINT_TMP_DIR ;\
 	go mod init tmp ;\
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2 ;\
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint

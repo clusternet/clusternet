@@ -19,7 +19,9 @@ package utils
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -66,6 +68,13 @@ func FindOCIChart(chartRepo, chartName, chartVersion string) (bool, error) {
 		registry.ClientOptDebug(Settings.Debug),
 		registry.ClientOptWriter(os.Stdout),
 		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
+		registry.ClientOptHTTPClient(&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}),
 	)
 	if err != nil {
 		return false, err
@@ -119,7 +128,7 @@ func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, passwor
 		return nil, err
 	}
 
-	if err := CheckIfInstallable(chartRequested); err != nil {
+	if err = CheckIfInstallable(chartRequested); err != nil {
 		return nil, err
 	}
 
@@ -145,6 +154,7 @@ func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	}
 
 	client := action.NewInstall(cfg)
+	client.InsecureSkipTLSverify = true
 	client.ReleaseName = getReleaseName(hr)
 	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	client.Namespace = hr.Spec.TargetNamespace
@@ -181,6 +191,7 @@ func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	}
 
 	client := action.NewUpgrade(cfg)
+	client.InsecureSkipTLSverify = true
 	client.MaxHistory = cfg.Releases.MaxHistory // need to rewire it here
 	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	client.Namespace = hr.Spec.TargetNamespace

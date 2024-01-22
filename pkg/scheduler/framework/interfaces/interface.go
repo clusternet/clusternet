@@ -278,6 +278,15 @@ type AssignPlugin interface {
 	Assign(ctx context.Context, state *CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas TargetClusters) (TargetClusters, *Status)
 }
 
+// PostAssignPlugin is an interface for "PostAssign" plugin. PostAssign is an extension point after Assign.
+// Now mainly used to perform preemption operations
+type PostAssignPlugin interface {
+	Plugin
+
+	// PostAssign is called by the scheduling framework after the replicas was assigned.
+	PostAssign(ctx context.Context, state *CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, availableReplicas TargetClusters) *Status
+}
+
 // ReservePlugin is an interface for plugins with Reserve and Unreserve
 // methods. These are meant to update the state of the plugin. This concept
 // used to be called 'assume' in the original scheduler. These plugins should
@@ -390,6 +399,12 @@ type Framework interface {
 	// or "Success". If none of the plugins handled assigning, RunAssignPlugins returns
 	// code=5("skip") status.
 	RunAssignPlugins(ctx context.Context, state *CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, selected TargetClusters) (TargetClusters, *Status)
+
+	// RunPostAssignPlugins runs the set of configured PostAssgin plugins. It returns
+	// *Status and its code is set to non-success if any of the plugins returns
+	// anything but Success. If a non-success status is returned, then the scheduling
+	// cycle is aborted.
+	RunPostAssignPlugins(ctx context.Context, state *CycleState, sub *appsapi.Subscription, finv *appsapi.FeedInventory, selected TargetClusters) *Status
 
 	// RunReservePluginsReserve runs the Reserve method of the set of
 	// configured Reserve plugins. If any of these calls returns an error, it

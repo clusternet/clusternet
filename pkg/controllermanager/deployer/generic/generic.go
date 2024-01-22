@@ -108,21 +108,21 @@ func NewDeployer(apiserverURL, systemNamespace string, clusternetClient *cluster
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
+func (deployer *Deployer) Run(workers int, ctx context.Context) {
 	klog.Info("starting generic deployer...")
 	defer klog.Info("shutting generic deployer")
 
 	// Wait for the caches to be synced before starting workers
 	if !cache.WaitForNamedCacheSync("generic-deployer",
-		stopCh,
+		ctx.Done(),
 		deployer.clusterSynced,
 		deployer.secretSynced) {
 		return
 	}
 
-	go deployer.descController.Run(workers, stopCh)
+	go deployer.descController.Run(workers, ctx)
 
-	<-stopCh
+	<-ctx.Done()
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
@@ -168,7 +168,7 @@ func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
 
 func (deployer *Deployer) getDynamicClient(desc *appsapi.Description) (dynamic.Interface, meta.RESTMapper, error) {
 	if dc, ok := deployer.dcs.Load(desc.Labels[known.ClusterIDLabel]); ok {
-		if client, ok := (dc).(DynamicClient); ok {
+		if client, ok2 := (dc).(DynamicClient); ok2 {
 			klog.V(6).Infof("Get description %s's dynamic client form cache", klog.KObj(desc))
 			return client.Interface, client.RESTMapper, nil
 		} else {

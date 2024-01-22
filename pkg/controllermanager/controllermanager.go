@@ -18,11 +18,13 @@ package controllermanager
 
 import (
 	"context"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/version"
+	apiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
 	kubeinformers "k8s.io/client-go/informers"
@@ -31,6 +33,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/record"
+	controllermanagerapp "k8s.io/controller-manager/app"
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 	mcsclientset "sigs.k8s.io/mcs-api/pkg/client/clientset/versioned"
@@ -55,6 +58,7 @@ import (
 // ControllerManager defines configuration for controllers
 type ControllerManager struct {
 	options           *options.ControllerManagerOptions
+	SecureServing     *apiserver.SecureServingInfo
 	controllerContext *controllercontext.ControllerContext
 }
 
@@ -109,12 +113,28 @@ func NewControllerManager(opts *options.ControllerManagerOptions) (*ControllerMa
 }
 
 // Run starts a new ControllerManager use given ControllerManagerOptions
-func (cm *ControllerManager) Run(stopCh context.Context) error {
+func (cm *ControllerManager) Run(ctx context.Context) error {
 	klog.Info("starting clusternet-controller-manager ...")
 	err := cm.options.Config()
 	if err != nil {
 		return err
 	}
+	if err = cm.options.SecureServing.ApplyTo(&cm.SecureServing, nil); err != nil {
+		return err
+	}
+	// Start up the metrics and healthz server.
+	if cm.options.SecureServing != nil {
+		handler := controllermanagerapp.BuildHandlerChain(
+			utils.NewHealthzAndMetricsHandler("clusternet-controller-manager", cm.options.DebuggingOptions),
+			nil,
+			nil,
+		)
+		if _, _, err = cm.SecureServing.Serve(handler, 0, ctx.Done()); err != nil {
+			// fail early for secure handlers, removing the old error loop from above
+			return fmt.Errorf("failed to start secure server: %v", err)
+		}
+	}
+
 	curIdentity, err := utils.GenerateIdentity()
 	if err != nil {
 		return err
@@ -153,13 +173,13 @@ func (cm *ControllerManager) Run(stopCh context.Context) error {
 
 	// No leader election, run directly
 	if !cm.options.LeaderElection.LeaderElect {
-		cm.run(stopCh)
-		<-stopCh.Done()
+		cm.run(ctx)
+		<-ctx.Done()
 		return nil
 	}
 	// leader election run
-	controllerLease.Run(stopCh)
-	<-stopCh.Done()
+	controllerLease.Run(ctx)
+	<-ctx.Done()
 	return nil
 }
 
@@ -201,7 +221,7 @@ func startCRRApproveController(controllerCtx *controllercontext.ControllerContex
 	if err != nil {
 		return false, err
 	}
-	go approve.Run(controllerCtx.Opts.Threadiness, ctx.Done())
+	go approve.Run(controllerCtx.Opts.Threadiness, ctx)
 	return true, nil
 }
 
@@ -220,7 +240,7 @@ func startDeployerController(controllerCtx *controllercontext.ControllerContext,
 	if err != nil {
 		return false, err
 	}
-	go deployer.Run(controllerCtx.Opts.Threadiness, ctx.Done())
+	go deployer.Run(controllerCtx.Opts.Threadiness, ctx)
 	return true, nil
 }
 
@@ -228,6 +248,8 @@ func startClusterLifecycleController(controllerCtx *controllercontext.Controller
 	clusterLifecycle, err := clusterlifecycle.NewController(
 		controllerCtx.ClusternetClient,
 		controllerCtx.ClusternetInformerFactory.Clusters().V1beta1().ManagedClusters(),
+		controllerCtx.ClusternetInformerFactory.Apps().V1alpha1().Bases(),
+		controllerCtx.ClusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
 		controllerCtx.EventRecorder,
 	)
 	if err != nil {

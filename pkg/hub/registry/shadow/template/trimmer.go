@@ -48,6 +48,11 @@ func trimCoreService(result *unstructured.Unstructured) {
 
 	switch corev1.ServiceType(serviceType) {
 	case corev1.ServiceTypeNodePort, corev1.ServiceTypeLoadBalancer:
+		// corev1.Service will allocate health check node port automatically for services with type LoadBalance
+		_, found2, _ := unstructured.NestedInt64(result.Object, "spec", "healthCheckNodePort")
+		if found2 {
+			unstructured.RemoveNestedField(result.Object, "spec", "healthCheckNodePort")
+		}
 		// corev1.Service will init node ports when creating NodePort or LoadBalancer
 		items, found2, err2 := unstructured.NestedSlice(result.Object, "spec", "ports")
 		if !found2 || err2 != nil {

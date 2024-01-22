@@ -30,6 +30,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1Lister "k8s.io/client-go/listers/core/v1"
@@ -40,6 +41,7 @@ import (
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	"github.com/clusternet/clusternet/pkg/apis/proxies"
 	"github.com/clusternet/clusternet/pkg/controllers/clusters/clusterregistrationrequest"
+	"github.com/clusternet/clusternet/pkg/features"
 	clusternetClientSet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	clusternetInformers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	clusterListers "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
@@ -100,15 +102,15 @@ func NewCRRApprover(kubeclient *kubernetes.Clientset, clusternetclient *clustern
 	return crrApprover, nil
 }
 
-func (crrApprover *CRRApprover) Run(threadiness int, stopCh <-chan struct{}) {
+func (crrApprover *CRRApprover) Run(threadiness int, ctx context.Context) {
 	klog.Info("starting Clusternet CRRApprover ...")
 
 	// initializing roles is really important
 	// and nothing works if the roles don't get initialized
-	crrApprover.applyDefaultRBACRules(context.TODO())
+	crrApprover.applyDefaultRBACRules(ctx)
 
 	// todo: gorountine
-	crrApprover.crrController.Run(threadiness, stopCh)
+	crrApprover.crrController.Run(threadiness, ctx)
 	return
 }
 
@@ -151,7 +153,7 @@ func (crrApprover *CRRApprover) defaultRoles(namespace string) []rbacv1.Role {
 			Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 			Labels: map[string]string{
 				known.ClusterBootstrappingLabel: known.RBACDefaults,
-				known.ObjectCreatedByLabel:      known.ClusternetHubName,
+				known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 			},
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -175,7 +177,7 @@ func (crrApprover *CRRApprover) defaultClusterRoles(clusterID types.UID) []rbacv
 			Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 			Labels: map[string]string{
 				known.ClusterBootstrappingLabel: known.RBACDefaults,
-				known.ObjectCreatedByLabel:      known.ClusternetHubName,
+				known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 				known.ClusterIDLabel:            string(clusterID),
 			},
 		},
@@ -370,6 +372,16 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 		},
 	}
 
+	if utilfeature.DefaultFeatureGate.Enabled(features.ClusterInit) {
+		managedCluster.Spec.Taints = []corev1.Taint{
+			{
+				Key:    known.TaintClusterInitialization,
+				Value:  known.ClusterInitWaitingReason,
+				Effect: corev1.TaintEffectNoSchedule,
+			},
+		}
+	}
+
 	//add additional labels
 	for key, value := range clusterLabels {
 		managedCluster.Labels[key] = value
@@ -472,7 +484,7 @@ func (crrApprover *CRRApprover) bindingClusterRolesIfNeeded(serviceAccountName, 
 					Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 					Labels: map[string]string{
 						known.ClusterBootstrappingLabel: known.RBACDefaults,
-						known.ObjectCreatedByLabel:      known.ClusternetHubName,
+						known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 						known.ClusterIDLabel:            string(clusterID),
 					},
 				},
@@ -513,6 +525,8 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 		return utilerrors.NewAggregate(allErrs)
 	}
 
+	// add some additional roles for child cluster such like mcs related role.
+	roles = append(roles, crrApprover.additionalRoles()...)
 	// then we bind these roles
 	wg.Add(len(roles))
 	for _, role := range roles {
@@ -525,7 +539,7 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 					Annotations: map[string]string{known.AutoUpdateAnnotation: "true"},
 					Labels: map[string]string{
 						known.ClusterBootstrappingLabel: known.RBACDefaults,
-						known.ObjectCreatedByLabel:      known.ClusternetHubName,
+						known.ObjectCreatedByLabel:      known.ClusternetCtrlMgrName,
 					},
 				},
 				Subjects: []rbacv1.Subject{
@@ -543,11 +557,24 @@ func (crrApprover *CRRApprover) bindingRoleIfNeeded(serviceAccountName, namespac
 	return utilerrors.NewAggregate(allErrs)
 }
 
+func (crrApprover *CRRApprover) additionalRoles() []rbacv1.Role {
+	additionalRoles := make([]rbacv1.Role, 0)
+	// 1. mcs related role
+	roleForMCS := rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      MultiClusterServiceSyncerRole,
+			Namespace: MultiClusterServiceNamespace,
+		},
+	}
+	additionalRoles = append(additionalRoles, roleForMCS)
+	return additionalRoles
+}
+
 func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clientset, backoff wait.Backoff, saName, saNamespace string, saTokenAutoGen bool) (*corev1.Secret, error) {
 	var secret *corev1.Secret
 	var sa *corev1.ServiceAccount
 	var lastError error
-	err := wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (done bool, err error) {
 		secretName := saName
 		if saTokenAutoGen {
 			// first we get the auto-created secret name from serviceaccount

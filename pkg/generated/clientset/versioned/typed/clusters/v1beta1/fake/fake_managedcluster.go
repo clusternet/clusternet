@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/clusters/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeManagedClusters struct {
 	ns   string
 }
 
-var managedclustersResource = schema.GroupVersionResource{Group: "clusters.clusternet.io", Version: "v1beta1", Resource: "managedclusters"}
+var managedclustersResource = v1beta1.SchemeGroupVersion.WithResource("managedclusters")
 
-var managedclustersKind = schema.GroupVersionKind{Group: "clusters.clusternet.io", Version: "v1beta1", Kind: "ManagedCluster"}
+var managedclustersKind = v1beta1.SchemeGroupVersion.WithKind("ManagedCluster")
 
 // Get takes name of the managedCluster, and returns the corresponding managedCluster object, and an error if there is any.
 func (c *FakeManagedClusters) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.ManagedCluster, err error) {
@@ -133,6 +135,51 @@ func (c *FakeManagedClusters) DeleteCollection(ctx context.Context, opts v1.Dele
 func (c *FakeManagedClusters) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.ManagedCluster, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(managedclustersResource, c.ns, name, pt, data, subresources...), &v1beta1.ManagedCluster{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1beta1.ManagedCluster), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied managedCluster.
+func (c *FakeManagedClusters) Apply(ctx context.Context, managedCluster *clustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ManagedCluster, err error) {
+	if managedCluster == nil {
+		return nil, fmt.Errorf("managedCluster provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(managedCluster)
+	if err != nil {
+		return nil, err
+	}
+	name := managedCluster.Name
+	if name == nil {
+		return nil, fmt.Errorf("managedCluster.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(managedclustersResource, c.ns, *name, types.ApplyPatchType, data), &v1beta1.ManagedCluster{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1beta1.ManagedCluster), err
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *FakeManagedClusters) ApplyStatus(ctx context.Context, managedCluster *clustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ManagedCluster, err error) {
+	if managedCluster == nil {
+		return nil, fmt.Errorf("managedCluster provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(managedCluster)
+	if err != nil {
+		return nil, err
+	}
+	name := managedCluster.Name
+	if name == nil {
+		return nil, fmt.Errorf("managedCluster.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(managedclustersResource, c.ns, *name, types.ApplyPatchType, data, "status"), &v1beta1.ManagedCluster{})
 
 	if obj == nil {
 		return nil, err
