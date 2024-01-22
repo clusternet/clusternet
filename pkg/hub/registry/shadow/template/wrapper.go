@@ -18,6 +18,7 @@ package template
 
 import (
 	"context"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -25,8 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/klog/v2"
-
-	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
 const (
@@ -102,13 +101,17 @@ func (w *WatchWrapper) Run() {
 
 func (w *WatchWrapper) transformBookMarkEvent(object runtime.Object) runtime.Object {
 	result := &unstructured.Unstructured{}
-	if manifest, ok := object.(*appsapi.Manifest); ok {
-		result.SetResourceVersion(manifest.ResourceVersion)
-		result.SetGroupVersionKind(w.targetGVK)
-		result.SetAnnotations(map[string]string{
-			"k8s.io/initial-events-end": "true",
-		})
+	objMeta, err := meta.Accessor(object)
+	if err != nil {
+		klog.Errorf("got a transform error: %v", err)
+		return object
 	}
+	result.SetResourceVersion(objMeta.GetResourceVersion())
+	result.SetGroupVersionKind(w.targetGVK)
+	result.SetAnnotations(map[string]string{
+		"k8s.io/initial-events-end": "true",
+	})
+
 	return result
 }
 
