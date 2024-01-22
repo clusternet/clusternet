@@ -85,6 +85,7 @@ func (w *WatchWrapper) Run() {
 			obj := event.Object
 			switch event.Type {
 			case watch.Bookmark:
+				obj = w.transformBookMarkEvent(obj)
 			case watch.Error:
 				klog.Warningf("got a watch error: %v", event)
 			default:
