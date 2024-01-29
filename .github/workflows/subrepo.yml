@@ -15,7 +15,7 @@ jobs:
           - clusternet/apis
     steps:
       - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v2.1.2
+        uses: peter-evans/repository-dispatch@v3.0.0
         with:
           # A repo scoped GitHub Personal Access Token
           token: ${{ secrets.DOWNSTREAM_REPO_DISPATCH_TOKEN }}
