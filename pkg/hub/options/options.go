@@ -29,17 +29,15 @@ import (
 	"k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
 	cliflag "k8s.io/component-base/cli/flag"
-	"k8s.io/klog/v2"
 
 	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
@@ -245,28 +243,37 @@ func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.Re
 	if err := o.RecommendedOptions.Audit.ApplyTo(&config.Config); err != nil {
 		return err
 	}
-	if err := o.RecommendedOptions.Features.ApplyTo(&config.Config); err != nil {
+
+	kubeClient, err2 := kubernetes.NewForConfig(config.ClientConfig)
+	if err2 != nil {
+		return err2
+	}
+
+	if err := o.RecommendedOptions.Features.ApplyTo(&config.Config, kubeClient, config.SharedInformerFactory); err != nil {
 		return err
 	}
 	if err := o.RecommendedOptions.CoreAPI.ApplyTo(config); err != nil {
 		return err
 	}
-	if initializers, err := o.RecommendedOptions.ExtraAdmissionInitializers(config); err != nil {
-		return err
-	} else if err = o.RecommendedOptions.Admission.ApplyTo(&config.Config, config.SharedInformerFactory, config.ClientConfig, o.RecommendedOptions.FeatureGate, initializers...); err != nil {
+
+	initializers, err := o.RecommendedOptions.ExtraAdmissionInitializers(config)
+	if err != nil {
 		return err
 	}
-	if utilfeature.DefaultFeatureGate.Enabled(features.APIPriorityAndFairness) {
-		if config.ClientConfig != nil {
-			config.FlowControl = utilflowcontrol.New(
-				config.SharedInformerFactory,
-				kubernetes.NewForConfigOrDie(config.ClientConfig).FlowcontrolV1beta3(),
-				config.MaxRequestsInFlight+config.MaxMutatingRequestsInFlight,
-				config.RequestTimeout/4,
-			)
-		} else {
-			klog.Warningf("Neither kubeconfig is provided nor service-account is mounted, so APIPriorityAndFairness will be disabled")
-		}
+	dynamicClient, err := dynamic.NewForConfig(config.ClientConfig)
+	if err != nil {
+		return err
 	}
+	if err = o.RecommendedOptions.Admission.ApplyTo(
+		&config.Config,
+		config.SharedInformerFactory,
+		kubeClient,
+		dynamicClient,
+		o.RecommendedOptions.FeatureGate,
+		initializers...,
+	); err != nil {
+		return err
+	}
+
 	return nil
 }

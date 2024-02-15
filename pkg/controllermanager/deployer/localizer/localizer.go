@@ -238,7 +238,7 @@ func (l *Localizer) handleLocalization(locCopy *appsapi.Localization) error {
 func (l *Localizer) handleGlobalization(globCopy *appsapi.Globalization) error {
 	switch globCopy.Spec.OverridePolicy {
 	case appsapi.ApplyNow:
-		klog.V(5).Infof("apply Globalization %s now", klog.KObj(globCopy), appsapi.ApplyNow)
+		klog.V(5).Infof("apply Globalization %s now", klog.KObj(globCopy))
 		if globCopy.Spec.Kind == chartKind.Kind {
 			chart, err := l.chartLister.HelmCharts(globCopy.Spec.Namespace).Get(globCopy.Spec.Name)
 			if err != nil {
@@ -407,7 +407,12 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 				return nil, listErr
 			}
 			if len(clusters) == 0 {
-				klog.V(5).Infof("skipping apply Globalization %s for feed %s in namespace", glob.Name, feed.Name, namespace)
+				klog.V(5).Infof(
+					"skipping apply Globalization %s for feed %s in namespace %s",
+					glob.Name,
+					feed.Name,
+					namespace,
+				)
 				continue
 			}
 		}

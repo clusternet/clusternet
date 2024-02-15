@@ -173,7 +173,7 @@ func (mgr *Manager) updateClusterStatus(ctx context.Context, namespace, clusterI
 		return false, nil
 	})
 	if err != nil {
-		klog.WarningDepth(2, "failed to update status of ManagedCluster: %v", lastError)
+		klog.WarningfDepth(2, "failed to update status of ManagedCluster: %v", lastError)
 	}
 }
 

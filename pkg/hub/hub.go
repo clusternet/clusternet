@@ -389,7 +389,7 @@ func refreshingPeers(clientset kubernetes.Interface, selfID, leaseNamespace stri
 		},
 	})
 	if err != nil {
-		klog.Fatalf("failed to add event handler for hub peer lease: %w", err)
+		klog.Fatalf("failed to add event handler for hub peer lease: %v", err)
 		return
 	}
 

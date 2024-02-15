@@ -415,7 +415,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			metrics.SubscriptionScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
 			// trigger un-reserve plugins to clean up state associated with the reserved subscription
 			fwk.RunReservePluginsUnreserve(bindingCycleCtx, state, sub, targetClusters)
-			sched.handleSchedulingFailure(fwk, subInfo, fmt.Errorf("binding rejected: %w", err), SchedulerError)
+			sched.handleSchedulingFailure(fwk, subInfo, fmt.Errorf("binding rejected: %v", err), SchedulerError)
 		} else {
 			metrics.SubscriptionScheduled(fwk.ProfileName(), metrics.SinceInSeconds(start))
 

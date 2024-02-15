@@ -167,7 +167,8 @@ func (c *Controller) UpdateCRRStatus(crr *clusterapi.ClusterRegistrationRequest,
 		crr.Status = *status
 		_, err := c.clusternetClient.ClustersV1beta1().ClusterRegistrationRequests().UpdateStatus(context.TODO(), crr, metav1.UpdateOptions{})
 		if err == nil {
-			klog.V(4).Infof("successfully update status of ClusterRegistrationRequest %q to %q", crr.Name, status.Result)
+			klog.V(4).Infof("successfully update status of ClusterRegistrationRequest %q to %q", crr.Name,
+				*status.Result)
 			return nil
 		}
 

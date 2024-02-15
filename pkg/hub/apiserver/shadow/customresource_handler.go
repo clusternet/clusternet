@@ -161,7 +161,7 @@ func (r *crdHandler) SetRootWebService(ws *restful.WebService) {
 		DeleteFunc: r.deleteCustomResourceDefinition,
 	})
 	if err != nil {
-		klog.Fatalf("failed to add event handler for crd: %w", err)
+		klog.Fatalf("failed to add event handler for crd: %v", err)
 		return
 	}
 }
