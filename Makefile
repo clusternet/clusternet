@@ -17,7 +17,7 @@ CRD_OPTIONS ?= "crd:crdVersions=v1,allowDangerousTypes=true"
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
 BASEIMAGE ?= alpine:3.18.4
-GOVERSION ?= 1.20.4
+GOVERSION ?= 1.21.3
 REGISTRY ?= ghcr.io
 
 # Run tests
@@ -99,7 +99,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.10.0 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(shell go env GOPATH)/bin/controller-gen
@@ -117,7 +117,7 @@ ifeq (, $(shell which golangci-lint))
 	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
 	cd $$GOLANG_LINT_TMP_DIR ;\
 	go mod init tmp ;\
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2 ;\
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.2 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint
