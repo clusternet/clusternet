@@ -158,7 +158,7 @@ func (c *Controller) Run(ctx context.Context) {
 	clusterInformer := c.capiInformerFactory.ForResource(c.capiGVR).Informer()
 	_, err = clusterInformer.AddEventHandler(controller.DefaultResourceEventHandlerFuncs())
 	if err != nil {
-		klog.Fatalf("failed to add event handler for cluster discovery: %w", err)
+		klog.Fatalf("failed to add event handler for cluster discovery: %v", err)
 		return
 	}
 

@@ -278,7 +278,7 @@ func NewFramework(r Registry, profile *schedulerapis.SchedulerProfile, opts ...O
 		args := pluginConfig[name]
 		p, err := factory(args, f)
 		if err != nil {
-			return nil, fmt.Errorf("initializing plugin %q: %w", name, err)
+			return nil, fmt.Errorf("initializing plugin %q: %v", name, err)
 		}
 		pluginsMap[name] = p
 	}
@@ -348,7 +348,8 @@ func (f *frameworkImpl) RunPreFilterPlugins(ctx context.Context, state *framewor
 			if status.IsUnschedulable() {
 				return status
 			}
-			return framework.AsStatus(fmt.Errorf("running PreFilter plugin %q: %w", pl.Name(), status.AsError())).WithFailedPlugin(pl.Name())
+			return framework.AsStatus(fmt.Errorf("running PreFilter plugin %q: %v", pl.Name(),
+				status.AsError())).WithFailedPlugin(pl.Name())
 		}
 	}
 
@@ -374,7 +375,8 @@ func (f *frameworkImpl) RunFilterPlugins(ctx context.Context, state *framework.C
 			if !pluginStatus.IsUnschedulable() {
 				// Filter plugins are not supposed to return any status other than
 				// Success or Unschedulable.
-				errStatus := framework.AsStatus(fmt.Errorf("running %q filter plugin: %w", pl.Name(), pluginStatus.AsError())).WithFailedPlugin(pl.Name())
+				errStatus := framework.AsStatus(fmt.Errorf("running %q filter plugin: %v", pl.Name(),
+					pluginStatus.AsError())).WithFailedPlugin(pl.Name())
 				return map[string]*framework.Status{pl.Name(): errStatus}
 			}
 			pluginStatus.SetFailedPlugin(pl.Name())
@@ -434,7 +436,7 @@ func (f *frameworkImpl) RunPrePredictPlugins(ctx context.Context, state *framewo
 	for _, pl := range f.prePredictPlugins {
 		status = f.runPrePredictPlugin(ctx, pl, state, sub, finv, clusters)
 		if !status.IsSuccess() {
-			return framework.AsStatus(fmt.Errorf("running PrePredict plugin %q: %w", pl.Name(), status.AsError()))
+			return framework.AsStatus(fmt.Errorf("running PrePredict plugin %q: %v", pl.Name(), status.AsError()))
 		}
 	}
 
@@ -470,7 +472,7 @@ func (f *frameworkImpl) RunPredictPlugins(ctx context.Context, state *framework.
 				}
 
 				if !tolerateFeasibleClusters || tolerations > totalTolerations {
-					err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status2.AsError())
+					err := fmt.Errorf("plugin %q failed with: %v", pl.Name(), status2.AsError())
 					errCh.SendErrorWithCancel(err, cancel)
 					return
 				}
@@ -488,7 +490,7 @@ func (f *frameworkImpl) RunPredictPlugins(ctx context.Context, state *framework.
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Predict plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Predict plugins: %v", err))
 	}
 
 	return availableList, nil
@@ -511,7 +513,7 @@ func (f *frameworkImpl) RunPreScorePlugins(ctx context.Context, state *framework
 	for _, pl := range f.preScorePlugins {
 		status = f.runPreScorePlugin(ctx, pl, state, sub, clusters)
 		if !status.IsSuccess() {
-			return framework.AsStatus(fmt.Errorf("running PreScore plugin %q: %w", pl.Name(), status.AsError()))
+			return framework.AsStatus(fmt.Errorf("running PreScore plugin %q: %v", pl.Name(), status.AsError()))
 		}
 	}
 
@@ -548,7 +550,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 			clusterNamespacedName := klog.KObj(clusters[index]).String()
 			s, status = f.runScorePlugin(ctx, pl, state, sub, clusterNamespacedName)
 			if !status.IsSuccess() {
-				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+				err := fmt.Errorf("plugin %q failed with: %v", pl.Name(), status.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
 				return
 			}
@@ -559,7 +561,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Score plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Score plugins: %v", err))
 	}
 
 	// Run NormalizeScore method for each ScorePlugin in parallel.
@@ -571,13 +573,13 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 		}
 		status = f.runScoreExtension(ctx, pl, state, sub, ClusterScoreList)
 		if !status.IsSuccess() {
-			err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+			err := fmt.Errorf("plugin %q failed with: %v", pl.Name(), status.AsError())
 			errCh.SendErrorWithCancel(err, cancel)
 			return
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Normalize on Score plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Normalize on Score plugins: %v", err))
 	}
 
 	// Apply score defaultWeights for each ScorePlugin in parallel.
@@ -598,7 +600,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("applying score defaultWeights on Score plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("applying score defaultWeights on Score plugins: %v", err))
 	}
 
 	return pluginToClusterScores, nil
@@ -628,7 +630,7 @@ func (f *frameworkImpl) RunPreAssignPlugins(ctx context.Context, state *framewor
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running PreAssign plugin", "plugin", pl.Name(), "sub", klog.KObj(sub))
-			return framework.AsStatus(fmt.Errorf("running PreAssign plugin %q: %w", pl.Name(), err))
+			return framework.AsStatus(fmt.Errorf("running PreAssign plugin %q: %v", pl.Name(), err))
 		}
 	}
 	return nil
@@ -657,7 +659,7 @@ func (f *frameworkImpl) RunAssignPlugins(ctx context.Context, state *framework.C
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running Assign plugin", "plugin", ap.Name(), "sub", klog.KObj(sub))
-			return framework.TargetClusters{}, framework.AsStatus(fmt.Errorf("running Assign plugin %q: %w", ap.Name(), err))
+			return framework.TargetClusters{}, framework.AsStatus(fmt.Errorf("running Assign plugin %q: %v", ap.Name(), err))
 		}
 		return result, status
 	}
@@ -681,7 +683,7 @@ func (f *frameworkImpl) RunPostAssignPlugins(ctx context.Context, state *framewo
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running PostAssign plugin", "plugin", pl.Name(), "sub", klog.KObj(sub))
-			return framework.AsStatus(fmt.Errorf("running PostAssign plugin %q: %w", pl.Name(), err))
+			return framework.AsStatus(fmt.Errorf("running PostAssign plugin %q: %v", pl.Name(), err))
 		}
 	}
 	return nil
@@ -707,7 +709,7 @@ func (f *frameworkImpl) RunPreBindPlugins(ctx context.Context, state *framework.
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running PreBind plugin", "plugin", pl.Name(), "sub", klog.KObj(sub))
-			return framework.AsStatus(fmt.Errorf("running PreBind plugin %q: %w", pl.Name(), err))
+			return framework.AsStatus(fmt.Errorf("running PreBind plugin %q: %v", pl.Name(), err))
 		}
 	}
 	return nil
@@ -737,7 +739,7 @@ func (f *frameworkImpl) RunBindPlugins(ctx context.Context, state *framework.Cyc
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running Bind plugin", "plugin", bp.Name(), "sub", klog.KObj(sub))
-			return framework.AsStatus(fmt.Errorf("running Bind plugin %q: %w", bp.Name(), err))
+			return framework.AsStatus(fmt.Errorf("running Bind plugin %q: %v", bp.Name(), err))
 		}
 		return status
 	}
@@ -783,7 +785,7 @@ func (f *frameworkImpl) RunReservePluginsReserve(ctx context.Context, state *fra
 		if !status.IsSuccess() {
 			err := status.AsError()
 			klog.ErrorS(err, "Failed running Reserve plugin", "plugin", pl.Name(), "subscription", klog.KObj(sub))
-			return framework.AsStatus(fmt.Errorf("running Reserve plugin %q: %w", pl.Name(), err))
+			return framework.AsStatus(fmt.Errorf("running Reserve plugin %q: %v", pl.Name(), err))
 		}
 	}
 	return nil
@@ -849,7 +851,7 @@ func (f *frameworkImpl) RunPermitPlugins(ctx context.Context, state *framework.C
 			} else {
 				err := status.AsError()
 				klog.ErrorS(err, "Failed running Permit plugin", "plugin", pl.Name(), "subscription", klog.KObj(sub))
-				return framework.AsStatus(fmt.Errorf("running Permit plugin %q: %w", pl.Name(), err)).WithFailedPlugin(pl.Name())
+				return framework.AsStatus(fmt.Errorf("running Permit plugin %q: %v", pl.Name(), err)).WithFailedPlugin(pl.Name())
 			}
 		}
 	}
@@ -891,7 +893,7 @@ func (f *frameworkImpl) WaitOnPermit(ctx context.Context, sub *appsapi.Subscript
 		}
 		err := s.AsError()
 		klog.ErrorS(err, "Failed waiting on permit for subscription", "subscription", klog.KObj(sub))
-		return framework.AsStatus(fmt.Errorf("waiting on permit for subscription: %w", err)).WithFailedPlugin(s.FailedPlugin())
+		return framework.AsStatus(fmt.Errorf("waiting on permit for subscription: %v", err)).WithFailedPlugin(s.FailedPlugin())
 	}
 	return nil
 }

@@ -42,11 +42,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1beta1 "k8s.io/api/discovery/v1beta1"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
+	flowcontrolv1 "k8s.io/api/flowcontrol/v1"
 	flowcontrolv1beta3 "k8s.io/api/flowcontrol/v1beta3"
 	networkingv1 "k8s.io/api/networking/v1"
 	nodev1 "k8s.io/api/node/v1"
 	policyv1 "k8s.io/api/policy/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	rbacv1beta1 "k8s.io/api/rbac/v1beta1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -359,20 +359,6 @@ func AddHandlers(h printers.PrintHandler) {
 	}
 	h.TableHandler(configMapColumnDefinitions, printConfigMap)
 	h.TableHandler(configMapColumnDefinitions, printConfigMapList)
-
-	podSecurityPolicyColumnDefinitions := []metav1.TableColumnDefinition{
-		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
-		{Name: "Priv", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["privileged"]},
-		{Name: "Caps", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["allowedCapabilities"]},
-		{Name: "SELinux", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["seLinux"]},
-		{Name: "RunAsUser", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["runAsUser"]},
-		{Name: "FsGroup", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["fsGroup"]},
-		{Name: "SupGroup", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["supplementalGroups"]},
-		{Name: "ReadOnlyRootFs", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["readOnlyRootFilesystem"]},
-		{Name: "Volumes", Type: "string", Description: policyv1beta1.PodSecurityPolicySpec{}.SwaggerDoc()["volumes"]},
-	}
-	h.TableHandler(podSecurityPolicyColumnDefinitions, printPodSecurityPolicy)
-	h.TableHandler(podSecurityPolicyColumnDefinitions, printPodSecurityPolicyList)
 
 	networkPolicyColumnDefinitioins := []metav1.TableColumnDefinition{
 		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
@@ -2461,47 +2447,6 @@ func printConfigMapList(unstructList *unstructured.UnstructuredList, options pri
 	return rows, nil
 }
 
-func printPodSecurityPolicy(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	obj := &policyv1beta1.PodSecurityPolicy{}
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {
-		return nil, fmt.Errorf("unable to convert unstructured object to PodSecurityPolicy %v", err)
-	}
-	row := metav1.TableRow{
-		Object: runtime.RawExtension{Object: obj},
-	}
-
-	capabilities := make([]string, len(obj.Spec.AllowedCapabilities))
-	for i, c := range obj.Spec.AllowedCapabilities {
-		capabilities[i] = string(c)
-	}
-	volumes := make([]string, len(obj.Spec.Volumes))
-	for i, v := range obj.Spec.Volumes {
-		volumes[i] = string(v)
-	}
-	row.Cells = append(row.Cells, obj.Name, fmt.Sprintf("%v", obj.Spec.Privileged),
-		strings.Join(capabilities, ","), string(obj.Spec.SELinux.Rule),
-		string(obj.Spec.RunAsUser.Rule), string(obj.Spec.FSGroup.Rule),
-		string(obj.Spec.SupplementalGroups.Rule), obj.Spec.ReadOnlyRootFilesystem,
-		strings.Join(volumes, ","))
-	return []metav1.TableRow{row}, nil
-}
-
-func printPodSecurityPolicyList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	list := &policyv1beta1.PodSecurityPolicyList{}
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructList.UnstructuredContent(), list); err != nil {
-		return nil, fmt.Errorf("unable to convert unstructured object to PodSecurityPolicyList %v", err)
-	}
-	rows := make([]metav1.TableRow, 0, len(list.Items))
-	for i := range list.Items {
-		r, err := printPodSecurityPolicy(&unstructList.Items[i], options)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, r...)
-	}
-	return rows, nil
-}
-
 func printNetworkPolicy(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	obj := &networkingv1.NetworkPolicy{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {
@@ -2873,11 +2818,7 @@ func printVolumeAttachmentList(unstructList *unstructured.UnstructuredList, opti
 	return rows, nil
 }
 
-func printFlowSchema(unstruct *unstructured.Unstructured, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	obj := &flowcontrolv1beta3.FlowSchema{}
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstruct.UnstructuredContent(), obj); err != nil {
-		return nil, fmt.Errorf("unable to convert unstructured object to FlowSchema %v", err)
-	}
+func printFlowSchema(obj *flowcontrolv1.FlowSchema, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	row := metav1.TableRow{
 		Object: runtime.RawExtension{Object: obj},
 	}
@@ -2890,21 +2831,17 @@ func printFlowSchema(unstruct *unstructured.Unstructured, options printers.Gener
 	}
 	badPLRef := "?"
 	for _, cond := range obj.Status.Conditions {
-		if cond.Type == flowcontrolv1beta3.FlowSchemaConditionDangling {
+		if cond.Type == flowcontrolv1.FlowSchemaConditionDangling {
 			badPLRef = string(cond.Status)
 			break
 		}
 	}
-	row.Cells = append(row.Cells, name, plName, obj.Spec.MatchingPrecedence, distinguisherMethod, translateTimestampSince(obj.CreationTimestamp), badPLRef)
+	row.Cells = append(row.Cells, name, plName, int64(obj.Spec.MatchingPrecedence), distinguisherMethod, translateTimestampSince(obj.CreationTimestamp), badPLRef)
 
 	return []metav1.TableRow{row}, nil
 }
 
-func printFlowSchemaList(unstructList *unstructured.UnstructuredList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
-	list := &flowcontrolv1beta3.FlowSchemaList{}
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructList.UnstructuredContent(), list); err != nil {
-		return nil, fmt.Errorf("unable to convert unstructured object to FlowSchemaList %v", err)
-	}
+func printFlowSchemaList(list *flowcontrolv1.FlowSchemaList, options printers.GenerateOptions) ([]metav1.TableRow, error) {
 	rows := make([]metav1.TableRow, 0, len(list.Items))
 	fsSeq := make(apihelpers.FlowSchemaSequence, len(list.Items))
 	for i := range list.Items {
@@ -2912,11 +2849,7 @@ func printFlowSchemaList(unstructList *unstructured.UnstructuredList, options pr
 	}
 	sort.Sort(fsSeq)
 	for i := range fsSeq {
-		unstruct, err := ObjectConvertToUnstructured(fsSeq[i])
-		if err != nil {
-			return nil, err
-		}
-		r, err := printFlowSchema(unstruct, options)
+		r, err := printFlowSchema(fsSeq[i], options)
 		if err != nil {
 			return nil, err
 		}

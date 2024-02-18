@@ -516,7 +516,7 @@ func (deployer *Deployer) deleteBase(ctx context.Context, namespacedKey string) 
 }
 
 func (deployer *Deployer) populateLocalizations(sub *appsapi.Subscription, base *appsapi.Base, clusterIndex int) error {
-	klog.V(5).Infof("Start populate localization for Subscription %s with Base %s/%s", klog.KObj(sub), klog.KObj(base))
+	klog.V(5).Infof("Start populate localization for Subscription %s with Base %s", klog.KObj(sub), klog.KObj(base))
 	if len(base.UID) == 0 {
 		return fmt.Errorf("waiting for UID set for Base %s", klog.KObj(base))
 	}

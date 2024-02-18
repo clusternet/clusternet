@@ -83,7 +83,7 @@ func NewServiceImportController(kubeclient kubernetes.Interface, epsInformer dis
 		WithEnqueueFilterFunc(preFilter)
 	_, err := siInformer.Informer().AddEventHandler(yachtcontroller.DefaultResourceEventHandlerFuncs())
 	if err != nil {
-		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
+		klog.Fatalf("failed to add event handler for serviceimport: %v", err)
 		return nil, err
 	}
 	_, err = epsInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
@@ -95,7 +95,7 @@ func NewServiceImportController(kubeclient kubernetes.Interface, epsInformer dis
 		},
 	})
 	if err != nil {
-		klog.Fatalf("failed to add event handler for serviceimport: %w", err)
+		klog.Fatalf("failed to add event handler for serviceimport: %v", err)
 		return nil, err
 	}
 	sic.yachtController = yachtcontroller

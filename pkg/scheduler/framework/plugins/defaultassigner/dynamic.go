@@ -61,7 +61,7 @@ func getPreAssignState(cycleState *framework.CycleState) (*preAssignState, error
 	c, err := cycleState.Read(preAssignStateKey)
 	if err != nil {
 		// preAssignState doesn't exist, likely PreAssign wasn't invoked.
-		return nil, fmt.Errorf("error reading %q from cycleState: %w", preAssignStateKey, err)
+		return nil, fmt.Errorf("error reading %q from cycleState: %v", preAssignStateKey, err)
 	}
 
 	s, ok := c.(*preAssignState)
