@@ -20,21 +20,17 @@ set -o pipefail
 
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 CODEGEN_PKG=${CODEGEN_PKG:-$(
-  cd "${SCRIPT_ROOT}"
-  go mod vendor
-  ls -d -1 ./vendor/k8s.io/code-generator
+  cd "${SCRIPT_ROOT}";
+  go mod vendor;
+  ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../code-generator
 )}
 
-bash "${CODEGEN_PKG}/kube_codegen.sh" all \
-  github.com/clusternet/clusternet/pkg/generated \
-  github.com/clusternet/clusternet/pkg/apis \
-  "apps:v1alpha1 clusters:v1beta1 proxies:v1alpha1" \
-  --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
-  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
+source "${CODEGEN_PKG}/kube_codegen.sh"
 
-bash "${CODEGEN_PKG}/kube_codegen.sh" "deepcopy,defaulter,conversion,openapi" \
-  github.com/clusternet/clusternet/pkg/generated \
-  github.com/clusternet/clusternet/pkg/apis github.com/clusternet/clusternet/pkg/apis \
-  "proxies:v1alpha1" \
-  --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
-  --go-header-file "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
+kube::codegen::gen_client \
+    --with-watch \
+    --with-applyconfig \
+    --input-pkg-root github.com/clusternet/clusternet/pkg/apis \
+    --output-pkg-root github.com/clusternet/clusternet/pkg/generated \
+    --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
