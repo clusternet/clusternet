@@ -175,12 +175,12 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 		}
 
 		//DO NOT recycle resource controller so they live forever as resource controller cache
-		deployer.AddController(gvk, resourceController)
-		go func() {
-			stopChan := make(chan struct{})
-			resourceController.Run(known.DefaultThreadiness, stopChan)
-		}()
-
+		if deployer.AddController(gvk, resourceController) {
+			go func() {
+				stopChan := make(chan struct{})
+				resourceController.Run(known.DefaultThreadiness, stopChan)
+			}()
+		}
 	}
 	return nil
 }
@@ -233,13 +233,14 @@ func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool
 	}
 }
 
-func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller *resourcecontroller.Controller) {
+func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller *resourcecontroller.Controller) bool {
 	deployer.lock.Lock()
 	defer deployer.lock.Unlock()
 	if _, ok := deployer.rsControllers[gvk]; ok {
-		return
+		return false
 	} else {
 		deployer.rsControllers[gvk] = controller
+		return true
 	}
 }
 
