@@ -19,13 +19,7 @@ jobs:
       - name: Get branch name
         id: branch-name
         uses: tj-actions/branch-names@v8
-      - uses: fossas/fossa-action@main
-        name: Scanning with FOSSA
+      - name: Scanning with FOSSA
+        uses: fossas/fossa-action@v1
         with:
-          api-key: fd54541712e36e546e713482332962f7
-          branch: ${{ steps.branch-name.outputs.current_branch }}
-      - uses: fossas/fossa-action@main
-        name: Executing tests with FOSSA
-        with:
-          api-key: fd54541712e36e546e713482332962f7
-          run-tests: true
+          api-key: ${{secrets.FOSSA_API_KEY}}
