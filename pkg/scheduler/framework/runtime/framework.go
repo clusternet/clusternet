@@ -375,9 +375,10 @@ func (f *frameworkImpl) RunFilterPlugins(ctx context.Context, state *framework.C
 			if !pluginStatus.IsUnschedulable() {
 				// Filter plugins are not supposed to return any status other than
 				// Success or Unschedulable.
-				errStatus := framework.AsStatus(fmt.Errorf("running %q filter plugin: %v", pl.Name(),
-					pluginStatus.AsError())).WithFailedPlugin(pl.Name())
-				return map[string]*framework.Status{pl.Name(): errStatus}
+				return map[string]*framework.Status{
+					pl.Name(): framework.AsStatus(fmt.Errorf("running %q filter plugin: %v",
+						pl.Name(), pluginStatus.AsError())).WithFailedPlugin(pl.Name()),
+				}
 			}
 			pluginStatus.SetFailedPlugin(pl.Name())
 			statuses[pl.Name()] = pluginStatus
