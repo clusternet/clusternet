@@ -220,9 +220,9 @@ func (c *Controller) processNextWorkItem() bool {
 		// put back on the workqueue and attempted again after a back-off
 		// period.
 		defer c.workqueue.Done(obj)
-		var key *ResourceAttrs
+		var key ResourceAttrs
 		var ok bool
-		if key, ok = obj.(*ResourceAttrs); !ok {
+		if key, ok = obj.(ResourceAttrs); !ok {
 			// As the item in the workqueue is actually invalid, we call
 			// Forget here else we'd go into a loop of attempting to
 			// process a work item that is invalid.
@@ -230,7 +230,7 @@ func (c *Controller) processNextWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.syncHandler(key); err != nil {
+		if err := c.syncHandler(&key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
@@ -262,5 +262,5 @@ func (c *Controller) syncHandler(resAttrs *ResourceAttrs) error {
 
 // enqueue puts key onto the work queue.
 func (c *Controller) enqueue(resAttrs *ResourceAttrs) {
-	c.workqueue.Add(resAttrs)
+	c.workqueue.Add(*resAttrs)
 }
