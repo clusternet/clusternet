@@ -348,6 +348,7 @@ type ManagedClusterStatus struct {
 // +kubebuilder:printcolumn:name="KUBERNETES",type=string,JSONPath=".status.k8sVersion"
 // +kubebuilder:printcolumn:name="STATUS",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="AGENT VERSION",type=string,JSONPath=`.status.agentVersion`,description="The version of the clusternet agent",priority=100
 
 // ManagedCluster is the Schema for the managedclusters API
 type ManagedCluster struct {
