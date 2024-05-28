@@ -18,8 +18,6 @@ package clusterstatus
 
 import (
 	"context"
-	corev1lister "k8s.io/client-go/listers/core/v1"
-	clientgoversion "k8s.io/client-go/pkg/version"
 	"net/http"
 	"strings"
 	"sync"
@@ -33,6 +31,8 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corev1lister "k8s.io/client-go/listers/core/v1"
+	clientgoversion "k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
