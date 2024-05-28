@@ -41,6 +41,11 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
+    - description: The version of the clusternet agent
+      jsonPath: .status.agentVersion
+      name: AGENT VERSION
+      priority: 100
+      type: string
     name: v1beta1
     schema:
       openAPIV3Schema:
@@ -138,6 +143,10 @@ spec:
           status:
             description: ManagedClusterStatus defines the observed state of ManagedCluster
             properties:
+              agentVersion:
+                description: agentVersion is the clusternet agent version of the sub
+                  cluster
+                type: string
               allocatable:
                 additionalProperties:
                   anyOf:
