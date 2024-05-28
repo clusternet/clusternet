@@ -27,6 +27,7 @@ import (
 type ManagedClusterStatusApplyConfiguration struct {
 	LastObservedTime          *v1.Time                          `json:"lastObservedTime,omitempty"`
 	KubernetesVersion         *string                           `json:"k8sVersion,omitempty"`
+	AgentVersion              *string                           `json:"agentVersion,omitempty"`
 	Platform                  *string                           `json:"platform,omitempty"`
 	APIServerURL              *string                           `json:"apiserverURL,omitempty"`
 	Healthz                   *bool                             `json:"healthz,omitempty"`
@@ -69,6 +70,14 @@ func (b *ManagedClusterStatusApplyConfiguration) WithLastObservedTime(value v1.T
 // If called multiple times, the KubernetesVersion field is set to the value of the last call.
 func (b *ManagedClusterStatusApplyConfiguration) WithKubernetesVersion(value string) *ManagedClusterStatusApplyConfiguration {
 	b.KubernetesVersion = &value
+	return b
+}
+
+// WithAgentVersion sets the AgentVersion field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AgentVersion field is set to the value of the last call.
+func (b *ManagedClusterStatusApplyConfiguration) WithAgentVersion(value string) *ManagedClusterStatusApplyConfiguration {
+	b.AgentVersion = &value
 	return b
 }
 
