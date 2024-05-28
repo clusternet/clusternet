@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corev1lister "k8s.io/client-go/listers/core/v1"
+	clientgoversion "k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -119,6 +120,8 @@ func (c *Controller) Run(ctx context.Context) {
 func (c *Controller) collectingClusterStatus(ctx context.Context) {
 	klog.V(7).Info("collecting cluster status...")
 	var status clusterapi.ManagedClusterStatus
+
+	status.AgentVersion = c.getAgentVersion()
 
 	clusterVersion, err := c.getKubernetesVersion(ctx)
 	if err != nil {
@@ -210,6 +213,10 @@ func (c *Controller) GetManagedClusterLabels(labelPrefixes []string) labels.Set 
 
 func (c *Controller) getKubernetesVersion(_ context.Context) (*version.Info, error) {
 	return c.kubeClient.Discovery().ServerVersion()
+}
+
+func (c *Controller) getAgentVersion() string {
+	return clientgoversion.Get().GitVersion
 }
 
 func (c *Controller) getHealthStatus(ctx context.Context, path string) bool {

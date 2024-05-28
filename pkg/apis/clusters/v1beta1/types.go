@@ -241,6 +241,10 @@ type ManagedClusterStatus struct {
 	// +optional
 	KubernetesVersion string `json:"k8sVersion,omitempty"`
 
+	// agentVersion is the clusternet agent version of the sub cluster
+	// +optional
+	AgentVersion string `json:"agentVersion,omitempty"`
+
 	// platform indicates the running platform of the cluster
 	// +optional
 	Platform string `json:"platform,omitempty"`
