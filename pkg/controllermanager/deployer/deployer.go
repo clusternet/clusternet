@@ -734,6 +734,17 @@ func (deployer *Deployer) handleBase(baseCopy *appsapi.Base) error {
 		return err
 	}
 
+	// If the sub associated with base is a dividing strategy, check if there are derived loc resources, if not, do not create desc
+	if sub, _ := deployer.subsController.FindSubByUID(baseCopy.Labels[known.ConfigSubscriptionUIDLabel]); sub != nil {
+		if sub.Spec.SchedulingStrategy == appsapi.DividingSchedulingStrategyType {
+			if locs, _ := deployer.locLister.Localizations(baseCopy.Namespace).List(labels.SelectorFromSet(labels.Set{
+				string(sub.UID): subscriptionKind.Kind,
+			})); len(locs) == 0 {
+				return fmt.Errorf("Waiting loc for Base %s", klog.KObj(baseCopy))
+			}
+		}
+	}
+
 	err := deployer.populateDescriptions(baseCopy)
 	if err != nil {
 		return err
