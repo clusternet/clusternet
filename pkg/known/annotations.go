@@ -37,12 +37,14 @@ const (
 
 	// IsDefaultClusterInitAnnotation represents an annotation that marks a Base as the default cluster initialization
 	// workloads.
-	IsDefaultClusterInitAnnotation = "clusters.clusternet.io/is-default-cluster-init"
+	// This annotation can be set on Subscription or Base objects.
+	// This annotation will be passed down from Subscription to Base objects.
+	IsDefaultClusterInitAnnotation = "apps.clusternet.io/is-default-cluster-init"
 
 	// ClusterInitBaseAnnotation records the name of the Base to be used for initialization after joining.
 	// This annotation is set on ManagedCluster objects.
 	// It is mainly used for legacy clusters that have already joined.
-	ClusterInitBaseAnnotation = "clusters.clusternet.io/cluster-init-base"
+	ClusterInitBaseAnnotation = "apps.clusternet.io/cluster-init-base"
 
 	// ClusterInitSkipAnnotation indicates no initialization operations will be applied to this cluster.
 	ClusterInitSkipAnnotation = "clusters.clusternet.io/skip-cluster-init"

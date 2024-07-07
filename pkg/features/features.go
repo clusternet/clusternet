@@ -117,11 +117,13 @@ const (
 	// Setting on clusternet-scheduler side.
 	FeasibleClustersToleration featuregate.Feature = "FeasibleClustersToleration"
 
-	// ClusterInit helps initializing the cluster after joining.
-	// All the initializing jobs are defined by a default Subscription, which
-	// When a new ManagedCluster (with taint "clusters.clusternet.io/initialization:NoSchedule") joins,
-	// a default Subscription will be performed to do some
-	// TODO
+	// ClusterInit initializes the cluster after joining.
+	// All the initializing jobs can be defined by a default Subscription/Base with annotation
+	// "apps.clusternet.io/is-default-cluster-init=true".
+	// When a new ManagedCluster joins, a taint "clusters.clusternet.io/initialization:NoSchedule" is added automatically.
+	// And this taint will be removed after a successful initialization.
+	// For legacy clusters that have already joined, annotation "apps.clusternet.io/cluster-init-base" can also
+	// be used to specify a desired Base name.
 	//
 	// owner: @dixudx
 	// alpha: v0.17.0

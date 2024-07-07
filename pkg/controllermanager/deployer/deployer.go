@@ -368,6 +368,7 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 					known.ConfigSubscriptionNamespaceLabel: sub.Namespace,
 					known.ConfigSubscriptionUIDLabel:       string(sub.UID),
 				},
+				Annotations: map[string]string{},
 				Finalizers: []string{
 					known.AppFinalizer,
 				},
@@ -379,6 +380,11 @@ func (deployer *Deployer) populateBasesAndLocalizations(sub *appsapi.Subscriptio
 		if ns.Labels != nil {
 			baseTemplate.Labels[known.ClusterIDLabel] = ns.Labels[known.ClusterIDLabel]
 			baseTemplate.Labels[known.ClusterNameLabel] = ns.Labels[known.ClusterNameLabel]
+		}
+		if sub.Annotations != nil {
+			if isDefault, ok := sub.Annotations[known.IsDefaultClusterInitAnnotation]; ok {
+				baseTemplate.Annotations[known.IsDefaultClusterInitAnnotation] = isDefault
+			}
 		}
 
 		// sync base object
