@@ -138,8 +138,8 @@ spec:
             - syncMode
             type: object
             x-kubernetes-validations:
-            - message: clusterInitSubName is required once set
-              rule: '!has(oldSelf.clusterInitSubName) || has(self.clusterInitSubName)'
+            - message: clusterInitBaseName is required once set
+              rule: '!has(oldSelf.clusterInitBaseName) || has(self.clusterInitBaseName)'
           status:
             description: ManagedClusterStatus defines the observed state of ManagedCluster
             properties:
