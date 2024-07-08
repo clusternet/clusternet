@@ -56,7 +56,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-controller-manager
-          image: ghcr.io/clusternet/clusternet-controller-manager:v0.16.0
+          image: ghcr.io/clusternet/clusternet-controller-manager:v0.17.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
@@ -78,7 +78,7 @@ spec:
             - --leader-elect=true
             - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
             - --reserved-namespace=$(RESERVED_NAMESPACE)
-            - --feature-gates=SocketConnection=true,Deployer=true,FeedInUseProtection=true,FeedInventory=true
+            - --feature-gates=SocketConnection=true,Deployer=true,FeedInUseProtection=true,FeedInventory=true,ClusterInit=false
             - --controllers=*
             # -v=4
             # --cluster-api-kubeconfig=/etc/clusternet/my-capi.conf
