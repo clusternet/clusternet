@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	apidiscoveryv2beta1 "k8s.io/api/apidiscovery/v2beta1"
+	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
 	autoscalingapiv1 "k8s.io/api/autoscaling/v1"
 	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	apiextensionsv1lister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
@@ -349,7 +349,7 @@ func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *g
 			if apiPrefix == genericapiserver.APIGroupPrefix {
 				ss.GenericAPIServer.AggregatedDiscoveryGroupManager.AddGroupVersion(
 					groupVersion.Group,
-					apidiscoveryv2beta1.APIVersionDiscovery{
+					apidiscoveryv2.APIVersionDiscovery{
 						Version:   groupVersion.Version,
 						Resources: discoveryAPIResources,
 					},
@@ -358,7 +358,7 @@ func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *g
 				// There is only one group version for legacy resources, priority can be defaulted to 0.
 				ss.GenericAPIServer.AggregatedLegacyDiscoveryGroupManager.AddGroupVersion(
 					groupVersion.Group,
-					apidiscoveryv2beta1.APIVersionDiscovery{
+					apidiscoveryv2.APIVersionDiscovery{
 						Version:   groupVersion.Version,
 						Resources: discoveryAPIResources,
 					},
