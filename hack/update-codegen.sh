@@ -24,13 +24,35 @@ CODEGEN_PKG=${CODEGEN_PKG:-$(
   go mod vendor;
   ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../code-generator
 )}
+API_KNOWN_VIOLATIONS_DIR="${API_KNOWN_VIOLATIONS_DIR:-"${SCRIPT_ROOT}/api-rules"}"
 
 source "${CODEGEN_PKG}/kube_codegen.sh"
+
+THIS_PKG="github.com/clusternet/clusternet"
+
+kube::codegen::gen_helpers \
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+    "${SCRIPT_ROOT}/pkg"
+
+if [[ -n "${API_KNOWN_VIOLATIONS_DIR:-}" ]]; then
+    report_filename="${API_KNOWN_VIOLATIONS_DIR}/apiextensions_violation_exceptions.list"
+    if [[ "${UPDATE_API_KNOWN_VIOLATIONS:-}" == "true" ]]; then
+        update_report="--update-report"
+    fi
+fi
+
+kube::codegen::gen_openapi \
+    --output-dir "${SCRIPT_ROOT}/pkg/generated/openapi" \
+    --output-pkg "${THIS_PKG}/pkg/generated/openapi" \
+    --report-filename "${report_filename:-"/dev/null"}" \
+    ${update_report:+"${update_report}"} \
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+    "${SCRIPT_ROOT}/pkg/apis"
 
 kube::codegen::gen_client \
     --with-watch \
     --with-applyconfig \
-    --input-pkg-root github.com/clusternet/clusternet/pkg/apis \
-    --output-pkg-root github.com/clusternet/clusternet/pkg/generated \
-    --output-base "$(dirname "${BASH_SOURCE[0]}")/../../../.." \
-    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt"
+    --output-dir "${SCRIPT_ROOT}/pkg/generated" \
+    --output-pkg "${THIS_PKG}/pkg/generated" \
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+    "${SCRIPT_ROOT}/pkg/apis"
