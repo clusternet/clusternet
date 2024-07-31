@@ -10,13 +10,3 @@ subjects:
   - kind: ServiceAccount
     name: clusternet-hub
     namespace: clusternet-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  namespace: clusternet-mcs
-  name: mcs-syncer
-rules:
-  - apiGroups: ["discovery.k8s.io"]
-    resources: ["endpointslices"]
-    verbs: ["*"]
