@@ -213,7 +213,10 @@ func (hub *Hub) Run(ctx context.Context) error {
 					hub.clusternetInformerFactory.Apps().V1alpha1().Manifests().Lister(),
 					hub.aggregatorInformerFactory.Apiregistration().V1().APIServices().Lister(),
 					crdInformerFactory,
-					hub.options.ReservedNamespace)
+					hub.options.ReservedNamespace,
+					completeConfig.GenericConfig.OpenAPIConfig,
+					completeConfig.GenericConfig.OpenAPIV3Config,
+				)
 
 				crdInformerFactory.Start(postStartHookContext.StopCh)
 				return ss.InstallShadowAPIGroups(postStartHookContext.StopCh, hub.kubeClient.DiscoveryClient)

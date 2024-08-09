@@ -19,18 +19,10 @@ package options
 import (
 	"fmt"
 	"net"
-	"net/http"
-	"strings"
-	"time"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
-	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	genericapiserver "k8s.io/apiserver/pkg/server"
-	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
@@ -39,7 +31,6 @@ import (
 	"k8s.io/client-go/rest"
 	cliflag "k8s.io/component-base/cli/flag"
 
-	clientset "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	clusternetopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
 	"github.com/clusternet/clusternet/pkg/hub/apiserver"
@@ -127,41 +118,17 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 		return nil, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
-	o.RecommendedOptions.ExtraAdmissionInitializers = func(c *genericapiserver.RecommendedConfig) ([]admission.PluginInitializer, error) {
-		client, err := clientset.NewForConfig(c.LoopbackClientConfig)
-		if err != nil {
-			return nil, err
-		}
-		informerFactory := informers.NewSharedInformerFactory(client, c.LoopbackClientConfig.Timeout)
-		o.LoopbackSharedInformerFactory = informerFactory
-		// TODO: add initializer
-		return []admission.PluginInitializer{}, nil
-	}
-
-	// remove NamespaceLifecycle admission plugin explicitly
-	o.RecommendedOptions.Admission.DisablePlugins = append(o.RecommendedOptions.Admission.DisablePlugins, lifecycle.PluginName)
-
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
-	serverConfig.Config.RequestTimeout = time.Duration(40) * time.Second // override default 60s
-	serverConfig.LongRunningFunc = func(r *http.Request, requestInfo *apirequest.RequestInfo) bool {
-		if values := r.URL.Query()["watch"]; len(values) > 0 {
-			switch strings.ToLower(values[0]) {
-			case "true":
-				return true
-			default:
-				return false
-			}
-		}
-		return genericfilters.BasicLongRunningRequestCheck(sets.NewString("watch"), sets.NewString())(r, requestInfo)
-	}
-	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(clusternetopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
-	serverConfig.OpenAPIConfig.Info.Title = openAPITitle
-	serverConfig.OpenAPIConfig.Info.Version = version.Get().GitVersion
-
 	if err := o.recommendedOptionsApplyTo(serverConfig); err != nil {
 		return nil, err
 	}
 
+	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(clusternetopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
+	serverConfig.OpenAPIConfig.Info.Title = openAPITitle
+	serverConfig.OpenAPIConfig.Info.Version = version.Get().GitVersion
+	serverConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(clusternetopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
+	serverConfig.OpenAPIV3Config.Info.Title = openAPITitle
+	serverConfig.OpenAPIV3Config.Info.Version = version.Get().GitVersion
 	config := &apiserver.Config{
 		GenericConfig: serverConfig,
 		ExtraConfig:   apiserver.ExtraConfig{},
@@ -243,10 +210,21 @@ func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.Re
 	if err := o.RecommendedOptions.Audit.ApplyTo(&config.Config); err != nil {
 		return err
 	}
-
-	kubeClient, err2 := kubernetes.NewForConfig(config.ClientConfig)
-	if err2 != nil {
-		return err2
+	if err := o.RecommendedOptions.CoreAPI.ApplyTo(config); err != nil {
+		return err
+	}
+	var kubeClient *kubernetes.Clientset
+	var dynamicClient *dynamic.DynamicClient
+	if config.ClientConfig != nil {
+		var err error
+		kubeClient, err = kubernetes.NewForConfig(config.ClientConfig)
+		if err != nil {
+			return err
+		}
+		dynamicClient, err = dynamic.NewForConfig(config.ClientConfig)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := o.RecommendedOptions.Features.ApplyTo(&config.Config, kubeClient, config.SharedInformerFactory); err != nil {
@@ -257,10 +235,6 @@ func (o *HubServerOptions) recommendedOptionsApplyTo(config *genericapiserver.Re
 	}
 
 	initializers, err := o.RecommendedOptions.ExtraAdmissionInitializers(config)
-	if err != nil {
-		return err
-	}
-	dynamicClient, err := dynamic.NewForConfig(config.ClientConfig)
 	if err != nil {
 		return err
 	}
