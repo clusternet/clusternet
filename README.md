@@ -110,6 +110,12 @@ follow [demo.go](https://github.com/clusternet/clusternet/blob/main/examples/cli
 To use Clusternet APIs and CRDs as a module, please add [github.com/clusternet/apis](https://github.com/clusternet/apis)
 to your `go.mod`.
 
+## Contributors
+
+<a href="https://github.com/clusternet/clusternet/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=clusternet/clusternet" />
+</a>
+
 ## Contact
 
 If you've got any questions, please feel free to contact us with following ways:
