@@ -12,14 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.21"
-      - run: go version
       - name: Get branch name
         id: branch-name
         uses: tj-actions/branch-names@v8
       - name: Scanning with FOSSA
-        uses: fossas/fossa-action@v1
+        uses: fossas/fossa-action@v1.4.0
         with:
-          api-key: ${{secrets.FOSSA_API_KEY}}
+          api-key: fdfd71b81adba3b3dcc0553694e3c75c
