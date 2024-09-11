@@ -19,16 +19,16 @@ package v1alpha1
 
 import (
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
 // GlobalizationSpecApplyConfiguration represents an declarative configuration of the GlobalizationSpec type for use
 // with apply.
 type GlobalizationSpecApplyConfiguration struct {
-	OverridePolicy          *v1alpha1.OverridePolicy           `json:"overridePolicy,omitempty"`
-	ClusterAffinity         *v1.LabelSelector                  `json:"clusterAffinity,omitempty"`
-	Overrides               []OverrideConfigApplyConfiguration `json:"overrides,omitempty"`
-	Priority                *int32                             `json:"priority,omitempty"`
+	OverridePolicy          *v1alpha1.OverridePolicy            `json:"overridePolicy,omitempty"`
+	ClusterAffinity         *v1.LabelSelectorApplyConfiguration `json:"clusterAffinity,omitempty"`
+	Overrides               []OverrideConfigApplyConfiguration  `json:"overrides,omitempty"`
+	Priority                *int32                              `json:"priority,omitempty"`
 	*FeedApplyConfiguration `json:"feed,omitempty"`
 }
 
@@ -49,8 +49,8 @@ func (b *GlobalizationSpecApplyConfiguration) WithOverridePolicy(value v1alpha1.
 // WithClusterAffinity sets the ClusterAffinity field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ClusterAffinity field is set to the value of the last call.
-func (b *GlobalizationSpecApplyConfiguration) WithClusterAffinity(value v1.LabelSelector) *GlobalizationSpecApplyConfiguration {
-	b.ClusterAffinity = &value
+func (b *GlobalizationSpecApplyConfiguration) WithClusterAffinity(value *v1.LabelSelectorApplyConfiguration) *GlobalizationSpecApplyConfiguration {
+	b.ClusterAffinity = value
 	return b
 }
 
