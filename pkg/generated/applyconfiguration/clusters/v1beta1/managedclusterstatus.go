@@ -20,35 +20,36 @@ package v1beta1
 import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
 // ManagedClusterStatusApplyConfiguration represents an declarative configuration of the ManagedClusterStatus type for use
 // with apply.
 type ManagedClusterStatusApplyConfiguration struct {
-	LastObservedTime          *v1.Time                          `json:"lastObservedTime,omitempty"`
-	KubernetesVersion         *string                           `json:"k8sVersion,omitempty"`
-	AgentVersion              *string                           `json:"agentVersion,omitempty"`
-	Platform                  *string                           `json:"platform,omitempty"`
-	APIServerURL              *string                           `json:"apiserverURL,omitempty"`
-	Healthz                   *bool                             `json:"healthz,omitempty"`
-	Livez                     *bool                             `json:"livez,omitempty"`
-	Readyz                    *bool                             `json:"readyz,omitempty"`
-	AppPusher                 *bool                             `json:"appPusher,omitempty"`
-	UseSocket                 *bool                             `json:"useSocket,omitempty"`
-	KubeQPS                   *float32                          `json:"kubeQPS,omitempty"`
-	KubeBurst                 *int32                            `json:"kubeBurst,omitempty"`
-	Allocatable               *corev1.ResourceList              `json:"allocatable,omitempty"`
-	Capacity                  *corev1.ResourceList              `json:"capacity,omitempty"`
-	ClusterCIDR               *string                           `json:"clusterCIDR,omitempty"`
-	ServiceCIDR               *string                           `json:"serviceCIDR,omitempty"`
-	NodeStatistics            *NodeStatisticsApplyConfiguration `json:"nodeStatistics,omitempty"`
-	PodStatistics             *PodStatisticsApplyConfiguration  `json:"podStatistics,omitempty"`
-	ResourceUsage             *ResourceUsageApplyConfiguration  `json:"resourceUsage,omitempty"`
-	Conditions                []v1.Condition                    `json:"conditions,omitempty"`
-	HeartbeatFrequencySeconds *int64                            `json:"heartbeatFrequencySeconds,omitempty"`
-	PredictorEnabled          *bool                             `json:"predictorEnabled,omitempty"`
-	PredictorAddress          *string                           `json:"predictorAddress,omitempty"`
-	PredictorDirectAccess     *bool                             `json:"predictorDirectAccess,omitempty"`
+	LastObservedTime          *v1.Time                             `json:"lastObservedTime,omitempty"`
+	KubernetesVersion         *string                              `json:"k8sVersion,omitempty"`
+	AgentVersion              *string                              `json:"agentVersion,omitempty"`
+	Platform                  *string                              `json:"platform,omitempty"`
+	APIServerURL              *string                              `json:"apiserverURL,omitempty"`
+	Healthz                   *bool                                `json:"healthz,omitempty"`
+	Livez                     *bool                                `json:"livez,omitempty"`
+	Readyz                    *bool                                `json:"readyz,omitempty"`
+	AppPusher                 *bool                                `json:"appPusher,omitempty"`
+	UseSocket                 *bool                                `json:"useSocket,omitempty"`
+	KubeQPS                   *float32                             `json:"kubeQPS,omitempty"`
+	KubeBurst                 *int32                               `json:"kubeBurst,omitempty"`
+	Allocatable               *corev1.ResourceList                 `json:"allocatable,omitempty"`
+	Capacity                  *corev1.ResourceList                 `json:"capacity,omitempty"`
+	ClusterCIDR               *string                              `json:"clusterCIDR,omitempty"`
+	ServiceCIDR               *string                              `json:"serviceCIDR,omitempty"`
+	NodeStatistics            *NodeStatisticsApplyConfiguration    `json:"nodeStatistics,omitempty"`
+	PodStatistics             *PodStatisticsApplyConfiguration     `json:"podStatistics,omitempty"`
+	ResourceUsage             *ResourceUsageApplyConfiguration     `json:"resourceUsage,omitempty"`
+	Conditions                []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	HeartbeatFrequencySeconds *int64                               `json:"heartbeatFrequencySeconds,omitempty"`
+	PredictorEnabled          *bool                                `json:"predictorEnabled,omitempty"`
+	PredictorAddress          *string                              `json:"predictorAddress,omitempty"`
+	PredictorDirectAccess     *bool                                `json:"predictorDirectAccess,omitempty"`
 }
 
 // ManagedClusterStatusApplyConfiguration constructs an declarative configuration of the ManagedClusterStatus type for use with
@@ -212,9 +213,12 @@ func (b *ManagedClusterStatusApplyConfiguration) WithResourceUsage(value *Resour
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *ManagedClusterStatusApplyConfiguration) WithConditions(values ...v1.Condition) *ManagedClusterStatusApplyConfiguration {
+func (b *ManagedClusterStatusApplyConfiguration) WithConditions(values ...*metav1.ConditionApplyConfiguration) *ManagedClusterStatusApplyConfiguration {
 	for i := range values {
-		b.Conditions = append(b.Conditions, values[i])
+		if values[i] == nil {
+			panic("nil value passed to WithConditions")
+		}
+		b.Conditions = append(b.Conditions, *values[i])
 	}
 	return b
 }

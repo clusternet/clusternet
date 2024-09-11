@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
 // SubscriberApplyConfiguration represents an declarative configuration of the Subscriber type for use
 // with apply.
 type SubscriberApplyConfiguration struct {
-	ClusterAffinity  *v1.LabelSelector                   `json:"clusterAffinity,omitempty"`
+	ClusterAffinity  *v1.LabelSelectorApplyConfiguration `json:"clusterAffinity,omitempty"`
 	Weight           *int32                              `json:"weight,omitempty"`
 	SubGroupStrategy *SubGroupStrategyApplyConfiguration `json:"subGroupStrategy,omitempty"`
 }
@@ -38,8 +38,8 @@ func Subscriber() *SubscriberApplyConfiguration {
 // WithClusterAffinity sets the ClusterAffinity field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ClusterAffinity field is set to the value of the last call.
-func (b *SubscriberApplyConfiguration) WithClusterAffinity(value v1.LabelSelector) *SubscriberApplyConfiguration {
-	b.ClusterAffinity = &value
+func (b *SubscriberApplyConfiguration) WithClusterAffinity(value *v1.LabelSelectorApplyConfiguration) *SubscriberApplyConfiguration {
+	b.ClusterAffinity = value
 	return b
 }
 
