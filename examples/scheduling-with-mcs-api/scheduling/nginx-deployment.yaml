@@ -7,7 +7,7 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-nginx
+  name: nginx-app
   namespace: baz
   labels:
     clusternet-app: multi-cluster-nginx
@@ -24,21 +24,18 @@ spec:
       containers:
         - name: nginx
           image: nginx:1.14.2
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
-          resources:
-            requests:
-              memory: 128Mi
-              cpu: 500m
-            limits:
-              memory: 256Mi
-              cpu: 500m
-        - name: redis # only for testing
-          image: redis:6.2
-          resources:
-            requests:
-              memory: 128Mi
-              cpu: 500m
-            limits:
-              memory: 256Mi
-              cpu: 500m
+        - name: busybox
+          command: [ "/bin/ash", "-c", "trap : TERM INT; sleep infinity " ]
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: false
+            capabilities:
+              add: [ "NET_ADMIN", "NET_RAW" ]
+        - name: alpine
+          command: [ "sleep","infinity" ]
+          image: alpine/curl
+          imagePullPolicy: IfNotPresent
