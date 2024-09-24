@@ -1,7 +1,7 @@
-ARG BASEIMAGE
-ARG GOVERSION
-ARG LDFLAGS
-ARG PKGNAME
+ARG BASEIMAGE=alpine:3.18.4
+ARG GOVERSION=1.21.3
+ARG LDFLAGS=""
+ARG PKGNAME=clusternet-hub
 
 # Build the manager binary
 FROM --platform=$BUILDPLATFORM golang:${GOVERSION} as builder
