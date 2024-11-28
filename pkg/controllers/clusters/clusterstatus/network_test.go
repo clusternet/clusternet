@@ -5,170 +5,170 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/client-go/informers"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
 )
 
-func TestFindPodCommandParameterFromArgs(t *testing.T) {
-	podArgs := BuildPod("kube-apiserver", "component", "kube-apiserver")
-	podArgs.Spec.Containers = []corev1.Container{
-		{
-			Args: []string{"--service-cluster-ip-range=1.2.3.4"},
-		},
-	}
-
-	kubeClient := fake.NewSimpleClientset()
-	kubeFactory := informers.NewSharedInformerFactory(kubeClient, 0)
-	podInformer := kubeFactory.Core().V1().Pods()
-
-	err := podInformer.Informer().GetIndexer().Add(podArgs)
-	if err != nil {
-		t.Errorf("Add pod err: %v", err)
-	}
-
-	podArgsLister := podInformer.Lister()
-
+func TestFindServiceIPRange(t *testing.T) {
 	tests := []struct {
 		description string
-		podLister   corelisters.PodLister
-		expectedIP  string
+		buildPod    func(string, string) (*corev1.Pod, labels.Selector)
 	}{
 		{
-			description: "service-cluster-ip-range is in args",
-			podLister:   podArgsLister,
-			expectedIP:  "1.2.3.4",
+			description: "service ip range in kube-apiserver",
+			buildPod:    buildAPIServerPod,
+		},
+		{
+			description: "service ip range in kube-controller-manager",
+			buildPod:    buildControllerManagerWithK8sLabel,
 		},
 	}
 
+	const expected = "1.0.0.0/8"
+
 	for _, test := range tests {
-		clusterIPRange := findPodCommandParameter(test.podLister, "kube-apiserver", "--service-cluster-ip-range")
-		if clusterIPRange != test.expectedIP {
-			t.Errorf("get clusteriprange is %v", clusterIPRange)
+		pod, _ := test.buildPod(expected, "0.0.0.0/0")
+
+		podLister, err := buildPodLister(pod)
+		if err != nil {
+			t.Errorf("new pod lister error: %v", err)
+			continue
 		}
-	}
 
-}
-
-func TestFindPodCommandParameterFromArgsWithK8sLabel(t *testing.T) {
-	podArgs := BuildPod("kube-apiserver", "app.kubernetes.io/component", "kube-apiserver")
-	podArgs.Spec.Containers = []corev1.Container{
-		{
-			Args: []string{"--service-cluster-ip-range=1.2.3.4"},
-		},
-	}
-
-	kubeClient := fake.NewSimpleClientset()
-	kubeFactory := informers.NewSharedInformerFactory(kubeClient, 0)
-	podInformer := kubeFactory.Core().V1().Pods()
-
-	err := podInformer.Informer().GetIndexer().Add(podArgs)
-	if err != nil {
-		t.Errorf("Add pod err: %v", err)
-	}
-
-	podArgsLister := podInformer.Lister()
-
-	tests := []struct {
-		description string
-		podLister   corelisters.PodLister
-		expectedIP  string
-	}{
-		{
-			description: "service-cluster-ip-range is in args",
-			podLister:   podArgsLister,
-			expectedIP:  "1.2.3.4",
-		},
-	}
-
-	for _, test := range tests {
-		clusterIPRange := findPodCommandParameter(test.podLister, "kube-apiserver", "--service-cluster-ip-range")
-		if clusterIPRange != test.expectedIP {
-			t.Errorf("get clusteriprange is %v", clusterIPRange)
-		}
-	}
-
-}
-
-func TestFindPodCommandParameterFromCommand(t *testing.T) {
-	podCommand := BuildPod("kube-apiserver", "component", "kube-apiserver")
-	podCommand.Spec.Containers = []corev1.Container{
-		{
-			Command: []string{"--service-cluster-ip-range=1.2.3.4"},
-		},
-	}
-
-	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{"namespace": cache.MetaNamespaceIndexFunc})
-	lister := corelisters.NewPodLister(store)
-	if err := store.Add(podCommand); err != nil {
-		t.Errorf("add pod err %v", err)
-	}
-
-	tests := []struct {
-		description string
-		podLister   corelisters.PodLister
-		expectedIP  string
-	}{
-		{
-			description: "service-cluster-ip-range is in command",
-			podLister:   lister,
-			expectedIP:  "1.2.3.4",
-		},
-	}
-
-	for _, test := range tests {
-		clusterIPRange := findPodCommandParameter(test.podLister, "kube-apiserver", "--service-cluster-ip-range")
-		if clusterIPRange != test.expectedIP {
-			t.Errorf("get clusteriprange is %v", clusterIPRange)
+		result, _ := findServiceIPRange(podLister)
+		if result != expected {
+			t.Errorf("test for %s: expected %s, got %s", test.description, expected, result)
 		}
 	}
 }
 
-func TestFindPodCommandParameterFromCommandWithK8sLabel(t *testing.T) {
-	podCommand := BuildPod("kube-apiserver", "app.kubernetes.io/component", "kube-apiserver")
-	podCommand.Spec.Containers = []corev1.Container{
-		{
-			Command: []string{"--service-cluster-ip-range=1.2.3.4"},
-		},
-	}
-
-	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{"namespace": cache.MetaNamespaceIndexFunc})
-	lister := corelisters.NewPodLister(store)
-	if err := store.Add(podCommand); err != nil {
-		t.Errorf("add pod err %v", err)
-	}
-
+func TestFindPodIPRange(t *testing.T) {
 	tests := []struct {
 		description string
-		podLister   corelisters.PodLister
-		expectedIP  string
+		buildPod    func(string, string) (*corev1.Pod, labels.Selector)
 	}{
 		{
-			description: "service-cluster-ip-range is in command",
-			podLister:   lister,
-			expectedIP:  "1.2.3.4",
+			description: "pod ip range in kube-controller-manager",
+			buildPod:    buildControllerManagerWithK8sLabel,
+		},
+		{
+			description: "pod ip range in kube-proxy",
+			buildPod:    buildProxyPod,
 		},
 	}
 
+	const expected = "2.0.0.0/8"
+
 	for _, test := range tests {
-		clusterIPRange := findPodCommandParameter(test.podLister, "kube-apiserver", "--service-cluster-ip-range")
-		if clusterIPRange != test.expectedIP {
-			t.Errorf("get clusteriprange is %v", clusterIPRange)
+		pod, _ := test.buildPod("0.0.0.0/0", expected)
+
+		podLister, err := buildPodLister(pod)
+		if err != nil {
+			t.Errorf("new pod lister error: %v", err)
+			continue
+		}
+
+		result, _ := findPodIPRange(podLister)
+		if result != expected {
+			t.Errorf("test for %s: expected %s, got %s", test.description, expected, result)
 		}
 	}
 }
 
-func BuildPod(name, labelKey, lableValue string) *corev1.Pod {
+func TestFindPodCommandParameter(t *testing.T) {
+	tests := []struct {
+		description string
+		buildPod    func(string, string) (*corev1.Pod, labels.Selector)
+	}{
+		{
+			description: "parameter in command",
+			buildPod:    buildAPIServerPod,
+		},
+		{
+			description: "parameter in args",
+			buildPod:    buildAPIServerPodWithArgs,
+		},
+	}
+
+	const parameter = "--service-cluster-ip-range"
+	const expected = "1.0.0.0/8"
+
+	for _, test := range tests {
+		pod, labelSelector := test.buildPod(expected, "0.0.0.0/0")
+
+		podLister, err := buildPodLister(pod)
+		if err != nil {
+			t.Errorf("new pod lister error: %v", err)
+			continue
+		}
+
+		result := findPodCommandParameter(podLister, labelSelector, parameter)
+		if result != expected {
+			t.Errorf("test for %s: expected %s, got %s", test.description, expected, result)
+		}
+	}
+}
+
+func buildPodLister(pods ...*corev1.Pod) (corelisters.PodLister, error) {
+	kubeClientset := fake.NewSimpleClientset()
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClientset, 0)
+	podInformer := kubeInformerFactory.Core().V1().Pods()
+
+	for _, pod := range pods {
+		err := podInformer.Informer().GetIndexer().Add(pod)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return podInformer.Lister(), nil
+}
+
+func buildAPIServerPod(serviceIPRange, _ string) (*corev1.Pod, labels.Selector) { // no --cluster-cidr parameter
+	labelKey, labelValue := "component", "kube-apiserver"
+	return buildPod("kube-system", labelValue+"-xxx", labelKey, labelValue,
+		[]string{"kube-apiserver", "--service-cluster-ip-range=" + serviceIPRange},
+		[]string{})
+}
+
+func buildAPIServerPodWithArgs(serviceIPRange, _ string) (*corev1.Pod, labels.Selector) { // no --cluster-cidr parameter
+	labelKey, labelValue := "component", "kube-apiserver"
+	return buildPod("kube-system", labelValue+"-xxx", labelKey, labelValue,
+		[]string{"kube-apiserver"},
+		[]string{"--service-cluster-ip-range=" + serviceIPRange})
+}
+
+func buildControllerManagerWithK8sLabel(serviceIPRange, podIPRange string) (*corev1.Pod, labels.Selector) {
+	labelKey, labelValue := "app.kubernetes.io/component", "kube-controller-manager"
+	return buildPod("kube-system", "kube-controller-manager-xxx", labelKey, labelValue,
+		[]string{"kube-controller-manager", "--service-cluster-ip-range=" + serviceIPRange, "--cluster-cidr=" + podIPRange},
+		[]string{})
+}
+
+func buildProxyPod(serviceIPRange, podIPRange string) (*corev1.Pod, labels.Selector) {
+	return buildPod("kube-system", "kube-proxy-xxx", "k8s-app", "kube-proxy",
+		[]string{"kube-controller-manager", "--service-cluster-ip-range=" + serviceIPRange, "--cluster-cidr=" + podIPRange},
+		[]string{})
+}
+
+//nolint:unparam
+func buildPod(namespace, name, labelKey, labelValue string, cmd, args []string) (*corev1.Pod, labels.Selector) {
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{Kind: "Pod"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "kube-system",
+			Namespace: namespace,
 			UID:       uuid.NewUUID(),
 			Name:      name,
-			Labels:    map[string]string{labelKey: lableValue},
+			Labels:    map[string]string{labelKey: labelValue},
 		},
 	}
-	return pod
+	pod.Spec.Containers = []corev1.Container{
+		{
+			Command: cmd,
+			Args:    args,
+		},
+	}
+	return pod, labels.SelectorFromSet(pod.Labels)
 }
