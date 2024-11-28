@@ -23,151 +23,106 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
-	corev1Lister "k8s.io/client-go/listers/core/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 )
 
-// findServiceIPRange returns the cluster IP range for the cluster service.
-// copied from submariner.io/submariner-operator/pkg/discovery/network/generic.go and modified
-func findServiceIPRange(podLister corev1Lister.PodLister) (string, error) {
-	clusterIPRange := findPodCommandParameter(podLister, "kube-apiserver", "--service-cluster-ip-range")
-	if clusterIPRange != "" {
-		return clusterIPRange, nil
+// findServiceIPRange returns the service ip range for the cluster.
+func findServiceIPRange(podLister corelisters.PodLister) (string, error) {
+	// Try to find the service ip range from the kube-apiserver first
+	// and then kube-controller-manager if failed
+	labelKeys := []string{"component", "app.kubernetes.io/component"}
+	labelValues := []string{"kube-apiserver", "kube-controller-manager"}
+	parameter := "--service-cluster-ip-range"
+	for _, labelValue := range labelValues {
+		for _, labelKey := range labelKeys {
+			labelSelector := labels.SelectorFromSet(labels.Set{labelKey: labelValue})
+			serviceIPRange := findPodCommandParameter(podLister, labelSelector, parameter)
+			if serviceIPRange != "" {
+				return serviceIPRange, nil
+			}
+		}
 	}
-	// Try to find the pod IP range from the env.
-	clusterIPRange = os.Getenv("SERVICE_CIDR")
-	if clusterIPRange != "" {
-		return clusterIPRange, nil
+
+	// Try to find the service ip range from the env.
+	serviceIPRange := os.Getenv("SERVICE_CIDR")
+	if serviceIPRange != "" {
+		return serviceIPRange, nil
 	}
-	return "", errors.New("can't get ServiceIPRange")
+	return "", errors.New("can't get service ip range")
 }
 
-// findPodIpRange returns the pod IP range for the cluster.
-// copied from submariner.io/submariner-operator/pkg/discovery/network/generic.go
-func findPodIPRange(nodeLister corev1Lister.NodeLister, podLister corev1Lister.PodLister) (string, error) {
-	// Try to find the pod IP range from the kube-controller-manager.
-	podIPRange := findPodIPRangeKubeController(podLister)
+// findPodIPRange returns the pod ip range for the cluster.
+func findPodIPRange(podLister corelisters.PodLister) (string, error) {
+	// Try to find the pod ip range from the kube-controller-manager not including kube-apiserver
+	labelKeys := []string{"component", "app.kubernetes.io/component"}
+	labelValues := []string{"kube-controller-manager"}
+	parameter := "--cluster-cidr"
+	for _, labelValue := range labelValues {
+		for _, labelKey := range labelKeys {
+			labelSelector := labels.SelectorFromSet(labels.Set{labelKey: labelValue})
+			podIPRange := findPodCommandParameter(podLister, labelSelector, parameter)
+			if podIPRange != "" {
+				return podIPRange, nil
+			}
+		}
+	}
+
+	// Try to find the pod ip range from the kube-proxy
+	labelKey, labelValue := "k8s-app", "kube-proxy"
+	labelSelector := labels.SelectorFromSet(labels.Set{labelKey: labelValue})
+	podIPRange := findPodCommandParameter(podLister, labelSelector, parameter)
 	if podIPRange != "" {
 		return podIPRange, nil
 	}
 
-	// Try to find the pod IP range from the kube-proxy.
-	podIPRange = findPodIPRangeKubeProxy(podLister)
-	if podIPRange != "" {
-		return podIPRange, nil
-	}
-
-	// Try to find the pod IP range from the node spec.
-	podIPRange = findPodIPRangeFromNodeSpec(nodeLister)
-	if podIPRange != "" {
-		return podIPRange, nil
-	}
-	// Try to find the pod IP range from the env.
+	// Try to find the pod ip range from the env.
 	podIPRange = os.Getenv("CLUSTER_CIDR")
 	if podIPRange != "" {
 		return podIPRange, nil
 	}
-	return "", errors.New("can't get PodIPRange")
+	return "", errors.New("can't get pod ip range")
 }
 
-// copied from submariner.io/submariner-operator/pkg/discovery/network/generic.go
-func findPodIPRangeKubeController(podLister corev1Lister.PodLister) string {
-	return findPodCommandParameter(podLister, "kube-controller-manager", "--cluster-cidr")
-}
-
-// copied from submariner.io/submariner-operator/pkg/discovery/network/generic.go
-func findPodIPRangeKubeProxy(podLister corev1Lister.PodLister) string {
-	return findPodCommandParameter(podLister, "kube-proxy", "--cluster-cidr")
-}
-
-// copied from submariner.io/submariner-operator/pkg/discovery/network/generic.go
-func findPodIPRangeFromNodeSpec(nodeLister corev1Lister.NodeLister) string {
-	nodes, err := nodeLister.List(labels.Everything())
+// findPodCommandParameter returns the pod container command parameter by the given labelSelector.
+func findPodCommandParameter(podLister corelisters.PodLister, labelSelector labels.Selector,
+	parameter string) string {
+	pods, err := findPods(podLister, labelSelector)
 	if err != nil {
-		klog.Errorf("Failed to list nodes: %v", err)
+		klog.Errorf("Failed to find pods by label selector %q: %v", labelSelector, err)
 		return ""
 	}
 
-	for _, node := range nodes {
-		if node.Spec.PodCIDR != "" {
-			return node.Spec.PodCIDR
+	for _, pod := range pods {
+		for _, container := range pod.Spec.Containers {
+			if val := getParameterValue(container.Command, parameter); val != "" {
+				return val
+			}
+			if val := getParameterValue(container.Args, parameter); val != "" {
+				return val
+			}
 		}
 	}
 
 	return ""
 }
 
-// findPodCommandParameter returns the pod container command parameter for the given pod.
-// copied from submariner.io/submariner-operator/pkg/discovery/network/pods.go
-func findPodCommandParameter(podLister corev1Lister.PodLister, labelSelectorValue, parameter string) string {
-	pod := findPodWithComponentLabel(podLister, labelSelectorValue)
-
-	if pod == nil {
-		pod = findPodWithK8sComponentLabel(podLister, labelSelectorValue)
-	}
-
-	if pod == nil {
-		return ""
-	}
-	for _, container := range pod.Spec.Containers {
-		if val := getParaValue(container.Command, parameter); val != "" {
-			return val
-		}
-
-		if val := getParaValue(container.Args, parameter); val != "" {
-			return val
-		}
-	}
-	return ""
-}
-
-func findPodWithComponentLabel(podLister corev1Lister.PodLister, labelSelectorValue string) *corev1.Pod {
-	pod, err := findPod(podLister, "component", labelSelectorValue)
-
-	if err != nil {
-		return nil
-	}
-	return pod
-}
-
-func findPodWithK8sComponentLabel(podLister corev1Lister.PodLister, labelSelectorValue string) *corev1.Pod {
-	pod, err := findPod(podLister, "app.kubernetes.io/component", labelSelectorValue)
-
-	if err != nil {
-		return nil
-	}
-	return pod
-}
-
-// findPod returns the pods filter by the given labelSelector.
-// copied from submariner.io/submariner-operator/pkg/discovery/network/pods.go
-func findPod(podLister corev1Lister.PodLister, labelSelectorKey, labelSelectorValue string) (*corev1.Pod, error) {
-	labelSelector := labels.NewSelector()
-	requirement, err := labels.NewRequirement(labelSelectorKey, selection.Equals, []string{labelSelectorValue})
-	if err != nil {
-		return nil, err
-	}
-	labelSelector = labelSelector.Add(*requirement)
-
+// findPods returns the pods filter by the given labelSelector.
+func findPods(podLister corelisters.PodLister, labelSelector labels.Selector) ([]*corev1.Pod, error) {
 	pods, err := podLister.List(labelSelector)
 	if err != nil {
-		klog.Errorf("Failed to list pods by label selector %q: %v", labelSelector, err)
 		return nil, err
 	}
 
-	if len(pods) == 0 {
-		return nil, nil
-	}
-
-	return pods[0], nil
+	return pods, nil
 }
 
-func getParaValue(lists []string, parameter string) string {
-	for _, arg := range lists {
+func getParameterValue(args []string, parameter string) string {
+	for _, arg := range args {
 		if strings.HasPrefix(arg, parameter) {
 			return strings.Split(arg, "=")[1]
 		}
+
 		// Handling the case where the command is in the form of /bin/sh -c exec ....
 		if strings.Contains(arg, " ") {
 			for _, subArg := range strings.Split(arg, " ") {

@@ -320,7 +320,7 @@ func (c *Controller) discoverServiceCIDR() (string, error) {
 
 // discoverClusterCIDR returns the cluster CIDR for the cluster.
 func (c *Controller) discoverClusterCIDR() (string, error) {
-	return findPodIPRange(c.nodeLister, c.podLister)
+	return findPodIPRange(c.podLister)
 }
 
 // get node capacity and allocatable resource
