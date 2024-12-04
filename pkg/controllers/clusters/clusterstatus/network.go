@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/klog/v2"
 )
 
 // findServiceIPRange returns the service ip range for the cluster.
@@ -37,9 +36,9 @@ func findServiceIPRange(podLister corelisters.PodLister) (string, error) {
 	for _, labelValue := range labelValues {
 		for _, labelKey := range labelKeys {
 			labelSelector := labels.SelectorFromSet(labels.Set{labelKey: labelValue})
-			serviceIPRange := findPodCommandParameter(podLister, labelSelector, parameter)
-			if serviceIPRange != "" {
-				return serviceIPRange, nil
+			serviceIPRange, err := findPodCommandParameter(podLister, labelSelector, parameter)
+			if err != nil || serviceIPRange != "" {
+				return serviceIPRange, err
 			}
 		}
 	}
@@ -61,9 +60,9 @@ func findPodIPRange(podLister corelisters.PodLister) (string, error) {
 	for _, labelValue := range labelValues {
 		for _, labelKey := range labelKeys {
 			labelSelector := labels.SelectorFromSet(labels.Set{labelKey: labelValue})
-			podIPRange := findPodCommandParameter(podLister, labelSelector, parameter)
-			if podIPRange != "" {
-				return podIPRange, nil
+			podIPRange, err := findPodCommandParameter(podLister, labelSelector, parameter)
+			if err != nil || podIPRange != "" {
+				return podIPRange, err
 			}
 		}
 	}
@@ -71,9 +70,9 @@ func findPodIPRange(podLister corelisters.PodLister) (string, error) {
 	// Try to find the pod ip range from the kube-proxy
 	labelKey, labelValue := "k8s-app", "kube-proxy"
 	labelSelector := labels.SelectorFromSet(labels.Set{labelKey: labelValue})
-	podIPRange := findPodCommandParameter(podLister, labelSelector, parameter)
-	if podIPRange != "" {
-		return podIPRange, nil
+	podIPRange, err := findPodCommandParameter(podLister, labelSelector, parameter)
+	if err != nil || podIPRange != "" {
+		return podIPRange, err
 	}
 
 	// Try to find the pod ip range from the env.
@@ -85,26 +84,24 @@ func findPodIPRange(podLister corelisters.PodLister) (string, error) {
 }
 
 // findPodCommandParameter returns the pod container command parameter by the given labelSelector.
-func findPodCommandParameter(podLister corelisters.PodLister, labelSelector labels.Selector,
-	parameter string) string {
+func findPodCommandParameter(podLister corelisters.PodLister, labelSelector labels.Selector, parameter string) (string, error) {
 	pods, err := findPods(podLister, labelSelector)
 	if err != nil {
-		klog.Errorf("Failed to find pods by label selector %q: %v", labelSelector, err)
-		return ""
+		return "", err
 	}
 
 	for _, pod := range pods {
 		for _, container := range pod.Spec.Containers {
 			if val := getParameterValue(container.Command, parameter); val != "" {
-				return val
+				return val, nil
 			}
 			if val := getParameterValue(container.Args, parameter); val != "" {
-				return val
+				return val, nil
 			}
 		}
 	}
 
-	return ""
+	return "", nil
 }
 
 // findPods returns the pods filter by the given labelSelector.
