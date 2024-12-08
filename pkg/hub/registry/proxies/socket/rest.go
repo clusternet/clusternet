@@ -71,7 +71,7 @@ func (r *REST) ConnectMethods() []string {
 
 // NewConnectOptions returns versioned resource that represents proxy parameters
 func (r *REST) NewConnectOptions() (runtime.Object, bool, string) {
-	return &proxies.Socket{}, true, ""
+	return &proxies.Socket{}, false, ""
 }
 
 // Connect returns a handler for the websocket connection
