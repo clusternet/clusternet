@@ -21,6 +21,7 @@ import (
 	"net"
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
@@ -84,6 +85,8 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 		PeerPort:           8123,
 		PeerToken:          "Cheugy",
 	}
+	// explicitly disable plugins for Clusterrnet
+	o.RecommendedOptions.Admission.DisablePlugins = []string{lifecycle.PluginName}
 	o.initFlags()
 	return o, nil
 }

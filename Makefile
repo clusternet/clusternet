@@ -16,8 +16,8 @@ CRD_OPTIONS ?= "crd:crdVersions=v1,allowDangerousTypes=true"
 
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
-BASEIMAGE ?= alpine:3.18.4
-GOVERSION ?= 1.21.3
+BASEIMAGE ?= alpine:3.21.0
+GOVERSION ?= 1.22.10
 REGISTRY ?= ghcr.io
 
 # Run tests
