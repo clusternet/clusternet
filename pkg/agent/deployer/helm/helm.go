@@ -94,11 +94,6 @@ func (deployer *Deployer) Run(workers int, ctx context.Context) {
 	klog.Info("starting helm deployer...")
 	defer klog.Info("shutting helm deployer")
 
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("helm-deployer", ctx.Done(), deployer.descSynced, deployer.hrSynced) {
-		return
-	}
-
 	go deployer.helmReleaseController.Run(workers, ctx)
 
 	<-ctx.Done()

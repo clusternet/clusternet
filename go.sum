@@ -97,8 +97,8 @@ github.com/distribution/distribution/v3 v3.0.0-20221208165359-362910506bc2 h1:aB
 github.com/distribution/distribution/v3 v3.0.0-20221208165359-362910506bc2/go.mod h1:WHNsWjnIn2V1LYOrME7e8KxSeKunYHsxEm4am0BUtcI=
 github.com/distribution/reference v0.5.0 h1:/FUIFXtfc/x2gpa5/VGfiGLuOIdYa1t65IKK2OFGvA0=
 github.com/distribution/reference v0.5.0/go.mod h1:BbU0aIcezP1/5jX/8MP0YiH4SdvB5Y4f/wlDRiLyi3E=
-github.com/dixudx/yacht v0.8.0 h1:fRSsNXJwhXpqTkpPhQ0SFfbL5gxoz9GyaSMVz8DVZc4=
-github.com/dixudx/yacht v0.8.0/go.mod h1:f8rvpzmgRBhzAC+M9Cp6fOiQgBSSTTcD/VRLU4PMubs=
+github.com/dixudx/yacht v0.10.1 h1:wzsng7OFiXknBOwv4ZbXz0oFNkMbFtpXW+bfH90z4XA=
+github.com/dixudx/yacht v0.10.1/go.mod h1:SE4OQ0tsHecXOkODmtf+WU3xpCWRrRbVFXvs0bzni9c=
 github.com/docker/cli v25.0.1+incompatible h1:mFpqnrS6Hsm3v1k7Wa/BO23oz0k121MTbTO1lpcGSkU=
 github.com/docker/cli v25.0.1+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
 github.com/docker/distribution v2.8.3+incompatible h1:AtKxIZ36LoNK51+Z6RpzLpddBirtxJnzDrHLEKxTAYk=

@@ -4,7 +4,7 @@ go 1.22.0
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
-	github.com/dixudx/yacht v0.8.0
+	github.com/dixudx/yacht v0.10.1
 	github.com/emicklei/go-restful/v3 v3.11.0
 	github.com/evanphx/json-patch v5.7.0+incompatible
 	github.com/google/go-cmp v0.6.0
