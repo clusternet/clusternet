@@ -115,11 +115,6 @@ func (deployer *Deployer) Run(workers int, ctx context.Context) {
 	klog.Info("starting generic deployer...")
 	defer klog.Info("shutting generic deployer")
 
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("generic-deployer", ctx.Done(), deployer.descSynced) {
-		return
-	}
-
 	go deployer.descController.Run(workers, ctx)
 
 	<-ctx.Done()
@@ -208,9 +203,10 @@ func (deployer *Deployer) handleResource(resAttrs *resourcecontroller.ResourceAt
 	if resAttrs.ObjectAction != resourcecontroller.ObjectDelete {
 		err = deployer.SyncDescriptionStatus(deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
 		if err != nil {
-			klog.Errorf("Failed Sync Description Status. %v", err)
+			klog.Errorf("failed to sync Description %s status with error: %v", klog.KObj(desc).String(), err)
 			return err
 		}
+		klog.V(5).Infof("successfully update Description %s manifestStatus", klog.KObj(desc).String())
 	}
 
 	if resAttrs.ObjectAction != resourcecontroller.ObjectUpdateStatus {
@@ -313,7 +309,6 @@ func (deployer *Deployer) SyncDescriptionStatus(
 	var err error
 	if !reflect.DeepEqual(desc.Status.ManifestStatuses, descStatus.ManifestStatuses) {
 		err = utils.UpdateDescriptionStatus(context.TODO(), desc, descStatus, deployer.clusternetClient, false)
-		klog.V(5).Infof("SyncDescriptionStatus Descriptions manifestStatus has changed, UpdateStatus. err: %s", err)
 	}
 
 	return err

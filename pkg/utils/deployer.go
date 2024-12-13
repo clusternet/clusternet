@@ -462,7 +462,7 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 		statusPhase = appsapi.DescriptionPhaseSuccess
 		reason = ""
 
-		msg := fmt.Sprintf("Description %s is deployed successfully", klog.KObj(desc))
+		msg := fmt.Sprintf("successfully deployed Description %s", klog.KObj(desc).String())
 		klog.V(5).Info(msg)
 		recorder.Event(desc, corev1.EventTypeNormal, "SuccessfullyDeployed", msg)
 	}
