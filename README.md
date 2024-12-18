@@ -95,6 +95,12 @@ Explore the architecture of Clusternet on [clusternet.io](https://clusternet.io/
 
 ## To start using Clusternet
 
+|                    | Kubernetes >=v1.30 | >=v1.28,<v1.30 | <v1.28 |
+| ------------------ | ------------------ | -------------- | ------ |
+| Clusternet v0.18.x | ✅                 | ❌             | ❌     |
+| v0.17.x            | ✅                 | ✅             | ❌     |
+| v0.16.x            | ✅                 | ✅             | ✅     |
+
 See our documentation on [clusternet.io](https://clusternet.io/docs/).
 
 The [quick start tutorial](https://clusternet.io/docs/quick-start/) will walk you through setting up Clusternet locally
