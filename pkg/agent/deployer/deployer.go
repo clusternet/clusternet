@@ -116,6 +116,7 @@ func (d *Deployer) Run(
 	// add informers for HelmReleases and Descriptions
 	clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
 	clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
+	clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
 	clusternetInformerFactory.Start(ctx.Done())
 
 	appDeployerConfig, err := utils.GenerateKubeConfigFromToken(
