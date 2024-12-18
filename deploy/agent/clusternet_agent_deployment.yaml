@@ -51,7 +51,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-agent
-          image: ghcr.io/clusternet/clusternet-agent:v0.17.0
+          image: ghcr.io/clusternet/clusternet-agent:v0.17.3
           imagePullPolicy: IfNotPresent
           env:
             - name: PARENT_URL
