@@ -155,7 +155,7 @@ jobs:
         run: make test
       - name: Upload coverage to Codecov
         if: matrix.go-version == '1.21.x' && github.repository_owner == 'clusternet'
-        uses: codecov/codecov-action@v5.0.7
+        uses: codecov/codecov-action@v5.1.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required
           files: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/coverage.out
