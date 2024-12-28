@@ -56,7 +56,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-controller-manager
-          image: ghcr.io/clusternet/clusternet-controller-manager:v0.17.0
+          image: ghcr.io/clusternet/clusternet-controller-manager:v0.18.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
