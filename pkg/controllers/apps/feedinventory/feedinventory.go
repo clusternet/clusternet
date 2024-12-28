@@ -240,7 +240,7 @@ func (c *Controller) updateManifest(old, cur interface{}) {
 func (c *Controller) deleteFeedInventory(obj interface{}) {
 	finv := obj.(*appsapi.FeedInventory)
 	klog.V(4).Infof("[FeedInventory] deleting FeedInventory %q", klog.KObj(finv))
-	c.workqueue.Add(klog.KObj(finv))
+	c.workqueue.Add(klog.KObj(finv).String())
 }
 
 // runWorker is a long-running function that will continually call the
