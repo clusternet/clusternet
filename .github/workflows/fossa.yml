@@ -16,6 +16,6 @@ jobs:
         id: branch-name
         uses: tj-actions/branch-names@v8
       - name: Scanning with FOSSA
-        uses: fossas/fossa-action@v1.4.0
+        uses: fossas/fossa-action@v1.5.0
         with:
           api-key: fdfd71b81adba3b3dcc0553694e3c75c
