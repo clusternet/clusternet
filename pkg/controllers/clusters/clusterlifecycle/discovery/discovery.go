@@ -148,7 +148,6 @@ func (c *Controller) Run(ctx context.Context) {
 			// un-register in-deleting clusters
 			if _, isDeleting := clusterIsDeleting(old); isDeleting {
 				// TODO
-				//go func() {}()
 				return false, nil
 			}
 
@@ -242,7 +241,7 @@ func createClusterResourceSet(ctx context.Context, namespace, capiVersion string
 			"kind": "ClusterResourceSet",
 			"metadata": map[string]interface{}{
 				"name": clusternetClusterAPI,
-				//"namespace":  clusterAPIClusternetNamespace,
+				// "namespace":  clusterAPIClusternetNamespace,
 				"labels": map[string]interface{}{
 					known.ObjectCreatedByLabel: known.ClusternetCtrlMgrName,
 				},

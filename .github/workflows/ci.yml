@@ -16,7 +16,7 @@ jobs:
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:
-        go-version: [ 1.21.x, 1.22.x ]
+        go-version: [ 1.23.x, 1.24.x ]
         os: [ ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
@@ -62,7 +62,7 @@ jobs:
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:
-        go-version: [ 1.21.x, 1.22.x ]
+        go-version: [ 1.23.x, 1.24.x ]
         os: [ ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
@@ -115,7 +115,7 @@ jobs:
       ## this will contain a matrix of all of the combinations
       ## we wish to test again:
       matrix:
-        go-version: [ 1.21.x, 1.22.x ]
+        go-version: [ 1.23.x, 1.24.x ]
         os: [ ubuntu-latest ]
     runs-on: ${{ matrix.os }}
     steps:
@@ -154,7 +154,7 @@ jobs:
       - name: Run tests
         run: make test
       - name: Upload coverage to Codecov
-        if: matrix.go-version == '1.21.x' && github.repository_owner == 'clusternet'
+        if: matrix.go-version == '1.23.x' && github.repository_owner == 'clusternet'
         uses: codecov/codecov-action@v5.4.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required

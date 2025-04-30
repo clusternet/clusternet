@@ -324,9 +324,9 @@ func (c *Controller) discoverClusterCIDR() (string, error) {
 }
 
 // get node capacity and allocatable resource
-func getNodeResource(nodes []*corev1.Node) (Capacity, Allocatable corev1.ResourceList) {
+func getNodeResource(nodes []*corev1.Node) (capacity, allocatable corev1.ResourceList) {
 	var capacityCpu, capacityMem, capacityGpu, allocatableCpu, allocatableMem, allocatableGpu resource.Quantity
-	Capacity, Allocatable = make(map[corev1.ResourceName]resource.Quantity), make(map[corev1.ResourceName]resource.Quantity)
+	capacity, allocatable = make(map[corev1.ResourceName]resource.Quantity), make(map[corev1.ResourceName]resource.Quantity)
 
 	for _, node := range nodes {
 		capacityCpu.Add(*node.Status.Capacity.Cpu())
@@ -339,13 +339,13 @@ func getNodeResource(nodes []*corev1.Node) (Capacity, Allocatable corev1.Resourc
 		}
 	}
 
-	Capacity[corev1.ResourceCPU] = capacityCpu
-	Capacity[corev1.ResourceMemory] = capacityMem
-	Allocatable[corev1.ResourceCPU] = allocatableCpu
-	Allocatable[corev1.ResourceMemory] = allocatableMem
+	capacity[corev1.ResourceCPU] = capacityCpu
+	capacity[corev1.ResourceMemory] = capacityMem
+	allocatable[corev1.ResourceCPU] = allocatableCpu
+	allocatable[corev1.ResourceMemory] = allocatableMem
 	if !capacityGpu.IsZero() {
-		Capacity[corev1.ResourceName(known.NVIDIAGPUResourceName)] = capacityGpu
-		Allocatable[corev1.ResourceName(known.NVIDIAGPUResourceName)] = allocatableGpu
+		capacity[corev1.ResourceName(known.NVIDIAGPUResourceName)] = capacityGpu
+		allocatable[corev1.ResourceName(known.NVIDIAGPUResourceName)] = allocatableGpu
 	}
 
 	return

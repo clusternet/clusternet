@@ -768,7 +768,7 @@ func (deployer *Deployer) populateDescriptions(base *appsapi.Base) error {
 				msg := fmt.Sprintf("HelmChart %s is in verifying", klog.KObj(chart))
 				klog.Warning(msg)
 				deployer.recorder.Event(base, corev1.EventTypeWarning, "VerifyingHelmChart", msg)
-				return fmt.Errorf(msg)
+				return errors.New(msg)
 			}
 			if chart.Status.Phase == appsapi.HelmChartNotFound {
 				deployer.recorder.Event(base, corev1.EventTypeWarning, "HelmChartNotFound",

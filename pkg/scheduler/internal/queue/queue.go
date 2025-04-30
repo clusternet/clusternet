@@ -23,6 +23,7 @@ limitations under the License.
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -181,7 +182,7 @@ func (p *PriorityQueue) Pop() (*framework.SubscriptionInfo, error) {
 		// When Close() is called, the p.closed is set and the condition is broadcast,
 		// which causes this loop to continue and return from the Pop().
 		if p.closed {
-			return nil, fmt.Errorf(queueClosed)
+			return nil, errors.New(queueClosed)
 		}
 		p.cond.Wait()
 	}
@@ -336,7 +337,7 @@ func (p *PriorityQueue) getBackoffTime(subInfo *framework.SubscriptionInfo) time
 func (p *PriorityQueue) calculateBackoffDuration(subInfo *framework.SubscriptionInfo) time.Duration {
 	duration := p.initialBackoffDuration
 	for i := 1; i < subInfo.Attempts; i++ {
-		duration = duration * 2
+		duration *= 2
 		if duration > p.maxBackoffDuration {
 			return p.maxBackoffDuration
 		}

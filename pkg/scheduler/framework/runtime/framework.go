@@ -614,9 +614,9 @@ func (f *frameworkImpl) runScorePlugin(ctx context.Context, pl framework.ScorePl
 	return s, status
 }
 
-func (f *frameworkImpl) runScoreExtension(ctx context.Context, pl framework.ScorePlugin, state *framework.CycleState, sub *appsapi.Subscription, ClusterScoreList framework.ClusterScoreList) *framework.Status {
+func (f *frameworkImpl) runScoreExtension(ctx context.Context, pl framework.ScorePlugin, state *framework.CycleState, sub *appsapi.Subscription, clusterScoreList framework.ClusterScoreList) *framework.Status {
 	startTime := time.Now()
-	status := pl.ScoreExtensions().NormalizeScore(ctx, state, sub, ClusterScoreList)
+	status := pl.ScoreExtensions().NormalizeScore(ctx, state, sub, clusterScoreList)
 	f.metricsRecorder.observePluginDurationAsync(scoreExtensionNormalize, pl.Name(), status, metrics.SinceInSeconds(startTime))
 	return status
 }

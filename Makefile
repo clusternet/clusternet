@@ -17,7 +17,7 @@ CRD_OPTIONS ?= "crd:crdVersions=v1,allowDangerousTypes=true"
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
 BASEIMAGE ?= alpine:3.21.0
-GOVERSION ?= 1.22.10
+GOVERSION ?= 1.23.8
 REGISTRY ?= ghcr.io
 
 # Run tests
@@ -46,7 +46,7 @@ fmt:
 .PHONY: lint
 lint: golangci-lint
 	@$(GOLANG_LINT) --version
-	@$(GOLANG_LINT) run
+	@$(GOLANG_LINT) run -v --timeout=5m
 
 # Run mod tidy against code
 .PHONY: tidy
@@ -117,7 +117,7 @@ ifeq (, $(shell which golangci-lint))
 	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
 	cd $$GOLANG_LINT_TMP_DIR ;\
 	go mod init tmp ;\
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.2 ;\
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint

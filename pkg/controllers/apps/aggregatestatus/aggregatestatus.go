@@ -208,7 +208,7 @@ func (c *Controller) updateSubscriptionStatus(subCopy *appsapi.Subscription) err
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		_, err := c.clusternetClient.AppsV1alpha1().Subscriptions(subCopy.Namespace).UpdateStatus(context.TODO(), subCopy, metav1.UpdateOptions{})
 		if err == nil {
-			//TODO
+			// TODO
 			return nil
 		}
 

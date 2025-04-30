@@ -37,11 +37,15 @@ func DynamicDivideReplicas(sub *appsapi.Subscription, deviations []appsapi.FeedO
 			switch strategy {
 			case appsapi.SpreadDividingStrategy:
 				r = spreadScaleUp(&deviations[i], availableReplicas)
+			default:
+				// TODO
 			}
 		case d != nil && *d < 0:
 			switch strategy {
 			case appsapi.SpreadDividingStrategy:
 				r = spreadScaleDown(sub, deviations[i])
+			default:
+				// TODO
 			}
 		}
 		if err != nil {

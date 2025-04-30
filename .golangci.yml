@@ -41,9 +41,17 @@ linters-settings:
     section-separators:
       - newLine
   gocritic:
+    # Disable all checks.
+    # Default: false
+    disable-all: false
+    disabled-checks:
+      - ifElseChain
     enabled-checks:
+      - badLock
       - equalFold
       - boolExprSimplify
+      - importShadow
+      - regexpSimplify
   staticcheck:
     checks: [
       "all",
@@ -56,9 +64,18 @@ linters-settings:
       "ST1019",  # Importing the same package multiple times.
     ]
   govet:
-    # Report about shadowed variables.
-    # Default: false
-    check-shadowing: true
+    # Enable analyzers by name.
+    # (In addition to default:
+    #   appends, asmdecl, assign, atomic, bools, buildtag, cgocall, composites, copylocks, defers, directive, errorsas,
+    #   framepointer, httpresponse, ifaceassert, loopclosure, lostcancel, nilfunc, printf, shift, sigchanyzer, slog,
+    #   stdmethods, stringintconv, structtag, testinggoroutine, tests, timeformat, unmarshal, unreachable, unsafeptr,
+    #   unusedresult
+    # ).
+    # Run `GL_DEBUG=govet golangci-lint run --enable=govet` to see default, all available analyzers, and enabled analyzers.
+    # Default: []
+    enable:
+        # Check for possible unintended shadowing of variables.
+        - shadow
     # Settings per analyzer.
     settings:
       # Analyzer name, run `go tool vet help` to see all analyzers.

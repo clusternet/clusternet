@@ -52,7 +52,7 @@ func init() {
 type ServiceExportController struct {
 	yachtController *yacht.Controller
 
-	//local msc client
+	// local msc client
 	mcsClientset       *mcsclientset.Clientset
 	parentk8sClient    kubernetes.Interface
 	mcsInformerFactory mcsInformers.SharedInformerFactory
