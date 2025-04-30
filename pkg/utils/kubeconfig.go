@@ -79,7 +79,7 @@ func CreateKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcm
 
 // CreateKubeConfigForSocketProxyWithToken creates a KubeConfig object with access to the API server with a token
 func CreateKubeConfigForSocketProxyWithToken(secretLister corev1lister.SecretLister,
-	systemNamespace, serverURL, token string, AnonymousAuthSupported bool) (*clientcmdapi.Config, error) {
+	systemNamespace, serverURL, token string, anonymousAuthSupported bool) (*clientcmdapi.Config, error) {
 	authInfo := &clientcmdapi.AuthInfo{
 		Impersonate: "clusternet",
 		ImpersonateUserExtra: map[string][]string{
@@ -89,7 +89,7 @@ func CreateKubeConfigForSocketProxyWithToken(secretLister corev1lister.SecretLis
 		},
 	}
 
-	if AnonymousAuthSupported {
+	if anonymousAuthSupported {
 		authInfo.Username = user.Anonymous
 	} else {
 		secrets, err := secretLister.Secrets(systemNamespace).List(labels.Everything())

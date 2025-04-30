@@ -18,7 +18,6 @@ package queue
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -110,7 +109,7 @@ func TestPriorityQueue_Close(t *testing.T) {
 	q := createAndRunPriorityQueue()
 	q.Close()
 
-	closeErr := fmt.Errorf(queueClosed)
+	closeErr := errors.New(queueClosed)
 
 	_, err := q.Pop()
 	if errors.Is(err, closeErr) {

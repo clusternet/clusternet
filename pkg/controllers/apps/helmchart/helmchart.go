@@ -235,7 +235,7 @@ func (c *Controller) UpdateChartStatus(chartCopy *appsapi.HelmChart, status *app
 		chartCopy.Status = *status
 		_, err := c.clusternetClient.AppsV1alpha1().HelmCharts(chartCopy.Namespace).UpdateStatus(context.TODO(), chartCopy, metav1.UpdateOptions{})
 		if err == nil {
-			//TODO
+			// TODO
 			return nil
 		}
 

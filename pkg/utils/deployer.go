@@ -922,7 +922,7 @@ func UpdateDescriptionStatus(
 		desc.Status = *status
 		_, err = clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
 		if err == nil {
-			//TODO
+			// TODO
 			return true, nil
 		}
 

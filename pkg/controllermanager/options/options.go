@@ -51,7 +51,7 @@ type ControllerManagerOptions struct {
 	ReservedNamespace    string
 	ClusterAPIKubeconfig string
 
-	//Threadiness of controller workers, default to be 10
+	// Threadiness of controller workers, default to be 10
 	Threadiness int
 
 	// Controllers is the list of controllers to enable or disable
@@ -91,7 +91,7 @@ func NewControllerManagerOptions() (*ControllerManagerOptions, error) {
 	opts.SecureServing.ServerCert.CertDirectory = ""
 	opts.SecureServing.ServerCert.PairName = "clusternet-controller-manager"
 	opts.SecureServing.BindPort = DefaultClusternetControllerManagerPort
-	//opts.initFlags()
+	// opts.initFlags()
 	return opts, nil
 }
 

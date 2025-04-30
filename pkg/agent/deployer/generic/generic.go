@@ -151,7 +151,7 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 			return err
 		}
 
-		//add informer
+		// add informer
 		apiResource := &metav1.APIResource{
 			Group:      resource.GroupVersionKind().Group,
 			Version:    resource.GroupVersionKind().Version,
@@ -169,7 +169,7 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 			return err
 		}
 
-		//DO NOT recycle resource controller so they live forever as resource controller cache
+		// DO NOT recycle resource controller so they live forever as resource controller cache
 		if deployer.AddController(gvk, resourceController) {
 			go func() {
 				stopChan := make(chan struct{})

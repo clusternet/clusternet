@@ -174,7 +174,7 @@ func NewScheduler(schedulerOptions *options.SchedulerOptions) (*Scheduler, error
 			percentageOfClustersToTolerate = *schedulerOptions.SchedulerConfiguration.PercentageOfClustersToTolerate
 		}
 	}
-	//add default profile
+	// add default profile
 	if len(profiles) == 0 {
 		cfg := &schedulerapis.SchedulerConfiguration{}
 		schedulerapis.SetDefaultsSchedulerConfiguration(cfg)

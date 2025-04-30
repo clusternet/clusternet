@@ -103,7 +103,7 @@ func NewHub(opts *options.HubServerOptions) (*Hub, error) {
 	kubeClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-kube-client"))
 	clusternetClient := clusternet.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-client"))
 	electionClient := kubernetes.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("clusternet-hub-election-client"))
-	//deployer.broadcaster.StartStructuredLogging(5)
+	// deployer.broadcaster.StartStructuredLogging(5)
 	broadcaster := record.NewBroadcaster()
 	if kubeClient != nil {
 		klog.Infof("sending events to api server")

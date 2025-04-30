@@ -180,7 +180,7 @@ func (o *HubServerOptions) addRecommendedOptionsFlags(nfs *cliflag.NamedFlagSets
 	o.RecommendedOptions.Audit.LogOptions.AddFlags(nfs.FlagSet("audit"))
 	o.RecommendedOptions.Features.AddFlags(nfs.FlagSet("profiling"))
 	// flag "kubeconfig" has been declared in o.ControllerOptions
-	//o.RecommendedOptions.CoreAPI.AddFlags(fs) // --kubeconfig flag
+	// o.RecommendedOptions.CoreAPI.AddFlags(fs) // --kubeconfig flag
 }
 
 func (o *HubServerOptions) validateRecommendedOptions() []error {

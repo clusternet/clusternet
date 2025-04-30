@@ -54,7 +54,7 @@ func validateSchedulerProfile(path *field.Path, apiVersion string, profile *Sche
 
 func validatePluginConfig(path *field.Path, apiVersion string, profile *SchedulerProfile) []error {
 	var errs []error
-	//TODO add more plugin config validation
+	// TODO add more plugin config validation
 
 	return errs
 }

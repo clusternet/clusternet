@@ -382,7 +382,7 @@ func (crrApprover *CRRApprover) createManagedClusterIfNeeded(namespace, clusterN
 		}
 	}
 
-	//add additional labels
+	// add additional labels
 	for key, value := range clusterLabels {
 		managedCluster.Labels[key] = value
 	}
