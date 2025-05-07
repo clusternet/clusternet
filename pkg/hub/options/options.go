@@ -22,6 +22,7 @@ import (
 
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle"
+	validatingadmissionpolicy "k8s.io/apiserver/pkg/admission/plugin/policy/validating"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
@@ -86,7 +87,7 @@ func NewHubServerOptions() (*HubServerOptions, error) {
 		PeerToken:          "Cheugy",
 	}
 	// explicitly disable plugins for Clusterrnet
-	o.RecommendedOptions.Admission.DisablePlugins = []string{lifecycle.PluginName}
+	o.RecommendedOptions.Admission.DisablePlugins = []string{lifecycle.PluginName, validatingadmissionpolicy.PluginName}
 	o.initFlags()
 	return o, nil
 }
