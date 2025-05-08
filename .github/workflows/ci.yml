@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 1
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
       - name: Cache go modules and build cache
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v4
         with:
           # In order:
           # * Module download cache
@@ -80,9 +80,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Rebase code
-        run: git rebase origin/main
+        run: git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: Cache go modules and build cache
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v4
         with:
           # In order:
           # * Module download cache
@@ -133,9 +133,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Rebase code
-        run: git rebase origin/main
+        run: git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: Cache go modules and build cache
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v4
         with:
           # In order:
           # * Module download cache
@@ -155,7 +155,7 @@ jobs:
         run: make test
       - name: Upload coverage to Codecov
         if: matrix.go-version == '1.21.x' && github.repository_owner == 'clusternet'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required
           files: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/coverage.out
