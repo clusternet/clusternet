@@ -80,7 +80,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Rebase code
-        run: git rebase origin/main
+        run: git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: Cache go modules and build cache
         uses: actions/cache@v4
         with:
@@ -133,7 +133,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Rebase code
-        run: git rebase origin/main
+        run: git rebase origin/${{ github.event.pull_request.base.ref }}
       - name: Cache go modules and build cache
         uses: actions/cache@v4
         with:
