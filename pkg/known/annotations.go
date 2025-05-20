@@ -28,6 +28,24 @@ const (
 	// This is useful when you want to create a CR, but you don't want to declare a CRD in the parent kube-apiserver.
 	SkipValidatingAnnotation = "apps.clusternet.io/skip-validating"
 
-	//ObjectOwnedByDescriptionAnnotation is the name of an annotation which contains the description of the object owned by
+	// ObjectOwnedByDescriptionAnnotation is the name of an annotation which contains the description of the object owned by
 	ObjectOwnedByDescriptionAnnotation = "apps.clusternet.io/owned-by-description"
+
+	// LastAppliedConfigAnnotation is the annotation used to store the previous
+	// configuration of a resource for use in a three way diff by UpdateApplyAnnotation.
+	LastAppliedConfigAnnotation = "clusternet.io/last-applied-configuration"
+
+	// IsDefaultClusterInitAnnotation represents an annotation that marks a Base as the default cluster initialization
+	// workloads.
+	// This annotation can be set on Subscription or Base objects.
+	// This annotation will be passed down from Subscription to Base objects.
+	IsDefaultClusterInitAnnotation = "apps.clusternet.io/is-default-cluster-init"
+
+	// ClusterInitBaseAnnotation records the name of the Base to be used for initialization after joining.
+	// This annotation is set on ManagedCluster objects.
+	// It is mainly used for legacy clusters that have already joined.
+	ClusterInitBaseAnnotation = "apps.clusternet.io/cluster-init-base"
+
+	// ClusterInitSkipAnnotation indicates no initialization operations will be applied to this cluster.
+	ClusterInitSkipAnnotation = "clusters.clusternet.io/skip-cluster-init"
 )

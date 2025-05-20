@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: baz
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-app
+  namespace: baz
+  labels:
+    clusternet-app: multi-cluster-nginx
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 6
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.14.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+        - name: busybox
+          command: [ "/bin/ash", "-c", "trap : TERM INT; sleep infinity " ]
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: false
+            capabilities:
+              add: [ "NET_ADMIN", "NET_RAW" ]
+        - name: alpine
+          command: [ "sleep","infinity" ]
+          image: alpine/curl
+          imagePullPolicy: IfNotPresent

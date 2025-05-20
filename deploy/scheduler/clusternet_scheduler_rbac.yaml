@@ -9,7 +9,7 @@ rules:
     verbs: [ "get", "list", "watch" ]
   - apiGroups: [ "apps.clusternet.io" ]
     resources: [ "subscriptions/status" ]
-    verbs: [ "update" ]
+    verbs: [ "update", "patch" ]
   - apiGroups: [ "clusters.clusternet.io" ]
     resources: [ "managedclusters" ]
     verbs: [ "get", "list", "watch" ]
@@ -31,6 +31,20 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: clusternet:scheduler
+subjects:
+  - kind: ServiceAccount
+    name: clusternet-scheduler
+    namespace: clusternet-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clusternet:scheduler:predictor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clusternet:system:socketsproxy
 subjects:
   - kind: ServiceAccount
     name: clusternet-scheduler

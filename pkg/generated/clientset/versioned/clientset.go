@@ -23,7 +23,6 @@ import (
 
 	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/apps/v1alpha1"
 	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/clusters/v1beta1"
-	proxiesv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/proxies/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -33,16 +32,13 @@ type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	AppsV1alpha1() appsv1alpha1.AppsV1alpha1Interface
 	ClustersV1beta1() clustersv1beta1.ClustersV1beta1Interface
-	ProxiesV1alpha1() proxiesv1alpha1.ProxiesV1alpha1Interface
 }
 
-// Clientset contains the clients for groups. Each group has exactly one
-// version included in a Clientset.
+// Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
 	appsV1alpha1    *appsv1alpha1.AppsV1alpha1Client
 	clustersV1beta1 *clustersv1beta1.ClustersV1beta1Client
-	proxiesV1alpha1 *proxiesv1alpha1.ProxiesV1alpha1Client
 }
 
 // AppsV1alpha1 retrieves the AppsV1alpha1Client
@@ -53,11 +49,6 @@ func (c *Clientset) AppsV1alpha1() appsv1alpha1.AppsV1alpha1Interface {
 // ClustersV1beta1 retrieves the ClustersV1beta1Client
 func (c *Clientset) ClustersV1beta1() clustersv1beta1.ClustersV1beta1Interface {
 	return c.clustersV1beta1
-}
-
-// ProxiesV1alpha1 retrieves the ProxiesV1alpha1Client
-func (c *Clientset) ProxiesV1alpha1() proxiesv1alpha1.ProxiesV1alpha1Interface {
-	return c.proxiesV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -75,6 +66,10 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 // where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*Clientset, error) {
 	configShallowCopy := *c
+
+	if configShallowCopy.UserAgent == "" {
+		configShallowCopy.UserAgent = rest.DefaultKubernetesUserAgent()
+	}
 
 	// share the transport between all clients
 	httpClient, err := rest.HTTPClientFor(&configShallowCopy)
@@ -108,10 +103,6 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.proxiesV1alpha1, err = proxiesv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
-	if err != nil {
-		return nil, err
-	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -135,7 +126,6 @@ func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.appsV1alpha1 = appsv1alpha1.New(c)
 	cs.clustersV1beta1 = clustersv1beta1.New(c)
-	cs.proxiesV1alpha1 = proxiesv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

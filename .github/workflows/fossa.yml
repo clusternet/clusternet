@@ -1,0 +1,21 @@
+name: FOSSA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    if: github.repository_owner == 'clusternet'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get branch name
+        id: branch-name
+        uses: tj-actions/branch-names@v8
+      - name: Scanning with FOSSA
+        uses: fossas/fossa-action@v1.7.0
+        with:
+          api-key: fdfd71b81adba3b3dcc0553694e3c75c

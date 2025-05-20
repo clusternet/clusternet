@@ -18,7 +18,6 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +44,7 @@ type JsonPatchOption struct {
 
 func PatchManifestLabelsAndAnnotations(clusternetClient *clusternetclientset.Clientset, manifest *appsapi.Manifest,
 	labels, annotations map[string]*string) error {
-	patchData, err := getPatchDataForLabelsAndAnnotations(labels, annotations)
+	patchData, err := GetPatchDataForLabelsAndAnnotations(labels, annotations)
 	if err != nil {
 		return err
 	}
@@ -66,7 +65,7 @@ func PatchManifestLabelsAndAnnotations(clusternetClient *clusternetclientset.Cli
 
 func PatchHelmChartLabelsAndAnnotations(clusternetClient *clusternetclientset.Clientset, chart *appsapi.HelmChart,
 	labels, annotations map[string]*string) error {
-	patchData, err := getPatchDataForLabelsAndAnnotations(labels, annotations)
+	patchData, err := GetPatchDataForLabelsAndAnnotations(labels, annotations)
 	if err != nil {
 		return err
 	}
@@ -85,7 +84,7 @@ func PatchHelmChartLabelsAndAnnotations(clusternetClient *clusternetclientset.Cl
 	return err
 }
 
-func getPatchDataForLabelsAndAnnotations(labels, annotations map[string]*string) ([]byte, error) {
+func GetPatchDataForLabelsAndAnnotations(labels, annotations map[string]*string) ([]byte, error) {
 	labelOption := MetaOption{}
 	if labels != nil {
 		labelOption.MetaData.Labels = labels

@@ -118,6 +118,11 @@ type OverrideConfig struct {
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Enum=Helm;JSONPatch;MergePatch
 	Type OverrideType `json:"type"`
+
+	// OverrideChart indicates whether the override value for the HelmChart CR.
+	//
+	// +optional
+	OverrideChart bool `json:"overrideChart,omitempty"`
 }
 
 // +kubebuilder:object:root=true

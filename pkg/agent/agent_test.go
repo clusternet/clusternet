@@ -28,8 +28,6 @@ func TestGenerateClusterName(t *testing.T) {
 		clusterNamePrefix string
 		wanted            string
 	}{
-		// TODO: Add test cases.
-
 		{
 			name:              "valid cluster name",
 			clusterName:       "abc",
@@ -40,7 +38,7 @@ func TestGenerateClusterName(t *testing.T) {
 			name:              "empty cluster name",
 			clusterName:       "",
 			clusterNamePrefix: "foo",
-			wanted:            "foo-12345",
+			wanted:            "foo-12345", // this is a fake name, but it has the same length.
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -49,9 +47,10 @@ func TestGenerateClusterName(t *testing.T) {
 				if got != tt.wanted {
 					t.Errorf("generateClusterName() = %v, want %v", got, tt.wanted)
 				}
-			}
-			if len(got) != len(tt.wanted) && strings.HasPrefix(got, tt.clusterNamePrefix) {
-				t.Errorf("wrong generate name")
+			} else {
+				if len(got) != len(tt.wanted) || !strings.HasPrefix(got, tt.clusterNamePrefix+"-") {
+					t.Errorf("wrong generate name")
+				}
 			}
 		})
 	}

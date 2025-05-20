@@ -27,7 +27,9 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.1.0
-	// Setting on hub and agent side.
+	// Setting on clusternet-hub and clusternet-agent side.
+	// Also works on clusternet-controller-manager side to indicate whether to add rule "sockets/proxy" to
+	// every dedicated ClusterRole object for child clusters.
 	SocketConnection featuregate.Feature = "SocketConnection"
 
 	// AppPusher allows deploying applications directly from parent cluster.
@@ -37,29 +39,31 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.2.0
-	// Setting on agent side.
+	// Setting on clusternet-agent side.
 	AppPusher featuregate.Feature = "AppPusher"
 
-	// Deployer indicates whether clusternet-hub works for application managements.
+	// Deployer indicates whether clusternet-controller-manager works for application managements.
 	// The scheduling parts are handled by clusternet-scheduler.
 	//
 	// owner: @dixudx
 	// alpha: v0.2.0
-	// Setting on hub side.
+	// Setting on clusternet-controller-manager side since v0.15.0.
+	// (Setting on clusternet-hub side prior to v0.15.0.)
 	Deployer featuregate.Feature = "Deployer"
 
 	// ShadowAPI provides an apiserver to shadow all the Kubernetes objects, including CRDs.
 	//
 	// owner: @dixudx
 	// alpha: v0.3.0
-	// Setting on hub side.
+	// Setting on clusternet-hub side.
 	ShadowAPI featuregate.Feature = "ShadowAPI"
 
 	// FeedInUseProtection postpones deletion of an object that is being referred as a feed in Subscriptions.
 	//
 	// owner: @dixudx
 	// alpha: v0.4.0
-	// Setting on hub side.
+	// Setting on clusternet-controller-manager side since v0.15.0.
+	// (Setting on clusternet-hub side prior to v0.15.0.)
 	FeedInUseProtection featuregate.Feature = "FeedInUseProtection"
 
 	// Recovery ensures the resources deployed by Clusternet exist persistently in a child cluster.
@@ -68,7 +72,7 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.8.0
-	// Setting on agent side.
+	// Setting on clusternet-agent side.
 	Recovery featuregate.Feature = "Recovery"
 
 	// FeedInventory runs default in-tree registry to parse the schema of a resource, such as Deployment,
@@ -77,16 +81,54 @@ const (
 	//
 	// owner: @dixudx
 	// alpha: v0.9.0
-	// Setting on hub side.
+	// Setting on clusternet-controller-manager side since v0.15.0.
+	// (Setting on clusternet-hub side prior to v0.15.0.)
 	FeedInventory featuregate.Feature = "FeedInventory"
 
 	// Predictor will predictor child cluster resource before scheduling.
-	// This feature gate need a running predictor , build-in agent or external predictor
+	// This feature gate needs a running predictor, either build-in or external.
 	//
 	// owner: @yinsenyan
 	// alpha: v0.10.0
-	// Setting on agent side
+	// Setting on clusternet-agent side
 	Predictor featuregate.Feature = "Predictor"
+
+	// MultiClusterService indicates whether we allow service export and service import related controllers
+	// to run. In some cases like integrating with submariner, this feature should be disabled.
+	//
+	// owner: @lmxia
+	// alpha: v0.15.0
+	// Setting on clusternet-controller-manager and clusternet-agent side.
+	MultiClusterService featuregate.Feature = "MultiClusterService"
+
+	// FailOver will migrate workloads from not-ready clusters to healthy spare clusters.
+	//
+	// owner: @dixudx
+	// alpha: v0.16.0
+	// Setting on clusternet-scheduler side.
+	FailOver featuregate.Feature = "FailOver"
+
+	// FeasibleClustersToleration indicates whether to tolerate failures on feasible clusters for dynamic scheduling
+	// with predictors.
+	// This helps improve scheduler's performance on dynamic scheduling with predictors.
+	//
+	// owner: @dixudx
+	// alpha: v0.16.0
+	// Setting on clusternet-scheduler side.
+	FeasibleClustersToleration featuregate.Feature = "FeasibleClustersToleration"
+
+	// ClusterInit initializes the cluster after joining.
+	// All the initializing jobs can be defined by a default Subscription/Base with annotation
+	// "apps.clusternet.io/is-default-cluster-init=true".
+	// When a new ManagedCluster joins, a taint "clusters.clusternet.io/initialization:NoSchedule" is added automatically.
+	// And this taint will be removed after a successful initialization.
+	// For legacy clusters that have already joined, annotation "apps.clusternet.io/cluster-init-base" can also
+	// be used to specify a desired Base name.
+	//
+	// owner: @dixudx
+	// alpha: v0.17.0
+	// Setting on clusternet-controller-manager side.
+	ClusterInit featuregate.Feature = "ClusterInit"
 )
 
 func init() {
@@ -97,12 +139,16 @@ func init() {
 // To add a new feature, define a key for it above and add it here. The features will be
 // available throughout Clusternet binaries.
 var defaultClusternetFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	SocketConnection:    {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	AppPusher:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	Deployer:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	ShadowAPI:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	FeedInUseProtection: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	Recovery:            {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	FeedInventory:       {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
-	Predictor:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	SocketConnection:           {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	AppPusher:                  {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Deployer:                   {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	ShadowAPI:                  {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FeedInUseProtection:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Recovery:                   {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FeedInventory:              {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	Predictor:                  {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	MultiClusterService:        {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FailOver:                   {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	FeasibleClustersToleration: {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
+	ClusterInit:                {Default: false, PreRelease: featuregate.Alpha, LockToDefault: false},
 }

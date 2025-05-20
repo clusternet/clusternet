@@ -56,9 +56,9 @@ func NewInTreeRegistry() Registry {
 		{Group: "extensions", Version: "v1beta1", Kind: replicasetPlugin.Kind()}: replicasetPlugin,
 
 		// StatefulSet
-		{Group: "apps", Version: "v1", Kind: deployPlugin.Kind()}:            statefulSetPlugin,
-		{Group: "apps", Version: "v1beta1", Kind: deployPlugin.Kind()}:       statefulSetPlugin,
-		{Group: "apps", Version: "v1beta2", Kind: deployPlugin.Kind()}:       statefulSetPlugin,
-		{Group: "extensions", Version: "v1beta1", Kind: deployPlugin.Kind()}: statefulSetPlugin,
+		{Group: "apps", Version: "v1", Kind: statefulSetPlugin.Kind()}:            statefulSetPlugin,
+		{Group: "apps", Version: "v1beta1", Kind: statefulSetPlugin.Kind()}:       statefulSetPlugin,
+		{Group: "apps", Version: "v1beta2", Kind: statefulSetPlugin.Kind()}:       statefulSetPlugin,
+		{Group: "extensions", Version: "v1beta1", Kind: statefulSetPlugin.Kind()}: statefulSetPlugin,
 	}
 }

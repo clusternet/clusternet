@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-CRD_OPTIONS ?= "crd:crdVersions=v1"
+CRD_OPTIONS ?= "crd:crdVersions=v1,allowDangerousTypes=true"
 
 # Constants used throughout.
 .EXPORT_ALL_VARIABLES:
-BASEIMAGE ?= alpine:3.13.5
-GOVERSION ?= 1.17.6
+BASEIMAGE ?= alpine:3.21.0
+GOVERSION ?= 1.23.8
 REGISTRY ?= ghcr.io
 
 # Run tests
 .PHONY: test
-test: generated vet
+test: generated
 	go test -race -coverprofile coverage.out -covermode=atomic ./...
 
 # Generate CRDs
@@ -40,31 +40,13 @@ verify:
 # Run go fmt against code
 .PHONY: fmt
 fmt:
-	@find . -type f -name '*.go'| grep -v "/vendor/" | xargs gofmt -w -s
-
-# Run go vet against code
-.PHONY: vet
-vet:
-	go vet ./...
+	@find . -type f -name '*.go'| grep -v "/vendor/" | grep -v "/pkg/generated/" | xargs gofmt -w -s
 
 # Run golang lint against code
 .PHONY: lint
 lint: golangci-lint
-	@$(GOLANG_LINT) run \
-      --timeout 30m \
-      --disable-all \
-      -E deadcode \
-      -E unused \
-      -E varcheck \
-      -E ineffassign \
-      -E goimports \
-      -E gofmt \
-      -E misspell \
-      -E unparam \
-      -E unconvert \
-      -E govet \
-      -E errcheck \
-      -E structcheck
+	@$(GOLANG_LINT) --version
+	@$(GOLANG_LINT) run -v --timeout=5m
 
 # Run mod tidy against code
 .PHONY: tidy
@@ -80,21 +62,33 @@ generated: controller-gen
 	@make crds
 	@./hack/update-codegen.sh
 
-# Build Binary
+# Build Binaries
+#
+# use WHAT to specify desired targets
+# use PLATFORMS to specify desired platforms
 # Example:
-#   make clusternet-agent clusternet-hub
-EXCLUDE_TARGET=BUILD OWNERS
-CMD_TARGET = $(filter-out %$(EXCLUDE_TARGET),$(notdir $(abspath $(wildcard cmd/*/))))
-.PHONY: $(CMD_TARGET)
-$(CMD_TARGET): generated
-	@hack/make-rules/build.sh $@
+#   make binaries
+#   WHAT=clusternet-agent make binaries
+#   WHAT=clusternet-hub,clusternet-agent PLATFORMS=linux/amd64,linux/arm64 make binaries
+#   WHAT=clusternet-hub,clusternet-agent,clusternet-scheduler PLATFORMS=linux/amd64,linux/arm64 make binaries
+#   PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm make binaries
+.PHONY: binaries
+binaries:
+	@hack/make-rules/build.sh
 
 # Build Images
+#
+# use WHAT to specify desired targets
+# use PLATFORMS to specify desired platforms
 # Example:
 #   make images
+#   WHAT=clusternet-agent make images
+#   WHAT=clusternet-hub,clusternet-agent PLATFORMS=linux/amd64,linux/arm64 make images
+#   WHAT=clusternet-hub,clusternet-agent,clusternet-scheduler PLATFORMS=linux/amd64,linux/arm64 make images
+#   PLATFORMS=linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm make images
 .PHONY: images
 images:
-	hack/make-rules/images.sh
+	@hack/make-rules/images.sh
 
 # find or download controller-gen
 # download controller-gen if necessary
@@ -105,7 +99,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(shell go env GOPATH)/bin/controller-gen
@@ -123,7 +117,7 @@ ifeq (, $(shell which golangci-lint))
 	GOLANG_LINT_TMP_DIR=$$(mktemp -d) ;\
 	cd $$GOLANG_LINT_TMP_DIR ;\
 	go mod init tmp ;\
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.44.2 ;\
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 ;\
 	rm -rf $$GOLANG_LINT_TMP_DIR ;\
 	}
 GOLANG_LINT=$(shell go env GOPATH)/bin/golangci-lint

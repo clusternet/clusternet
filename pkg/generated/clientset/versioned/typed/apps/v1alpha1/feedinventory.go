@@ -19,9 +19,12 @@ package v1alpha1
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 	"time"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	scheme "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -45,6 +48,7 @@ type FeedInventoryInterface interface {
 	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.FeedInventoryList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.FeedInventory, err error)
+	Apply(ctx context.Context, feedInventory *appsv1alpha1.FeedInventoryApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.FeedInventory, err error)
 	FeedInventoryExpansion
 }
 
@@ -170,6 +174,32 @@ func (c *feedInventories) Patch(ctx context.Context, name string, pt types.Patch
 		Name(name).
 		SubResource(subresources...).
 		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(data).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied feedInventory.
+func (c *feedInventories) Apply(ctx context.Context, feedInventory *appsv1alpha1.FeedInventoryApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.FeedInventory, err error) {
+	if feedInventory == nil {
+		return nil, fmt.Errorf("feedInventory provided to Apply must not be nil")
+	}
+	patchOpts := opts.ToPatchOptions()
+	data, err := json.Marshal(feedInventory)
+	if err != nil {
+		return nil, err
+	}
+	name := feedInventory.Name
+	if name == nil {
+		return nil, fmt.Errorf("feedInventory.Name must be provided to Apply")
+	}
+	result = &v1alpha1.FeedInventory{}
+	err = c.client.Patch(types.ApplyPatchType).
+		Namespace(c.ns).
+		Resource("feedinventories").
+		Name(*name).
+		VersionedParams(&patchOpts, scheme.ParameterCodec).
 		Body(data).
 		Do(ctx).
 		Into(result)

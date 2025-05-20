@@ -132,6 +132,15 @@ func newDeploymentFeed(name string) appsapi.Feed {
 	}
 }
 
+func newServiceFeed(name string) appsapi.Feed {
+	return appsapi.Feed{
+		Kind:       "Service",
+		APIVersion: "v1",
+		Namespace:  "default",
+		Name:       name,
+	}
+}
+
 func TestDivideReplicas(t *testing.T) {
 	desiredReplicas := int32(12)
 	type args struct {
@@ -154,7 +163,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -191,7 +200,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -236,7 +245,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -281,7 +290,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -334,7 +343,7 @@ func TestDivideReplicas(t *testing.T) {
 				sub: &appsapi.Subscription{
 					Spec: appsapi.SubscriptionSpec{
 						SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
-						DividingScheduling: &appsapi.DividingSchedulingStrategy{Type: appsapi.StaticReplicaDividingType},
+						DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
 						Subscribers: []appsapi.Subscriber{
 							{
 								ClusterAffinity: &metav1.LabelSelector{
@@ -398,7 +407,7 @@ func TestDivideReplicas(t *testing.T) {
 			clusterInformer := clusternetInformerFactory.Clusters().V1beta1().ManagedClusters()
 
 			fwk, _ := runtime.NewFramework(nil, nil, runtime.WithCache(schedulercache.New(clusterInformer.Lister())))
-			assigner, err := New(nil, fwk)
+			assigner, err := NewStaticAssigner(nil, fwk)
 			if err != nil {
 				t.Fatalf("Creating plugin error: %v", err)
 			}
@@ -408,12 +417,64 @@ func TestDivideReplicas(t *testing.T) {
 				t.Fatalf("Assign() error = %v, wantErr %v", fmt.Errorf("failed to wait for cache sync"), tt.wantErr)
 			}
 
-			result, status := assigner.(framework.AssignPlugin).Assign(ctx, tt.args.sub, tt.args.finv, *tt.args.selected)
+			result, status := assigner.(framework.AssignPlugin).Assign(ctx, nil, tt.args.sub, tt.args.finv, *tt.args.selected)
 			if (status != nil) != tt.wantErr {
 				t.Errorf("Assign() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !reflect.DeepEqual(result.Replicas, tt.wantReplicas) {
 				t.Errorf("Assign() gotResponse = %v, want %v", result.Replicas, tt.wantReplicas)
+			}
+		})
+	}
+}
+
+func TestDynamicDivideReplicas(t *testing.T) {
+	tests := []struct {
+		name                 string
+		desiredReplicas      int32
+		maxAvailableReplicas []int32
+		want                 []int32
+	}{
+		{
+			desiredReplicas:      6,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{1, 2, 3},
+		},
+		{
+			desiredReplicas:      2,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{0, 1, 1},
+		},
+		{
+			desiredReplicas:      3,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{1, 1, 1},
+		},
+		{
+			desiredReplicas:      3,
+			maxAvailableReplicas: []int32{0, 0, 0},
+			want:                 []int32{0, 0, 0},
+		},
+		{
+			desiredReplicas:      6,
+			maxAvailableReplicas: []int32{1, 2, 2},
+			want:                 []int32{1, 2, 2},
+		},
+		{
+			desiredReplicas:      -6,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{-1, -2, -3},
+		},
+		{
+			desiredReplicas:      -2,
+			maxAvailableReplicas: []int32{3, 6, 9},
+			want:                 []int32{0, -1, -1},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dynamicDivideReplicas(tt.desiredReplicas, tt.maxAvailableReplicas); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("dynamicDivideReplicas() = %v, want %v", got, tt.want)
 			}
 		})
 	}

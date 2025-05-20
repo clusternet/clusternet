@@ -17,31 +17,20 @@ limitations under the License.
 package main
 
 import (
-	goflag "flag"
-	"fmt"
 	"math/rand"
 	"os"
 	"time"
 
-	"github.com/spf13/pflag"
-	"k8s.io/klog/v2"
+	"k8s.io/component-base/cli"
+	_ "k8s.io/component-base/logs/json/register" // for JSON log format registration
 
 	"github.com/clusternet/clusternet/cmd/clusternet-scheduler/app"
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
 func main() {
-	klog.InitFlags(nil)
-	defer klog.Flush()
 	rand.Seed(time.Now().UTC().UnixNano())
-
-	ctx := utils.GracefulStopWithContext()
-	command := app.NewSchedulerCommand(ctx)
-	pflag.CommandLine.SetNormalizeFunc(utils.WordSepNormalizeFunc)
-	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-
-	if err := command.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
+	command := app.NewSchedulerCommand(utils.GracefulStopWithContext())
+	code := cli.Run(command)
+	os.Exit(code)
 }

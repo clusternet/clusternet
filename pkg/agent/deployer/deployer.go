@@ -56,19 +56,29 @@ type Deployer struct {
 	// systemNamespace specifies the default namespace to look up credentials
 	// default to be "clusternet-system"
 	systemNamespace string
+
+	saTokenAutoGen bool
 }
 
-func NewDeployer(syncMode, childAPIServerURL, systemNamespace string) *Deployer {
+func NewDeployer(syncMode, childAPIServerURL, systemNamespace string, saTokenAutoGen bool) *Deployer {
 	return &Deployer{
 		syncMode:          clusterapi.ClusterSyncMode(syncMode),
 		appPusherEnabled:  utilfeature.DefaultFeatureGate.Enabled(features.AppPusher),
 		childAPIServerURL: childAPIServerURL,
 		systemNamespace:   systemNamespace,
+		saTokenAutoGen:    saTokenAutoGen,
 	}
 }
 
-func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Config, childKubeClientSet kubernetes.Interface,
-	dedicatedNamespace *string, clusterID *types.UID, workers int) error {
+func (d *Deployer) Run(
+	ctx context.Context,
+	parentDedicatedKubeConfig *rest.Config,
+	childKubeClientSet kubernetes.Interface,
+	dedicatedNamespace *string,
+	clusterID *types.UID, workers int,
+	kubeQPS float32,
+	kubeBurst int32,
+) error {
 	klog.Infof("starting deployer ...")
 
 	// in case the dedicated kubeconfig get changed when leader election gets lost,
@@ -83,22 +93,12 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	}
 
 	// make sure deployer gets initialized before we go next
-	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet, d.systemNamespace)
-	if d.appPusherEnabled && d.syncMode != clusterapi.Pull {
-		klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
-		createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
-	}
+	appDeployerSecret := utils.GetDeployerCredentials(ctx, childKubeClientSet, d.systemNamespace, d.saTokenAutoGen)
 
-	appDeployerConfig, err := utils.GenerateKubeConfigFromToken(d.childAPIServerURL,
-		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey], 1)
-	if err != nil {
-		return err
-	}
-	childKubeClient, err := kubernetes.NewForConfig(appDeployerConfig)
-	if err != nil {
-		return err
-	}
+	// creating credentials to parent cluster is also required in the pull mode,
+	// because the cleaning of redundant objects in the description is performed by clusternet-controller-manager
+	klog.V(4).Infof("initializing deployer with sync mode %s", d.syncMode)
+	createDeployerCredentialsToParentCluster(ctx, parentClientSet, string(*clusterID), *dedicatedNamespace, d.childAPIServerURL, appDeployerSecret)
 
 	// setup broadcaster and event recorder in parent cluster
 	broadcaster := record.NewBroadcaster()
@@ -116,23 +116,51 @@ func (d *Deployer) Run(ctx context.Context, parentDedicatedKubeConfig *rest.Conf
 	// add informers for HelmReleases and Descriptions
 	clusternetInformerFactory.Apps().V1alpha1().HelmReleases().Informer()
 	clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer()
+	clusternetInformerFactory.Apps().V1alpha1().HelmCharts().Informer()
 	clusternetInformerFactory.Start(ctx.Done())
 
+	appDeployerConfig, err := utils.GenerateKubeConfigFromToken(
+		d.childAPIServerURL,
+		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey],
+	)
+	if err != nil {
+		return err
+	}
+	appDeployerConfig.QPS = kubeQPS
+	appDeployerConfig.Burst = int(kubeBurst)
 	genericDeployer, err := generic.NewDeployer(d.syncMode, d.appPusherEnabled, appDeployerConfig,
 		clusternetclient, clusternetInformerFactory, parentRecorder)
 	if err != nil {
 		return err
 	}
-	deployConfig := utils.CreateKubeConfigWithToken(d.childAPIServerURL,
-		string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
-		appDeployerSecret.Data[corev1.ServiceAccountRootCAKey])
-	helmDeployer, err := helm.NewDeployer(d.syncMode, d.appPusherEnabled, parentClientSet, childKubeClient,
-		clusternetclient, deployConfig, clusternetInformerFactory, parentRecorder)
+
+	deployCtx, err := utils.NewDeployContext(
+		utils.CreateKubeConfigWithToken(
+			d.childAPIServerURL,
+			string(appDeployerSecret.Data[corev1.ServiceAccountTokenKey]),
+			appDeployerSecret.Data[corev1.ServiceAccountRootCAKey],
+		),
+		kubeQPS,
+		kubeBurst,
+	)
 	if err != nil {
 		return err
 	}
-	go genericDeployer.Run(workers, ctx.Done())
-	go helmDeployer.Run(workers, ctx.Done())
+	helmDeployer, err := helm.NewDeployer(
+		d.syncMode,
+		d.appPusherEnabled,
+		parentClientSet,
+		clusternetclient,
+		deployCtx,
+		clusternetInformerFactory,
+		parentRecorder,
+	)
+	if err != nil {
+		return err
+	}
+	go genericDeployer.Run(workers, ctx)
+	go helmDeployer.Run(workers, ctx)
 
 	<-ctx.Done()
 	return nil
@@ -178,7 +206,8 @@ func createDeployerCredentialsToParentCluster(ctx context.Context, parentClientS
 				klog.V(5).Infof("found existed Secret %s in parent cluster, will try to update it", klog.KObj(secret))
 
 				// try to auto update existing object
-				sct, err := parentClientSet.CoreV1().Secrets(dedicatedNamespace).Get(ctx, secret.Name, metav1.GetOptions{})
+				var sct *corev1.Secret
+				sct, err = parentClientSet.CoreV1().Secrets(dedicatedNamespace).Get(ctx, secret.Name, metav1.GetOptions{})
 				if err != nil {
 					klog.ErrorDepth(5, fmt.Sprintf("failed to get Secret %s in parent cluster: %v, will retry",
 						klog.KObj(secret), err))

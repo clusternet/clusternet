@@ -17,11 +17,13 @@ limitations under the License.
 package apiserver
 
 import (
+	"errors"
 	"fmt"
-	"path"
+	gpath "path"
 	"strings"
 	"time"
 
+	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
 	autoscalingapiv1 "k8s.io/api/autoscaling/v1"
 	crdinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	apiextensionsv1lister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
@@ -32,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/util/managedfields"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
 	genericapi "k8s.io/apiserver/pkg/endpoints"
@@ -47,13 +50,16 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	apiservicelisters "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
+	openapibuilder3 "k8s.io/kube-openapi/pkg/builder3"
+	openapicommon "k8s.io/kube-openapi/pkg/common"
+	custommetricsapi "k8s.io/metrics/pkg/apis/custom_metrics"
 	metricsapi "k8s.io/metrics/pkg/apis/metrics"
 
 	shadowinstall "github.com/clusternet/clusternet/pkg/apis/shadow/install"
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
-	"github.com/clusternet/clusternet/pkg/registry/shadow/template"
+	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/template"
 )
 
 var (
@@ -62,8 +68,6 @@ var (
 	// Codecs provides methods for retrieving codecs and serializers for specific
 	// versions and content types.
 	Codecs = serializer.NewCodecFactory(Scheme)
-	// ParameterCodec handles versioning of objects that are converted to query parameters.
-	ParameterCodec = runtime.NewParameterCodec(Scheme)
 )
 
 const (
@@ -96,7 +100,13 @@ func init() {
 
 // ShadowAPIServer will make a shadow copy for all the APIs
 type ShadowAPIServer struct {
-	GenericAPIServer    *genericapiserver.GenericAPIServer
+	GenericAPIServer *genericapiserver.GenericAPIServer
+
+	// OpenAPIConfig will be used in generating OpenAPI spec.
+	OpenAPIConfig *openapicommon.Config
+	// OpenAPIV3Config will be used in generating OpenAPI V3 spec.
+	OpenAPIV3Config *openapicommon.OpenAPIV3Config
+
 	maxRequestBodyBytes int64
 	minRequestTimeout   int
 
@@ -123,7 +133,9 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 	kubeRESTClient restclient.Interface, clusternetclient *clusternet.Clientset,
 	manifestLister applisters.ManifestLister, apiserviceLister apiservicelisters.APIServiceLister,
 	crdInformerFactory crdinformers.SharedInformerFactory,
-	reservedNamespace string) *ShadowAPIServer {
+	reservedNamespace string,
+	openAPIConfig *openapicommon.Config, openAPIV3Config *openapicommon.OpenAPIV3Config,
+) *ShadowAPIServer {
 
 	return &ShadowAPIServer{
 		GenericAPIServer:    apiserver,
@@ -141,6 +153,8 @@ func NewShadowAPIServer(apiserver *genericapiserver.GenericAPIServer,
 			minRequestTimeout, maxRequestBodyBytes, admissionControl, apiserver.Authorizer, apiserver.Serializer, reservedNamespace),
 		apiserviceLister:  apiserviceLister,
 		reservedNamespace: reservedNamespace,
+		OpenAPIConfig:     openAPIConfig,
+		OpenAPIV3Config:   openAPIV3Config,
 	}
 }
 
@@ -166,7 +180,6 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 	if err != nil {
 		return err
 	}
-
 	shadowv1alpha1storage := map[string]rest.Storage{}
 	for _, apiGroupResource := range apiGroupResources {
 		// no need to duplicate xxx.clusternet.io
@@ -186,6 +199,11 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 			continue
 		}
 
+		// ignore "custom.metrics.k8s.io" group
+		if apiGroupResource.Group.Name == custommetricsapi.GroupName {
+			continue
+		}
+
 		// skip CRDs, which will be handled by crdHandler later
 		if crdGroups.Has(apiGroupResource.Group.Name) {
 			continue
@@ -199,15 +217,18 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 
 			ss.crdHandler.AddNonCRDAPIResource(apiresource)
 			// register scheme for original GVK
-			Scheme.AddKnownTypeWithName(schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}.WithKind(apiresource.Kind),
+			groupVersion := schema.GroupVersion{Group: apiGroupResource.Group.Name, Version: apiresource.Version}
+			Scheme.AddKnownTypeWithName(groupVersion.WithKind(apiresource.Kind),
 				&unstructured.Unstructured{},
 			)
+			metav1.AddToGroupVersion(Scheme, groupVersion)
 
-			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, ParameterCodec, ss.manifestLister, ss.reservedNamespace)
+			resourceRest := template.NewREST(ss.kubeRESTClient, ss.clusternetclient, runtime.NewParameterCodec(Scheme), ss.manifestLister, ss.reservedNamespace)
 			resourceRest.SetNamespaceScoped(apiresource.Namespaced)
 			resourceRest.SetName(apiresource.Name)
 			resourceRest.SetShortNames(apiresource.ShortNames)
 			resourceRest.SetKind(apiresource.Kind)
+			resourceRest.SetSingularName(apiresource.SingularName)
 			resourceRest.SetGroup(apiresource.Group)
 			resourceRest.SetVersion(apiresource.Version)
 			switch {
@@ -219,7 +240,7 @@ func (ss *ShadowAPIServer) InstallShadowAPIGroups(stopCh <-chan struct{}, cl dis
 		}
 	}
 
-	shadowAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, ParameterCodec, Codecs)
+	shadowAPIGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, runtime.NewParameterCodec(Scheme), Codecs)
 	shadowAPIGroupInfo.PrioritizedVersions = []schema.GroupVersion{
 		{
 			Group:   shadowapi.GroupName,
@@ -244,15 +265,20 @@ func (ss *ShadowAPIServer) installAPIGroups(apiGroupInfos ...*genericapiserver.A
 		}
 	}
 
+	openAPIModels, err := ss.getOpenAPIModels(genericapiserver.APIGroupPrefix, apiGroupInfos...)
+	if err != nil {
+		return fmt.Errorf("unable to get openapi models: %v", err)
+	}
+
 	for _, apiGroupInfo := range apiGroupInfos {
-		if err := ss.installAPIResources(genericapiserver.APIGroupPrefix, apiGroupInfo); err != nil {
+		if err = ss.installAPIResources(genericapiserver.APIGroupPrefix, apiGroupInfo, openAPIModels); err != nil {
 			return fmt.Errorf("unable to install api resources: %v", err)
 		}
 
 		if apiGroupInfo.PrioritizedVersions[0].String() == shadowapi.SchemeGroupVersion.String() {
 			var found bool
 			for _, ws := range ss.GenericAPIServer.Handler.GoRestfulContainer.RegisteredWebServices() {
-				if ws.RootPath() == path.Join(genericapiserver.APIGroupPrefix, shadowapi.SchemeGroupVersion.String()) {
+				if ws.RootPath() == gpath.Join(genericapiserver.APIGroupPrefix, shadowapi.SchemeGroupVersion.String()) {
 					ss.crdHandler.SetRootWebService(ws)
 					found = true
 				}
@@ -293,7 +319,7 @@ func (ss *ShadowAPIServer) installAPIGroups(apiGroupInfos ...*genericapiserver.A
 
 // installAPIResources is a private method for installing the REST storage backing each api groupversionresource
 // copied from k8s.io/apiserver/pkg/server/genericapiserver.go and modified
-func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *genericapiserver.APIGroupInfo) error {
+func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *genericapiserver.APIGroupInfo, typeConverter managedfields.TypeConverter) error {
 	var resourceInfos []*storageversion.ResourceInfo
 	for _, groupVersion := range apiGroupInfo.PrioritizedVersions {
 		if len(apiGroupInfo.VersionedResourcesStorageMap[groupVersion.Version]) == 0 {
@@ -305,15 +331,40 @@ func (ss *ShadowAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *g
 		if apiGroupInfo.OptionsExternalVersion != nil {
 			apiGroupVersion.OptionsExternalVersion = apiGroupInfo.OptionsExternalVersion
 		}
-
+		apiGroupVersion.TypeConverter = typeConverter
 		apiGroupVersion.MaxRequestBodyBytes = ss.maxRequestBodyBytes
 
-		r, err := apiGroupVersion.InstallREST(ss.GenericAPIServer.Handler.GoRestfulContainer)
-		if err != nil {
+		discoveryAPIResources, r, err := apiGroupVersion.InstallREST(ss.GenericAPIServer.Handler.GoRestfulContainer)
+		if err != nil && !strings.Contains(err.Error(), "missing parent storage") {
+			// Some subresources for CRDs are implemented with another group, like `kubevirt`.
+			// We just ignore those non-harmful "missing parent storage" errors.
+			// Please do remember to create fake CRDs to let clusternet install handlers for those subresources.
 			return fmt.Errorf("unable to setup API %v: %v", apiGroupInfo, err)
 		}
 
 		resourceInfos = append(resourceInfos, r...)
+
+		if utilfeature.DefaultFeatureGate.Enabled(k8sfeatures.AggregatedDiscoveryEndpoint) {
+			// Aggregated discovery only aggregates resources under /apis
+			if apiPrefix == genericapiserver.APIGroupPrefix {
+				ss.GenericAPIServer.AggregatedDiscoveryGroupManager.AddGroupVersion(
+					groupVersion.Group,
+					apidiscoveryv2.APIVersionDiscovery{
+						Version:   groupVersion.Version,
+						Resources: discoveryAPIResources,
+					},
+				)
+			} else {
+				// There is only one group version for legacy resources, priority can be defaulted to 0.
+				ss.GenericAPIServer.AggregatedLegacyDiscoveryGroupManager.AddGroupVersion(
+					groupVersion.Group,
+					apidiscoveryv2.APIVersionDiscovery{
+						Version:   groupVersion.Version,
+						Resources: discoveryAPIResources,
+					},
+				)
+			}
+		}
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(k8sfeatures.StorageVersionAPI) &&
@@ -353,7 +404,7 @@ func (ss *ShadowAPIServer) newAPIGroupVersion(apiGroupInfo *genericapiserver.API
 		UnsafeConvertor:       runtime.UnsafeObjectConvertor(apiGroupInfo.Scheme),
 		Defaulter:             apiGroupInfo.Scheme,
 		Typer:                 apiGroupInfo.Scheme,
-		Linker:                runtime.SelfLinker(meta.NewAccessor()),
+		Namer:                 runtime.Namer(meta.NewAccessor()),
 
 		EquivalentResourceRegistry: ss.GenericAPIServer.EquivalentResourceRegistry,
 
@@ -362,4 +413,32 @@ func (ss *ShadowAPIServer) newAPIGroupVersion(apiGroupInfo *genericapiserver.API
 		Authorizer:          ss.GenericAPIServer.Authorizer,
 		MaxRequestBodyBytes: ss.maxRequestBodyBytes,
 	}
+}
+
+// getOpenAPIModels is a private method for getting the OpenAPI models
+// copied from k8s.io/apiserver/pkg/server/genericapiserver.go and modified
+func (ss *ShadowAPIServer) getOpenAPIModels(_ string, apiGroupInfos ...*genericapiserver.APIGroupInfo) (managedfields.TypeConverter, error) {
+	if ss.OpenAPIV3Config == nil {
+		// SSA is GA and requires OpenAPI config to be set
+		// to create models.
+		return nil, errors.New("OpenAPIV3 config must not be nil")
+	}
+	// hack for clusternet, no need for resourceNames
+	resourceNames := make([]string, 0)
+
+	// Build the openapi definitions for those resources and convert it to proto models
+	openAPISpec, err := openapibuilder3.BuildOpenAPIDefinitionsForResources(ss.OpenAPIV3Config, resourceNames...)
+	if err != nil {
+		return nil, err
+	}
+	for _, apiGroupInfo := range apiGroupInfos {
+		apiGroupInfo.StaticOpenAPISpec = openAPISpec
+	}
+
+	typeConverter, err := managedfields.NewTypeConverter(openAPISpec, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return typeConverter, nil
 }

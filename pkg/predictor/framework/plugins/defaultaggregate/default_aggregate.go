@@ -23,6 +23,7 @@ import (
 	"k8s.io/klog/v2"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
 	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins/names"
 )
@@ -31,6 +32,9 @@ import (
 type DefaultAggregator struct {
 	handle framework.Handle
 }
+
+// Name is the name of the plugin used in the plugin registry and configurations.
+const Name = names.DefaultAggregator
 
 var _ framework.AggregatePlugin = &DefaultAggregator{}
 
@@ -41,19 +45,19 @@ func New(_ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 
 // Name returns the name of the plugin.
 func (pl *DefaultAggregator) Name() string {
-	return names.DefaultAggregator
+	return Name
 }
 
 // Aggregate aggregate acceptable replicas for all filtered node
-func (pl *DefaultAggregator) Aggregate(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (framework.AcceptableReplicas, *framework.Status) {
+func (pl *DefaultAggregator) Aggregate(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (schedulerapi.PredictorReplicas, *framework.Status) {
 	klog.V(5).InfoS("Attempting to Aggregate replicas")
-	result := make(framework.AcceptableReplicas)
+	result := make(schedulerapi.PredictorReplicas)
 	maxAcceptableReplicas := int32(0)
 	for i := range scores {
 		maxAcceptableReplicas += scores[i].MaxAvailableReplicas
 	}
 	// Todo : support topology-aware replicas
-	result[framework.DefaultAcceptableReplicasKey] = maxAcceptableReplicas
+	result[schedulerapi.DefaultAcceptableReplicasKey] = maxAcceptableReplicas
 
 	return result, nil
 }

@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -35,9 +37,9 @@ type FakeSubscriptions struct {
 	ns   string
 }
 
-var subscriptionsResource = schema.GroupVersionResource{Group: "apps.clusternet.io", Version: "v1alpha1", Resource: "subscriptions"}
+var subscriptionsResource = v1alpha1.SchemeGroupVersion.WithResource("subscriptions")
 
-var subscriptionsKind = schema.GroupVersionKind{Group: "apps.clusternet.io", Version: "v1alpha1", Kind: "Subscription"}
+var subscriptionsKind = v1alpha1.SchemeGroupVersion.WithKind("Subscription")
 
 // Get takes name of the subscription, and returns the corresponding subscription object, and an error if there is any.
 func (c *FakeSubscriptions) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Subscription, err error) {
@@ -133,6 +135,51 @@ func (c *FakeSubscriptions) DeleteCollection(ctx context.Context, opts v1.Delete
 func (c *FakeSubscriptions) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Subscription, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(subscriptionsResource, c.ns, name, pt, data, subresources...), &v1alpha1.Subscription{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Subscription), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied subscription.
+func (c *FakeSubscriptions) Apply(ctx context.Context, subscription *appsv1alpha1.SubscriptionApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Subscription, err error) {
+	if subscription == nil {
+		return nil, fmt.Errorf("subscription provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(subscription)
+	if err != nil {
+		return nil, err
+	}
+	name := subscription.Name
+	if name == nil {
+		return nil, fmt.Errorf("subscription.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(subscriptionsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.Subscription{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.Subscription), err
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *FakeSubscriptions) ApplyStatus(ctx context.Context, subscription *appsv1alpha1.SubscriptionApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Subscription, err error) {
+	if subscription == nil {
+		return nil, fmt.Errorf("subscription provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(subscription)
+	if err != nil {
+		return nil, err
+	}
+	name := subscription.Name
+	if name == nil {
+		return nil, fmt.Errorf("subscription.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewPatchSubresourceAction(subscriptionsResource, c.ns, *name, types.ApplyPatchType, data, "status"), &v1alpha1.Subscription{})
 
 	if obj == nil {
 		return nil, err

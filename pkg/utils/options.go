@@ -17,13 +17,15 @@ limitations under the License.
 package utils
 
 import (
-	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	cliflag "k8s.io/component-base/cli/flag"
 	componentbaseconfig "k8s.io/component-base/config"
 	componentbaseoptions "k8s.io/component-base/config/options"
 	componentbaseconfigv1alpha1 "k8s.io/component-base/config/v1alpha1"
+	"k8s.io/component-base/logs"
+	logsapi "k8s.io/component-base/logs/api/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -35,6 +37,8 @@ type ControllerOptions struct {
 	// ClientConnection specifies the kubeconfig file and client connection
 	// settings for the proxy server to use when communicating with the apiserver.
 	ClientConnection componentbaseconfig.ClientConnectionConfiguration
+
+	Logs *logs.Options
 }
 
 // NewControllerOptions returns a new ControllerOptions
@@ -52,7 +56,11 @@ func NewControllerOptions(resourceName, resourceNamespace string) (*ControllerOp
 	o := &ControllerOptions{
 		ClientConnection: componentbaseconfig.ClientConnectionConfiguration{},
 		LeaderElection:   componentbaseconfig.LeaderElectionConfiguration{},
+		Logs:             logs.NewOptions(),
 	}
+	// Set the default log level to 2
+	// k8s.io/apimachinery/pkg/util/runtime uses 2 as the default level for runtime errors
+	o.Logs.Verbosity = logsapi.VerbosityLevel(2)
 
 	controllerScheme := runtime.NewScheme()
 	utilruntime.Must(componentbaseconfigv1alpha1.AddToScheme(controllerScheme))
@@ -79,14 +87,16 @@ func (o *ControllerOptions) Complete() error {
 	return nil
 }
 
-// AddFlags adds flags for ControllerOptions.
-func (o *ControllerOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&o.ClientConnection.Kubeconfig, "kubeconfig", o.ClientConnection.Kubeconfig, "Path to a kubeconfig file pointing at the 'core' kubernetes server. Only required if out-of-cluster.")
-	fs.Float32Var(&o.ClientConnection.QPS, "kube-api-qps", o.ClientConnection.QPS, "QPS to use while talking with the 'core' kubernetes apiserver.")
-	fs.Int32Var(&o.ClientConnection.Burst, "kube-api-burst", o.ClientConnection.Burst, "Burst to use while talking with 'core' kubernetes apiserver.")
-
-	componentbaseoptions.BindLeaderElectionFlags(&o.LeaderElection, fs)
-	if err := fs.MarkHidden("leader-elect-resource-lock"); err != nil {
-		klog.Errorf("failed to set a flag to hidden: %v", err)
+func (o *ControllerOptions) AddFlagSets(fss *cliflag.NamedFlagSets) {
+	componentbaseoptions.BindLeaderElectionFlags(&o.LeaderElection, fss.FlagSet("leader election"))
+	if err := fss.FlagSet("leader election").MarkHidden("leader-elect-resource-lock"); err != nil {
+		klog.Errorf("failed to set a flag %s to hidden: %v", "leader-elect-resource-lock", err)
 	}
+
+	logsapi.AddFlags(o.Logs, fss.FlagSet("logs"))
+
+	miscfs := fss.FlagSet("misc")
+	miscfs.StringVar(&o.ClientConnection.Kubeconfig, "kubeconfig", o.ClientConnection.Kubeconfig, "Path to a kubeconfig file pointing at the 'core' kubernetes server. Only required if out-of-cluster.")
+	miscfs.Float32Var(&o.ClientConnection.QPS, "kube-api-qps", o.ClientConnection.QPS, "QPS to use while talking with the 'core' kubernetes apiserver.")
+	miscfs.Int32Var(&o.ClientConnection.Burst, "kube-api-burst", o.ClientConnection.Burst, "Burst to use while talking with 'core' kubernetes apiserver.")
 }

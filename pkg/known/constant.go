@@ -26,7 +26,7 @@ const (
 	NamePrefixForClusternetObjects = "clusternet-"
 
 	// ChildClusterSecretName is the secret that stores credentials of child cluster, which will be used by deployer
-	// in clusternet-hub
+	// in clusternet-controller-manager
 	ChildClusterSecretName = "child-cluster-deployer"
 
 	// ClusterAPIServerURLKey denotes the apiserver address
@@ -43,7 +43,8 @@ const (
 	ClusternetAppSA = "clusternet-app-deployer"
 
 	// ClusternetHubProxyServiceAccount is the service account that can be used for proxying requests to child clusters.
-	// This will be also used by deployer in clusternet-hub when flag "--anonymous-auth-supported" is set to false.
+	// This will be also used by deployer in clusternet-controller-manager when flag "--anonymous-auth-supported" is
+	// set to false.
 	ClusternetHubProxyServiceAccount = "clusternet-hub-proxy"
 
 	// nvidia gpu name
@@ -90,4 +91,14 @@ const (
 	// NoteLengthLimit denotes the maximum note length.
 	// copied from k8s.io/kubernetes/pkg/apis/core/validation/events.go
 	NoteLengthLimit = 1024
+)
+
+const (
+	// DefaultRandomIDLength is the default length for random id
+	DefaultRandomIDLength = 5
+)
+
+const (
+	IndexKeyForSubscriptionUID = "subUid"
+	IndexKeyForBaseUID         = "baseUid"
 )

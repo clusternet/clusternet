@@ -17,8 +17,11 @@ limitations under the License.
 package utils
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -34,6 +37,7 @@ import (
 	"helm.sh/helm/v3/pkg/repo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/discovery"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/kubernetes"
@@ -64,11 +68,14 @@ func FindOCIChart(chartRepo, chartName, chartVersion string) (bool, error) {
 		registry.ClientOptDebug(Settings.Debug),
 		registry.ClientOptWriter(os.Stdout),
 		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
+		registry.ClientOptHTTPClient(&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}),
 	)
-	if err != nil {
-		return false, err
-	}
-	err = registryClient.WithResolver(true, false)
 	if err != nil {
 		return false, err
 	}
@@ -121,7 +128,7 @@ func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, passwor
 		return nil, err
 	}
 
-	if err := CheckIfInstallable(chartRequested); err != nil {
+	if err = CheckIfInstallable(chartRequested); err != nil {
 		return nil, err
 	}
 
@@ -138,28 +145,83 @@ func CheckIfInstallable(chart *chart.Chart) error {
 	return fmt.Errorf("chart %s is %s, which is not installable", chart.Name(), chart.Metadata.Type)
 }
 
-func InstallRelease(cfg *action.Configuration, releaseName, targetNamespace string,
+func InstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
-	client := action.NewInstall(cfg)
-	client.ReleaseName = releaseName
-	client.CreateNamespace = true
-	client.Timeout = time.Minute * 5
-	client.Namespace = targetNamespace
 
+	err := replaceCRDs(cfg, hr, chart)
+	if err != nil {
+		return nil, err
+	}
+
+	client := action.NewInstall(cfg)
+	client.InsecureSkipTLSverify = true
+	client.ReleaseName = getReleaseName(hr)
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
+	client.Namespace = hr.Spec.TargetNamespace
+	if hr.Spec.CreateNamespace != nil {
+		client.CreateNamespace = *hr.Spec.CreateNamespace
+	}
+	if hr.Spec.Atomic != nil {
+		client.Atomic = *hr.Spec.Atomic
+	}
+	if hr.Spec.Replace != nil {
+		client.Replace = *hr.Spec.Replace
+	}
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
+	if hr.Spec.WaitForJob != nil {
+		client.WaitForJobs = *hr.Spec.WaitForJob
+	}
+	if hr.Spec.SkipCRDs != nil {
+		client.SkipCRDs = *hr.Spec.SkipCRDs
+	}
+	if hr.Spec.DisableHooks != nil {
+		client.DisableHooks = *hr.Spec.DisableHooks
+	}
 	return client.Run(chart, vals)
 }
 
-func UpgradeRelease(cfg *action.Configuration, releaseName, targetNamespace string,
+func UpgradeRelease(cfg *action.Configuration, hr *appsapi.HelmRelease,
 	chart *chart.Chart, vals map[string]interface{}) (*release.Release, error) {
+
+	err := replaceCRDs(cfg, hr, chart)
+	if err != nil {
+		return nil, err
+	}
+
 	client := action.NewUpgrade(cfg)
-	client.Timeout = time.Minute * 5
-	client.Namespace = targetNamespace
-	return client.Run(releaseName, chart, vals)
+	client.InsecureSkipTLSverify = true
+	client.MaxHistory = cfg.Releases.MaxHistory // need to rewire it here
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
+	client.Namespace = hr.Spec.TargetNamespace
+	if hr.Spec.UpgradeAtomic != nil {
+		client.Atomic = *hr.Spec.UpgradeAtomic
+	}
+	if hr.Spec.Force != nil {
+		client.Force = *hr.Spec.Force
+	}
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
+	if hr.Spec.WaitForJob != nil {
+		client.WaitForJobs = *hr.Spec.WaitForJob
+	}
+	if hr.Spec.SkipCRDs != nil {
+		client.SkipCRDs = *hr.Spec.SkipCRDs
+	}
+	if hr.Spec.DisableHooks != nil {
+		client.DisableHooks = *hr.Spec.DisableHooks
+	}
+	return client.Run(getReleaseName(hr), chart, vals)
 }
 
 func UninstallRelease(cfg *action.Configuration, hr *appsapi.HelmRelease) error {
 	client := action.NewUninstall(cfg)
-	client.Timeout = time.Minute * 5
+	if hr.Spec.Wait != nil {
+		client.Wait = *hr.Spec.Wait
+	}
+	client.Timeout = time.Duration(hr.Spec.TimeoutSeconds) * time.Second
 	_, err := client.Run(getReleaseName(hr))
 	if err != nil {
 		if strings.Contains(err.Error(), "Release not loaded") {
@@ -204,7 +266,7 @@ func UpdateRepo(repoURL string) error {
 		return err
 	}
 
-	if _, err := cr.DownloadIndexFile(); err != nil {
+	if _, err = cr.DownloadIndexFile(); err != nil {
 		return err
 	}
 
@@ -219,14 +281,14 @@ type DeployContext struct {
 	restMapper               meta.RESTMapper
 }
 
-func NewDeployContext(config *clientcmdapi.Config, overrides *clientcmd.ConfigOverrides) (*DeployContext, error) {
-	clientConfig := clientcmd.NewDefaultClientConfig(*config, overrides)
+func NewDeployContext(config *clientcmdapi.Config, kubeQPS float32, kubeBurst int32) (*DeployContext, error) {
+	clientConfig := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{})
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error while creating DeployContext: %v", err)
 	}
-	restConfig.QPS = 5
-	restConfig.Burst = 10
+	restConfig.QPS = kubeQPS
+	restConfig.Burst = int(kubeBurst)
 
 	kubeclient, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
@@ -289,4 +351,38 @@ func getReleaseName(hr *appsapi.HelmRelease) string {
 		releaseName = *hr.Spec.ReleaseName
 	}
 	return releaseName
+}
+
+func replaceCRDs(cfg *action.Configuration, hr *appsapi.HelmRelease, chart *chart.Chart) error {
+	if hr.Spec.SkipCRDs != nil && *hr.Spec.SkipCRDs {
+		return nil
+	}
+
+	if hr.Spec.ReplaceCRDs != nil && *hr.Spec.ReplaceCRDs {
+		return doReplaceCRDs(cfg, chart)
+	}
+	return nil
+}
+
+func doReplaceCRDs(cfg *action.Configuration, targetChart *chart.Chart) error {
+	var allErrs []error
+	for _, crd := range targetChart.CRDObjects() {
+		crdResource, err := cfg.KubeClient.Build(bytes.NewBuffer(crd.File.Data), true)
+		if err != nil {
+			allErrs = append(allErrs, err)
+			continue
+		}
+		res, err := cfg.KubeClient.Update(crdResource, crdResource, true)
+		if err != nil {
+			klog.V(1).Infof("crd replace error, %s ", err.Error())
+			allErrs = append(allErrs, err)
+		}
+		klog.V(4).Infof("crd replaced success, %v", res.Updated)
+	}
+	for _, dep := range targetChart.Dependencies() {
+		if err := doReplaceCRDs(cfg, dep); err != nil {
+			allErrs = append(allErrs, err)
+		}
+	}
+	return errors.NewAggregate(allErrs)
 }

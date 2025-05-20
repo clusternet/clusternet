@@ -18,14 +18,14 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 
 	"github.com/mattbaird/jsonpatch"
+	"github.com/pkg/errors"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/registry"
@@ -38,15 +38,21 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	pkgruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/jsonmergepatch"
+	"k8s.io/apimachinery/pkg/util/mergepatch"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
+	kubectlscheme "k8s.io/kubectl/pkg/scheme"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -77,12 +83,15 @@ func DeployableByHub(clusterLister clusterlisters.ManagedClusterLister, clusterI
 		return false, fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", dedicatedNamespace)
 	}
 
-	if mcls[0].Spec.SyncMode == clusterapi.Pull || !mcls[0].Status.AppPusher {
-		msg := "set syncMode as Pull"
-		if !mcls[0].Status.AppPusher {
-			msg = "disabled AppPusher"
-		}
-		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, msg)
+	if mcls[0].Spec.SyncMode == clusterapi.Pull {
+		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, "set syncMode as Pull")
+		return false, nil
+	}
+	if mcls[0].Status.AppPusher == nil {
+		return false, fmt.Errorf("unknown AppPusher")
+	}
+	if !*mcls[0].Status.AppPusher {
+		klog.V(5).Infof("ManagedCluster %s with uid=%s has %s", klog.KObj(mcls[0]), mcls[0].UID, "disabled AppPusher")
 		return false, nil
 	}
 	return true, nil
@@ -109,6 +118,10 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	clusternetClient *clusternetclientset.Clientset,
 	hrLister applisters.HelmReleaseLister, descLister applisters.DescriptionLister,
 	hr *appsapi.HelmRelease, recorder record.EventRecorder) error {
+	if deployCtx == nil {
+		return fmt.Errorf("found nil DeployContext")
+	}
+
 	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
 
 	registryClient, err := registry.NewClient(
@@ -128,8 +141,13 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	cfg.Releases.MaxHistory = 5
 	cfg.RegistryClient = registryClient
 
+	hrStatus := &appsapi.HelmReleaseStatus{}
 	// delete helm release
 	if hr.DeletionTimestamp != nil {
+		hrStatus.Phase = release.StatusUninstalling
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
 		err2 := UninstallRelease(cfg, hr)
 		if err2 != nil {
 			return err2
@@ -156,6 +174,13 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	chart, err = LocateAuthHelmChart(cfg, hr.Spec.Repository, username, password, hr.Spec.Chart, hr.Spec.ChartVersion)
 	if err != nil {
 		recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
+		hrStatus = &appsapi.HelmReleaseStatus{
+			Phase: release.StatusFailed,
+			Notes: err.Error(),
+		}
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
 		return err
 	}
 
@@ -168,27 +193,55 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	}
 
 	var rel *release.Release
-	// check whether the release is deployed
-	rel, err = cfg.Releases.Deployed(releaseName)
-	if err != nil {
-		if strings.Contains(err.Error(), driver.ErrNoDeployedReleases.Error()) {
-			rel, err = InstallRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
+	rel, err = cfg.Releases.Last(releaseName)
+	if err != nil && !strings.Contains(err.Error(), driver.ErrReleaseNotFound.Error()) {
+		return err
+	}
+
+	// Install or upgrade failed and atomic is set, uninstalling release
+	if hr.Spec.Atomic != nil && *hr.Spec.Atomic && rel != nil && rel.Info.Status != release.StatusDeployed {
+		klog.V(5).Infof("Uninstalling undeployed HelmRelease %s", klog.KObj(hr))
+		hrStatus.Phase = release.StatusUninstalling
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
 		}
+		err = UninstallRelease(cfg, hr)
+		if err != nil {
+			return err
+		}
+		rel = nil
+	}
+
+	if rel == nil {
+		klog.V(5).Infof("Installing HelmRelease %s", klog.KObj(hr))
+		hrStatus.Phase = release.StatusPendingInstall
+		if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+			return err
+		}
+		rel, err = InstallRelease(cfg, hr, chart, overrideValues)
 	} else {
 		// verify the release is changed or not
 		if ReleaseNeedsUpgrade(rel, hr, chart, overrideValues) {
 			klog.V(5).Infof("Upgrading HelmRelease %s", klog.KObj(hr))
-			rel, err = UpgradeRelease(cfg, releaseName, hr.Spec.TargetNamespace, chart, overrideValues)
+			hrStatus.Phase = release.StatusPendingUpgrade
+			if err = UpdateHelmReleaseStatus(ctx, clusternetClient, hrLister, descLister, hr, hrStatus); err != nil {
+				return err
+			}
+			rel, err = UpgradeRelease(cfg, hr, chart, overrideValues)
 		} else {
 			klog.V(5).Infof("HelmRelease %s is already updated. No need upgrading.", klog.KObj(hr))
 		}
 	}
 
-	var hrStatus *appsapi.HelmReleaseStatus
 	if err != nil {
 		// repo update
 		if strings.Contains(err.Error(), "helm repo update") {
-			return UpdateRepo(hr.Spec.Repository)
+			err2 := UpdateRepo(hr.Spec.Repository)
+			if err2 == nil {
+				// return an error to let it reconcile
+				err2 = fmt.Errorf("[Helm Repo Update] requeue HelmRelease %s", klog.KObj(hr))
+			}
+			return err2
 		}
 		hrStatus = &appsapi.HelmReleaseStatus{
 			Phase: release.StatusFailed,
@@ -226,58 +279,70 @@ func GenerateHelmReleaseName(descName string, chartRef appsapi.ChartReference) s
 func UpdateHelmReleaseStatus(ctx context.Context, clusternetClient *clusternetclientset.Clientset,
 	hrLister applisters.HelmReleaseLister, descLister applisters.DescriptionLister,
 	hr *appsapi.HelmRelease, status *appsapi.HelmReleaseStatus) error {
+	if hr == nil || status == nil {
+		return nil
+	}
+
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
-
-	klog.V(5).Infof("try to update HelmRelease %q status", hr.Name)
-
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	hr = hr.DeepCopy()
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultRetry, func(ctx context.Context) (done bool, err error) {
+		klog.V(5).Infof("try to update HelmRelease %q status", hr.Name)
 		hr.Status = *status
-		_, err := clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).UpdateStatus(ctx, hr, metav1.UpdateOptions{})
+		_, err = clusternetClient.AppsV1alpha1().HelmReleases(hr.Namespace).UpdateStatus(ctx, hr, metav1.UpdateOptions{})
 		if err == nil {
-			return nil
+			return true, nil
 		}
 
-		if updated, err := hrLister.HelmReleases(hr.Namespace).Get(hr.Name); err == nil {
-			// make a copy so we don't mutate the shared cache
+		updated, err2 := hrLister.HelmReleases(hr.Namespace).Get(hr.Name)
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
 			hr = updated.DeepCopy()
-		} else {
-			utilruntime.HandleError(fmt.Errorf("error getting updated HelmRelease %q from lister: %v", hr.Name, err))
+			return false, nil
 		}
-		return err
+		utilruntime.HandleError(fmt.Errorf("error getting updated HelmRelease %q from lister: %v", hr.Name, err2))
+		return false, err
 	})
 
 	if err != nil {
 		return err
 	}
 
-	klog.V(5).Infof("try to update HelmRelease %q owner Description status", hr.Name)
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		controllerRef := metav1.GetControllerOf(hr)
-		if controllerRef == nil {
-			// No controller should care about orphans being deleted.
-			return nil
-		}
-		desc := resolveControllerRef(descLister, hr.Namespace, controllerRef)
-		if desc == nil {
-			return nil
-		}
-		if status.Phase == release.StatusDeployed {
-			desc.Status.Phase = appsapi.DescriptionPhaseSuccess
-			desc.Status.Reason = ""
-		} else {
-			desc.Status.Phase = appsapi.DescriptionPhaseFailure
-			desc.Status.Reason = status.Notes
-		}
-		_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
-		if err == nil {
-			return nil
-		}
+	// update status of controller owner Description
+	controllerRef := metav1.GetControllerOf(hr)
+	if controllerRef == nil {
+		// No controller should care about orphans being deleted.
+		return nil
+	}
+	desc := resolveControllerRef(descLister, hr.Namespace, controllerRef)
+	if desc == nil {
+		return nil
+	}
+	descStatus := desc.Status.DeepCopy()
+	switch status.Phase {
+	case release.StatusDeployed:
+		descStatus.Phase = appsapi.DescriptionPhaseSuccess
+		descStatus.Reason = ""
+	case release.StatusPendingInstall:
+		descStatus.Phase = appsapi.DescriptionPhaseInstalling
+	case release.StatusPendingUpgrade:
+		descStatus.Phase = appsapi.DescriptionPhaseUpgrading
+	case release.StatusUninstalling:
+		descStatus.Phase = appsapi.DescriptionPhaseUninstalling
+	case release.StatusSuperseded:
+		descStatus.Phase = appsapi.DescriptionPhaseSuperseded
+		descStatus.Reason = status.Notes
+	case release.StatusFailed:
+		descStatus.Phase = appsapi.DescriptionPhaseFailure
+		descStatus.Reason = status.Notes
+	default:
+		descStatus.Phase = appsapi.DescriptionPhaseUnknown
+		descStatus.Reason = status.Notes
+	}
 
-		utilruntime.HandleError(fmt.Errorf("error updating status for Description %q: %v", klog.KObj(desc), err))
-		return err
-	})
+	klog.V(5).Infof("try to update HelmRelease %q owner Description status", hr.Name)
+	return UpdateDescriptionStatus(ctx, desc, descStatus, clusternetClient, true)
 }
 
 // resolveControllerRef returns the controller referenced by a ControllerRef,
@@ -298,7 +363,7 @@ func resolveControllerRef(descLister applisters.DescriptionLister, namespace str
 		// ControllerRef points to.
 		return nil
 	}
-	return desc
+	return desc.DeepCopy()
 }
 
 type ResourceCallbackHandler func(resource *unstructured.Unstructured) error
@@ -321,11 +386,28 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			continue
 		}
 
+		// erases fields that are managed by the system on ObjectMeta when deploying to child clusters
+		rest.WipeObjectMetaSystemFields(resource)
+
 		annotations := resource.GetAnnotations()
 		if annotations == nil {
 			annotations = map[string]string{}
 		}
+		// remove kubectl last-applied-config annotation
+		delete(annotations, corev1.LastAppliedConfigAnnotation)
 		annotations[known.ObjectOwnedByDescriptionAnnotation] = desc.Namespace + "." + desc.Name
+		resource.SetAnnotations(annotations)
+
+		trimedObject, err := resource.MarshalJSON()
+		if err != nil {
+			allErrs = append(allErrs, err)
+			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			recorder.Event(desc, corev1.EventTypeWarning, "FailedMarshalingResource", msg)
+			continue
+		}
+		// add clusternet-agent last-applied-config annotation
+		annotations[known.LastAppliedConfigAnnotation] = string(trimedObject)
 		resource.SetAnnotations(annotations)
 		wg.Add(1)
 		go func(resource *unstructured.Unstructured) {
@@ -341,6 +423,7 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 			}
 
 			if utilfeature.DefaultFeatureGate.Enabled(features.Recovery) && callbackHandler != nil {
+				// callbackHandler cannot block, otherwise the subsequent events of the description cannot be processed
 				callbackErr := callbackHandler(resource)
 				if callbackErr != nil {
 					errCh <- callbackErr
@@ -379,15 +462,21 @@ func ApplyDescription(ctx context.Context, clusternetClient *clusternetclientset
 		statusPhase = appsapi.DescriptionPhaseSuccess
 		reason = ""
 
-		msg := fmt.Sprintf("Description %s is deployed successfully", klog.KObj(desc))
+		msg := fmt.Sprintf("successfully deployed Description %s", klog.KObj(desc).String())
 		klog.V(5).Info(msg)
 		recorder.Event(desc, corev1.EventTypeNormal, "SuccessfullyDeployed", msg)
 	}
 
 	// update status
-	desc.Status.Phase = statusPhase
-	desc.Status.Reason = reason
-	_, err := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(context.TODO(), desc, metav1.UpdateOptions{})
+	descStatus := desc.Status.DeepCopy()
+	descStatus.Phase = statusPhase
+	descStatus.Reason = reason
+
+	var err error
+	if !reflect.DeepEqual(desc.Status.Phase, descStatus.Phase) || !reflect.DeepEqual(desc.Status.Reason, descStatus.Reason) {
+		err = UpdateDescriptionStatus(ctx, desc, descStatus, clusternetClient, true)
+		klog.V(5).Infof("ApplyDescription phaseStatus has changed, UpdateStatus. err: %s", err)
+	}
 
 	if len(allErrs) > 0 {
 		return utilerrors.NewAggregate(allErrs)
@@ -404,7 +493,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 	errCh := make(chan error, len(objectsToBeDeleted))
 	for _, object := range objectsToBeDeleted {
 		resource := &unstructured.Unstructured{}
-		err := resource.UnmarshalJSON(object)
+		err = resource.UnmarshalJSON(object)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
@@ -416,7 +505,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 				defer wg.Done()
 				klog.V(5).Infof("deleting %s %s defined in Description %s", resource.GetKind(),
 					klog.KObj(resource), klog.KObj(desc))
-				err := DeleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
+				err = DeleteResourceWithRetry(ctx, dynamicClient, discoveryRESTMapper, resource)
 				if err != nil {
 					errCh <- err
 				}
@@ -427,7 +516,7 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 
 	// collect errors
 	close(errCh)
-	for err := range errCh {
+	for err = range errCh {
 		allErrs = append(allErrs, err)
 	}
 
@@ -452,11 +541,8 @@ func OffloadDescription(ctx context.Context, clusternetClient *clusternetclients
 
 func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
 	resource *unstructured.Unstructured, ignoreAdd bool) error {
-	// set UID as empty
-	resource.SetUID("")
-
 	var lastError error
-	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func(ctx context.Context) (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
 			lastError = fmt.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
@@ -482,8 +568,7 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 		}
 		if ResourceNeedResync(resource, curObj, ignoreAdd) {
 			// try to update resource
-			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
-				Update(context.TODO(), resource, metav1.UpdateOptions{})
+			lastError = doApplyPatch(ctx, dynamicClient, restMapper, resource, curObj)
 			if lastError == nil {
 				return true, nil
 			}
@@ -502,8 +587,8 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 				setNestedField(resourceCopy, getNestedString(curObj.Object, fields...), fields...)
 			}
 			// update with immutable values applied
-			_, lastError = dynamicClient.Resource(restMapping.Resource).Namespace(resourceCopy.GetNamespace()).
-				Update(context.TODO(), resourceCopy, metav1.UpdateOptions{})
+			// try to update resource
+			lastError = doApplyPatch(ctx, dynamicClient, restMapper, resource, curObj)
 			if lastError == nil {
 				return true, nil
 			}
@@ -517,11 +602,100 @@ func ApplyResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface
 	return lastError
 }
 
+func getOriginalConfiguration(current *unstructured.Unstructured) []byte {
+	annots := current.GetAnnotations()
+	if annots == nil {
+		return nil
+	}
+
+	original, ok := annots[known.LastAppliedConfigAnnotation]
+	if !ok {
+		return nil
+	}
+	return []byte(original)
+}
+
+func doApplyPatch(
+	ctx context.Context,
+	dynamicClient dynamic.Interface, restMapper meta.RESTMapper,
+	target, current *unstructured.Unstructured) error {
+	curData, err := json.Marshal(current)
+	if err != nil {
+		return errors.Wrap(err, "serializing current configuration")
+	}
+	newData, err := json.Marshal(target.Object)
+	if err != nil {
+		return errors.Wrap(err, "serializing target configuration")
+	}
+	originalData := getOriginalConfiguration(current)
+	restMapping, err := restMapper.RESTMapping(target.GroupVersionKind().GroupKind(), target.GroupVersionKind().Version)
+	if err != nil {
+		return errors.Wrap(err, "please check whether the advertised apiserver of current child cluster is accessible")
+	}
+
+	// Refer to the implementation of kubectl patcher
+	var patchType types.PatchType
+	var patch []byte
+	var lookupPatchMeta strategicpatch.LookupPatchMeta
+
+	versionedObject, err := kubectlscheme.Scheme.New(restMapping.GroupVersionKind)
+	switch {
+	case pkgruntime.IsNotRegisteredError(err):
+		// fall back to generic JSON merge patch
+		patchType = types.MergePatchType
+		preconditions := []mergepatch.PreconditionFunc{mergepatch.RequireKeyUnchanged("apiVersion"),
+			mergepatch.RequireKeyUnchanged("kind"), mergepatch.RequireMetadataKeyUnchanged("name")}
+		patch, err = jsonmergepatch.CreateThreeWayJSONMergePatch(originalData, newData, curData, preconditions...)
+		if err != nil {
+			if mergepatch.IsPreconditionFailed(err) {
+				return fmt.Errorf("%s", "At least one of apiVersion, kind and name was changed")
+			}
+			klog.Errorf("create jsonmergepath failed for gvk %s resource %s/%s, err %s",
+				restMapping.GroupVersionKind, target.GetNamespace(), target.GetName(), err.Error())
+			return err
+		}
+	case err != nil:
+		klog.Errorf("getting instance of versioned object for %v, err %s", restMapping.GroupVersionKind, err.Error())
+		return fmt.Errorf("getting instance of versioned object for %v, err %s",
+			restMapping.GroupVersionKind, err.Error())
+	case err == nil:
+		// Compute a three way strategic merge patch to send to server.
+		// TODO: Try to use openapi first if the openapi spec is available
+		patchType = types.StrategicMergePatchType
+		lookupPatchMeta, err = strategicpatch.NewPatchMetaFromStruct(versionedObject)
+		if err != nil {
+			klog.Errorf("get patch meta failed for gvk %s resource %s/%s, err %s",
+				restMapping.GroupVersionKind, target.GetNamespace(), target.GetName(), err.Error())
+			return err
+		}
+		patch, err = strategicpatch.CreateThreeWayMergePatch(originalData, newData, curData, lookupPatchMeta, true)
+		if err != nil {
+			klog.Errorf("create three way merge patch failed for gvk %s resource %s/%s, err %s",
+				restMapping.GroupVersionKind, target.GetNamespace(), target.GetName(), err.Error())
+			return err
+		}
+	}
+
+	if string(patch) == "{}" {
+		return nil
+	}
+	// try to update resource
+	_, err = dynamicClient.Resource(restMapping.Resource).Namespace(target.GetNamespace()).
+		Patch(ctx, target.GetName(), patchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		klog.Errorf("call patch resource %s/%s failed, patch type %s, err %s",
+			target.GetNamespace(), target.GetName(), patchType, err.Error())
+		// return original error
+		return err
+	}
+	return nil
+}
+
 func DeleteResourceWithRetry(ctx context.Context, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, resource *unstructured.Unstructured) error {
 	deletePropagationBackground := metav1.DeletePropagationBackground
 
 	var lastError error
-	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func() (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, retry.DefaultBackoff, func(ctx context.Context) (bool, error) {
 		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
 		if err != nil {
 			lastError = fmt.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
@@ -572,26 +746,30 @@ func getStatusCause(err error) ([]metav1.StatusCause, bool) {
 	return apierr.Status().Details.Causes, true
 }
 
-func GetDeployerCredentials(ctx context.Context, childKubeClientSet kubernetes.Interface, systemNamespace string) *corev1.Secret {
+func GetDeployerCredentials(ctx context.Context, childKubeClientSet kubernetes.Interface, systemNamespace string, saTokenAutoGen bool) *corev1.Secret {
 	var secret *corev1.Secret
 	localCtx, cancel := context.WithCancel(ctx)
 
 	klog.V(4).Infof("get ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA)
 	wait.JitterUntilWithContext(localCtx, func(ctx context.Context) {
-		sa, err := childKubeClientSet.CoreV1().ServiceAccounts(systemNamespace).Get(ctx, known.ClusternetAppSA, metav1.GetOptions{})
-		if err != nil {
-			klog.ErrorDepth(5, fmt.Errorf("failed to get ServiceAccount %s/%s: %v", systemNamespace, known.ClusternetAppSA, err))
-			return
+		secretName := known.ClusternetAppSA
+		if saTokenAutoGen {
+			sa, err := childKubeClientSet.CoreV1().ServiceAccounts(systemNamespace).Get(ctx, known.ClusternetAppSA, metav1.GetOptions{})
+			if err != nil {
+				klog.ErrorDepth(5, fmt.Errorf("failed to get ServiceAccount %s/%s: %v", systemNamespace, known.ClusternetAppSA, err))
+				return
+			}
+			if len(sa.Secrets) == 0 {
+				klog.ErrorDepth(5, fmt.Errorf("no secrets found in ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA))
+				return
+			}
+			secretName = sa.Secrets[0].Name
 		}
 
-		if len(sa.Secrets) == 0 {
-			klog.ErrorDepth(5, fmt.Errorf("no secrets found in ServiceAccount %s/%s", systemNamespace, known.ClusternetAppSA))
-			return
-		}
-
-		secret, err = childKubeClientSet.CoreV1().Secrets(systemNamespace).Get(ctx, sa.Secrets[0].Name, metav1.GetOptions{})
+		var err error
+		secret, err = childKubeClientSet.CoreV1().Secrets(systemNamespace).Get(ctx, secretName, metav1.GetOptions{})
 		if err != nil {
-			klog.ErrorDepth(5, fmt.Errorf("failed to get Secret %s/%s: %v", systemNamespace, sa.Secrets[0].Name, err))
+			klog.ErrorDepth(5, fmt.Errorf("failed to get Secret %s/%s: %v", systemNamespace, secretName, err))
 			return
 		}
 
@@ -618,9 +796,24 @@ func IsClusterLost(clusterID, namespace string, clusterLister clusterlisters.Man
 		return true
 	}
 
-	for _, condition := range mcls[0].Status.Conditions {
+	// short-circuit
+	// in case the conditions are not updated yet
+	if len(mcls[0].Status.Conditions) == 0 {
+		return false
+	}
+
+	return !ClusterHasReadyCondition(mcls[0])
+}
+
+func ClusterHasReadyCondition(mc *clusterapi.ManagedCluster) bool {
+	// in case the conditions are not updated yet
+	if len(mc.Status.Conditions) == 0 {
+		return false
+	}
+
+	for _, condition := range mc.Status.Conditions {
 		if condition.Type == clusterapi.ClusterReady {
-			return condition.Status == metav1.ConditionUnknown
+			return condition.Status == metav1.ConditionTrue
 		}
 	}
 
@@ -703,4 +896,72 @@ func ResourceNeedResync(current pkgruntime.Object, modified pkgruntime.Object, i
 	}
 
 	return false
+}
+
+func UpdateDescriptionStatus(
+	ctx context.Context,
+	desc *appsapi.Description,
+	status *appsapi.DescriptionStatus,
+	clusternetClient *clusternetclientset.Clientset,
+	deployerTrigger bool,
+) error {
+	if desc == nil || status == nil {
+		return nil
+	}
+
+	if !deployerTrigger && reflect.DeepEqual(desc.Status, appsapi.DescriptionStatus{}) {
+		return fmt.Errorf("waiting for the deployer to update description status first")
+	}
+
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+	desc = desc.DeepCopy()
+	return wait.ExponentialBackoffWithContext(ctx, retry.DefaultRetry, func(ctx context.Context) (done bool, err error) {
+		klog.V(5).Infof("try to update Description %q status", desc.Name)
+		desc.Status = *status
+		_, err = clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).UpdateStatus(ctx, desc, metav1.UpdateOptions{})
+		if err == nil {
+			// TODO
+			return true, nil
+		}
+
+		updated, err2 := clusternetClient.AppsV1alpha1().Descriptions(desc.Namespace).Get(ctx, desc.Name, metav1.GetOptions{})
+		if err2 == nil {
+			// make a copy, so we don't mutate the shared cache
+			desc = updated.DeepCopy()
+			return false, nil
+		}
+		utilruntime.HandleError(fmt.Errorf("error getting updated Description %q: %v", desc.Name, err2))
+		return false, err
+	})
+}
+
+func BaseUidIndexFunc(obj interface{}) ([]string, error) {
+	base, ok := obj.(*appsapi.Base)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Base %#v", obj)
+	}
+	return []string{string(base.UID)}, nil
+}
+
+func BaseSubUidIndexFunc(obj interface{}) ([]string, error) {
+	base, ok := obj.(*appsapi.Base)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Base %#v", obj)
+	}
+
+	subUid, ok := base.Labels[known.ConfigSubscriptionUIDLabel]
+	if !ok {
+		return nil, fmt.Errorf("no subUid found for Base %#v", obj)
+	}
+	return []string{subUid}, nil
+}
+
+func SubUidIndexFunc(obj interface{}) ([]string, error) {
+	sub, ok := obj.(*appsapi.Subscription)
+	if !ok {
+		return nil, fmt.Errorf("object is not a Subscription %#v", obj)
+	}
+	return []string{string(sub.UID)}, nil
 }

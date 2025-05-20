@@ -73,23 +73,38 @@ func TestTaintTolerationScore(t *testing.T) {
 		// basic test case
 		{
 			name: "cluster with taints tolerated by the subscription, gets a higher score than those cluster with intolerable taints",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{
-				Key:      "foo",
-				Operator: v1.TolerationOpEqual,
-				Value:    "bar",
-				Effect:   v1.TaintEffectPreferNoSchedule,
-			}}),
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{
+					{
+						Key:      "foo",
+						Operator: v1.TolerationOpEqual,
+						Value:    "bar",
+						Effect:   v1.TaintEffectPreferNoSchedule,
+					},
+				},
+			),
 			clusters: []*clusterapi.ManagedCluster{
-				clusterWithTaints("cluster-ns-01", []v1.Taint{{
-					Key:    "foo",
-					Value:  "bar",
-					Effect: v1.TaintEffectPreferNoSchedule,
-				}}),
-				clusterWithTaints("cluster-ns-02", []v1.Taint{{
-					Key:    "foo",
-					Value:  "blah",
-					Effect: v1.TaintEffectPreferNoSchedule,
-				}}),
+				clusterWithTaints(
+					"cluster-ns-01",
+					[]v1.Taint{
+						{
+							Key:    "foo",
+							Value:  "bar",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
+					},
+				),
+				clusterWithTaints(
+					"cluster-ns-02",
+					[]v1.Taint{
+						{
+							Key:    "foo",
+							Value:  "blah",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
+					},
+				),
 			},
 			expectedList: []framework.ClusterScore{
 				{NamespacedName: "cluster-ns-01/cluster-test", Score: framework.MaxClusterScore},
@@ -105,7 +120,8 @@ func TestTaintTolerationScore(t *testing.T) {
 					Operator: v1.TolerationOpEqual,
 					Value:    "arm64",
 					Effect:   v1.TaintEffectPreferNoSchedule,
-				}, {
+				},
+				{
 					Key:      "disk-type",
 					Operator: v1.TolerationOpEqual,
 					Value:    "ssd",
@@ -114,24 +130,30 @@ func TestTaintTolerationScore(t *testing.T) {
 			}),
 			clusters: []*clusterapi.ManagedCluster{
 				clusterWithTaints("cluster-ns-01", []v1.Taint{}),
-				clusterWithTaints("cluster-ns-02", []v1.Taint{
-					{
-						Key:    "cpu-type",
-						Value:  "arm64",
-						Effect: v1.TaintEffectPreferNoSchedule,
+				clusterWithTaints(
+					"cluster-ns-02",
+					[]v1.Taint{
+						{
+							Key:    "cpu-type",
+							Value:  "arm64",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
 					},
-				}),
-				clusterWithTaints("cluster-ns-03", []v1.Taint{
-					{
-						Key:    "cpu-type",
-						Value:  "arm64",
-						Effect: v1.TaintEffectPreferNoSchedule,
-					}, {
-						Key:    "disk-type",
-						Value:  "ssd",
-						Effect: v1.TaintEffectPreferNoSchedule,
+				),
+				clusterWithTaints(
+					"cluster-ns-03",
+					[]v1.Taint{
+						{
+							Key:    "cpu-type",
+							Value:  "arm64",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						}, {
+							Key:    "disk-type",
+							Value:  "ssd",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
 					},
-				}),
+				),
 			},
 			expectedList: []framework.ClusterScore{
 				{NamespacedName: "cluster-ns-01/cluster-test", Score: framework.MaxClusterScore},
@@ -142,32 +164,43 @@ func TestTaintTolerationScore(t *testing.T) {
 		// the count of taints on a cluster that are not tolerated by subscription, matters.
 		{
 			name: "the more intolerable taints a cluster has, the lower score it gets.",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{
-				Key:      "foo",
-				Operator: v1.TolerationOpEqual,
-				Value:    "bar",
-				Effect:   v1.TaintEffectPreferNoSchedule,
-			}}),
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{
+					{
+						Key:      "foo",
+						Operator: v1.TolerationOpEqual,
+						Value:    "bar",
+						Effect:   v1.TaintEffectPreferNoSchedule,
+					},
+				},
+			),
 			clusters: []*clusterapi.ManagedCluster{
 				clusterWithTaints("cluster-ns-01", []v1.Taint{}),
-				clusterWithTaints("cluster-ns-02", []v1.Taint{
-					{
-						Key:    "cpu-type",
-						Value:  "arm64",
-						Effect: v1.TaintEffectPreferNoSchedule,
+				clusterWithTaints(
+					"cluster-ns-02",
+					[]v1.Taint{
+						{
+							Key:    "cpu-type",
+							Value:  "arm64",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
 					},
-				}),
-				clusterWithTaints("cluster-ns-03", []v1.Taint{
-					{
-						Key:    "cpu-type",
-						Value:  "arm64",
-						Effect: v1.TaintEffectPreferNoSchedule,
-					}, {
-						Key:    "disk-type",
-						Value:  "ssd",
-						Effect: v1.TaintEffectPreferNoSchedule,
+				),
+				clusterWithTaints(
+					"cluster-ns-03",
+					[]v1.Taint{
+						{
+							Key:    "cpu-type",
+							Value:  "arm64",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						}, {
+							Key:    "disk-type",
+							Value:  "ssd",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
 					},
-				}),
+				),
 			},
 			expectedList: []framework.ClusterScore{
 				{NamespacedName: "cluster-ns-01/cluster-test", Score: framework.MaxClusterScore},
@@ -178,39 +211,48 @@ func TestTaintTolerationScore(t *testing.T) {
 		// taints-tolerations priority only takes care about the taints and tolerations that have effect PreferNoSchedule
 		{
 			name: "only taints and tolerations that have effect PreferNoSchedule are checked by taints-tolerations priority function",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{
-				{
-					Key:      "cpu-type",
-					Operator: v1.TolerationOpEqual,
-					Value:    "arm64",
-					Effect:   v1.TaintEffectNoSchedule,
-				}, {
-					Key:      "disk-type",
-					Operator: v1.TolerationOpEqual,
-					Value:    "ssd",
-					Effect:   v1.TaintEffectNoSchedule,
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{
+					{
+						Key:      "cpu-type",
+						Operator: v1.TolerationOpEqual,
+						Value:    "arm64",
+						Effect:   v1.TaintEffectNoSchedule,
+					}, {
+						Key:      "disk-type",
+						Operator: v1.TolerationOpEqual,
+						Value:    "ssd",
+						Effect:   v1.TaintEffectNoSchedule,
+					},
 				},
-			}),
+			),
 			clusters: []*clusterapi.ManagedCluster{
 				clusterWithTaints("cluster-ns-01", []v1.Taint{}),
-				clusterWithTaints("cluster-ns-02", []v1.Taint{
-					{
-						Key:    "cpu-type",
-						Value:  "arm64",
-						Effect: v1.TaintEffectNoSchedule,
+				clusterWithTaints(
+					"cluster-ns-02",
+					[]v1.Taint{
+						{
+							Key:    "cpu-type",
+							Value:  "arm64",
+							Effect: v1.TaintEffectNoSchedule,
+						},
 					},
-				}),
-				clusterWithTaints("cluster-ns-03", []v1.Taint{
-					{
-						Key:    "cpu-type",
-						Value:  "arm64",
-						Effect: v1.TaintEffectPreferNoSchedule,
-					}, {
-						Key:    "disk-type",
-						Value:  "ssd",
-						Effect: v1.TaintEffectPreferNoSchedule,
+				),
+				clusterWithTaints(
+					"cluster-ns-03",
+					[]v1.Taint{
+						{
+							Key:    "cpu-type",
+							Value:  "arm64",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						}, {
+							Key:    "disk-type",
+							Value:  "ssd",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
 					},
-				}),
+				),
 			},
 			expectedList: []framework.ClusterScore{
 				{NamespacedName: "cluster-ns-01/cluster-test", Score: framework.MaxClusterScore},
@@ -225,13 +267,16 @@ func TestTaintTolerationScore(t *testing.T) {
 			clusters: []*clusterapi.ManagedCluster{
 				// Cluster without taints
 				clusterWithTaints("cluster-ns-01", []v1.Taint{}),
-				clusterWithTaints("cluster-ns-02", []v1.Taint{
-					{
-						Key:    "cpu-type",
-						Value:  "arm64",
-						Effect: v1.TaintEffectPreferNoSchedule,
+				clusterWithTaints(
+					"cluster-ns-02",
+					[]v1.Taint{
+						{
+							Key:    "cpu-type",
+							Value:  "arm64",
+							Effect: v1.TaintEffectPreferNoSchedule,
+						},
 					},
-				}),
+				),
 			},
 			expectedList: []framework.ClusterScore{
 				{NamespacedName: "cluster-ns-01/cluster-test", Score: framework.MaxClusterScore},
@@ -256,14 +301,14 @@ func TestTaintTolerationScore(t *testing.T) {
 			p, _ := New(nil, fh)
 			var gotList framework.ClusterScoreList
 			for _, n := range test.clusters {
-				score, status := p.(framework.ScorePlugin).Score(context.Background(), test.subscription, klog.KObj(n).String())
+				score, status := p.(framework.ScorePlugin).Score(context.Background(), nil, test.subscription, klog.KObj(n).String())
 				if !status.IsSuccess() {
 					t.Errorf("unexpected error: %v", status)
 				}
 				gotList = append(gotList, framework.ClusterScore{NamespacedName: klog.KObj(n).String(), Score: score})
 			}
 
-			status := p.(framework.ScorePlugin).ScoreExtensions().NormalizeScore(context.Background(), gotList)
+			status := p.(framework.ScorePlugin).ScoreExtensions().NormalizeScore(context.Background(), nil, nil, gotList)
 			if !status.IsSuccess() {
 				t.Errorf("unexpected error: %v", status)
 			}
@@ -285,69 +330,117 @@ func TestTaintTolerationFilter(t *testing.T) {
 		{
 			name:         "A subscription having no tolerations can't be scheduled onto a cluster with nonempty taints",
 			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}}),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
+			),
 			wantStatus: framework.NewStatus(framework.UnschedulableAndUnresolvable,
 				"clusters(s) had taint {dedicated: user1}, that the subscription didn't tolerate"),
 		},
 		{
-			name:         "A subscription which can be scheduled on a dedicated cluster assigned to user1 with effect NoSchedule",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}}),
+			name: "A subscription which can be scheduled on a dedicated cluster assigned to user1 with effect NoSchedule",
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
+			),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
+			),
 		},
 		{
-			name:         "A subscription which can't be scheduled on a dedicated cluster assigned to user2 with effect NoSchedule",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"}}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}}),
+			name: "A subscription which can't be scheduled on a dedicated cluster assigned to user2 with effect NoSchedule",
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"}},
+			),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "dedicated", Value: "user1", Effect: "NoSchedule"}},
+			),
 			wantStatus: framework.NewStatus(framework.UnschedulableAndUnresolvable,
 				"clusters(s) had taint {dedicated: user1}, that the subscription didn't tolerate"),
 		},
 		{
-			name:         "A subscription can be scheduled onto the cluster, with a toleration uses operator Exists that tolerates the taints on the cluster",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{Key: "foo", Operator: "Exists", Effect: "NoSchedule"}}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "foo", Value: "bar", Effect: "NoSchedule"}}),
+			name: "A subscription can be scheduled onto the cluster, with a toleration uses operator Exists that tolerates the taints on the cluster",
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{{Key: "foo", Operator: "Exists", Effect: "NoSchedule"}},
+			),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "foo", Value: "bar", Effect: "NoSchedule"}},
+			),
 		},
 		{
 			name: "A subscription has multiple tolerations, cluster has multiple taints, all the taints are tolerated, subscription can be scheduled onto the cluster",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{
-				{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"},
-				{Key: "foo", Operator: "Exists", Effect: "NoSchedule"},
-			}),
-			cluster: clusterWithTaints("clusterA", []v1.Taint{
-				{Key: "dedicated", Value: "user2", Effect: "NoSchedule"},
-				{Key: "foo", Value: "bar", Effect: "NoSchedule"},
-			}),
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{
+					{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"},
+					{Key: "foo", Operator: "Exists", Effect: "NoSchedule"},
+				},
+			),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{
+					{Key: "dedicated", Value: "user2", Effect: "NoSchedule"},
+					{Key: "foo", Value: "bar", Effect: "NoSchedule"},
+				},
+			),
 		},
 		{
 			name: "A subscription has a toleration that keys and values match the taint on the cluster, but (non-empty) effect doesn't match, " +
 				"can't be scheduled onto the cluster",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{Key: "foo", Operator: "Equal", Value: "bar", Effect: "PreferNoSchedule"}}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "foo", Value: "bar", Effect: "NoSchedule"}}),
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{{Key: "foo", Operator: "Equal", Value: "bar", Effect: "PreferNoSchedule"}},
+			),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "foo", Value: "bar", Effect: "NoSchedule"}},
+			),
 			wantStatus: framework.NewStatus(framework.UnschedulableAndUnresolvable,
 				"clusters(s) had taint {foo: bar}, that the subscription didn't tolerate"),
 		},
 		{
 			name: "The subscription has a toleration that keys and values match the taint on the cluster, the effect of toleration is empty, " +
 				"and the effect of taint is NoSchedule. Subscription can be scheduled onto the cluster",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{Key: "foo", Operator: "Equal", Value: "bar"}}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "foo", Value: "bar", Effect: "NoSchedule"}}),
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{{Key: "foo", Operator: "Equal", Value: "bar"}},
+			),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "foo", Value: "bar", Effect: "NoSchedule"}},
+			),
 		},
 		{
 			name: "The subscription has a toleration that key and value don't match the taint on the cluster, " +
 				"but the effect of taint on cluster is PreferNoSchedule. Subscription can be scheduled onto the cluster",
-			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"}}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "PreferNoSchedule"}}),
+			subscription: subscriptionWithTolerations(
+				"sub1",
+				[]v1.Toleration{{Key: "dedicated", Operator: "Equal", Value: "user2", Effect: "NoSchedule"}},
+			),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "dedicated", Value: "user1", Effect: "PreferNoSchedule"}},
+			),
 		},
 		{
 			name: "The subscription has no toleration, " +
 				"but the effect of taint on cluster is PreferNoSchedule. Subscription can be scheduled onto the cluster",
 			subscription: subscriptionWithTolerations("sub1", []v1.Toleration{}),
-			cluster:      clusterWithTaints("clusterA", []v1.Taint{{Key: "dedicated", Value: "user1", Effect: "PreferNoSchedule"}}),
+			cluster: clusterWithTaints(
+				"clusterA",
+				[]v1.Taint{{Key: "dedicated", Value: "user1", Effect: "PreferNoSchedule"}},
+			),
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			p, _ := New(nil, nil)
-			gotStatus := p.(framework.FilterPlugin).Filter(context.Background(), test.subscription, test.cluster)
+			gotStatus := p.(framework.FilterPlugin).Filter(context.Background(), nil, test.subscription, test.cluster)
 			if !reflect.DeepEqual(gotStatus, test.wantStatus) {
 				t.Errorf("status does not match: %v, want: %v", gotStatus, test.wantStatus)
 			}

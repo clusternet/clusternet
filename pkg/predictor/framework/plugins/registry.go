@@ -19,7 +19,6 @@ package plugins
 import (
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins/defaultaggregate"
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins/defaultcompute"
-	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins/names"
 	"github.com/clusternet/clusternet/pkg/predictor/framework/plugins/tainttoleration"
 	"github.com/clusternet/clusternet/pkg/predictor/framework/runtime"
 )
@@ -27,8 +26,8 @@ import (
 // NewInTreeRegistry builds the registry with all the in-tree plugins.
 func NewInTreeRegistry() runtime.Registry {
 	return runtime.Registry{
-		names.DefaultAggregator: defaultaggregate.New,
-		names.DefaultComputer:   defaultcompute.New,
-		names.TaintToleration:   tainttoleration.New,
+		defaultaggregate.Name: defaultaggregate.New,
+		defaultcompute.Name:   defaultcompute.New,
+		tainttoleration.Name:  tainttoleration.New,
 	}
 }

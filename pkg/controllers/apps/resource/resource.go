@@ -18,6 +18,8 @@ package resource
 
 import (
 	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,9 +37,27 @@ import (
 	"github.com/clusternet/clusternet/pkg/utils"
 )
 
-type SyncHandlerFunc func(ownedByValue string) error
+type SyncHandlerFunc func(resAttrs *ResourceAttrs) error
 
-// Controller is a controller that handle `name` specified resource
+const (
+	// ResourceEvent Add Type
+	ObjectAdd = "Add"
+	// ResourceEvent Update resource status
+	ObjectUpdateStatus = "UpdateStatus"
+	// ResourceEvent Update resource spec
+	ObjectUpdateOthers = "ObjectUpdateOthers"
+	// ResourceEvent Delete Type
+	ObjectDelete = "Delete"
+)
+
+// ResourceAttrs
+type ResourceAttrs struct {
+	Namespace    string
+	Name         string
+	ObjectAction string
+}
+
+// Controller is a controller that handles `name` specified resource
 type Controller struct {
 	workqueue        workqueue.RateLimitingInterface
 	client           utils.ResourceClient
@@ -45,6 +65,19 @@ type Controller struct {
 	syncHandlerFunc  SyncHandlerFunc
 	name             string
 	clusternetClient *versioned.Clientset
+}
+
+func getResourceAttrs(namespaceName string, action string) (*ResourceAttrs, error) {
+	parts := strings.Split(namespaceName, ".")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("split namespaceName error")
+	}
+	resAttrs := &ResourceAttrs{
+		Namespace:    parts[0],
+		Name:         parts[1],
+		ObjectAction: action,
+	}
+	return resAttrs, nil
 }
 
 func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.Clientset,
@@ -58,39 +91,78 @@ func NewController(apiResource *metav1.APIResource, clusternetClient *versioned.
 	resourceClient := utils.NewResourceClient(client, apiResource)
 
 	c := &Controller{
-		workqueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), gvk.String()),
 		syncHandlerFunc:  syncHandlerFunc,
 		client:           resourceClient,
 		name:             gvk.String(),
 		clusternetClient: clusternetClient,
+		workqueue: workqueue.NewRateLimitingQueueWithConfig(
+			workqueue.DefaultControllerRateLimiter(),
+			workqueue.RateLimitingQueueConfig{Name: gvk.String()},
+		),
 	}
 
-	ri := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
+	ri, err := utils.NewResourceInformer(resourceClient, apiResource, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			resource := obj.(*unstructured.Unstructured)
 			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
-			if ok {
+			resAttrs, err := getResourceAttrs(val, ObjectAdd)
+			if ok && err == nil {
 				klog.V(4).Infof("adding %s %q", c.name, klog.KObj(resource))
-				c.enqueue(val)
+				c.enqueue(resAttrs)
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			resource := oldObj.(*unstructured.Unstructured)
-			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
-			if ok {
-				klog.V(4).Infof("updating %s %q", c.name, klog.KObj(resource))
-				c.enqueue(val)
+			oldresource := oldObj.(*unstructured.Unstructured)
+			newresource := newObj.(*unstructured.Unstructured)
+			oldstatus, _, _ := unstructured.NestedMap(oldresource.Object, "status")
+			newstatus, _, _ := unstructured.NestedMap(newresource.Object, "status")
+			oldspec, _, _ := unstructured.NestedMap(oldresource.Object, "spec")
+			newspec, _, _ := unstructured.NestedMap(newresource.Object, "spec")
+			val, ok := oldresource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
+
+			var resAttrs *ResourceAttrs
+			var err error
+			if !reflect.DeepEqual(oldspec, newspec) {
+				resAttrs, err = getResourceAttrs(val, ObjectUpdateOthers)
+			} else if !reflect.DeepEqual(oldstatus, newstatus) {
+				resAttrs, err = getResourceAttrs(val, ObjectUpdateStatus)
+			} else {
+				resAttrs, err = getResourceAttrs(val, ObjectUpdateOthers)
+			}
+
+			if ok && err == nil {
+				klog.V(4).Infof("updating %s %q", c.name, klog.KObj(oldresource))
+				c.enqueue(resAttrs)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			resource := obj.(*unstructured.Unstructured)
+			var resource *unstructured.Unstructured
+			switch t := obj.(type) {
+			case *unstructured.Unstructured:
+				resource = obj.(*unstructured.Unstructured)
+			case cache.DeletedFinalStateUnknown:
+				var ok bool
+				resource, ok = t.Obj.(*unstructured.Unstructured)
+				if !ok {
+					utilruntime.HandleError(fmt.Errorf("unable to convert object %T to *unstructured.Unstructured", obj))
+					return
+				}
+			default:
+				utilruntime.HandleError(fmt.Errorf("unable to handle object %T", obj))
+				return
+			}
+
 			val, ok := resource.GetAnnotations()[known.ObjectOwnedByDescriptionAnnotation]
-			if ok {
+			resAttrs, err := getResourceAttrs(val, ObjectDelete)
+			if ok && err == nil {
 				klog.V(4).Infof("deleting %s %q", c.name, klog.KObj(resource))
-				c.enqueue(val)
+				c.enqueue(resAttrs)
 			}
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
 	ri.Start()
 	c.resourceSynced = ri.HasSynced
 
@@ -148,9 +220,9 @@ func (c *Controller) processNextWorkItem() bool {
 		// put back on the workqueue and attempted again after a back-off
 		// period.
 		defer c.workqueue.Done(obj)
-		var key string
+		var key ResourceAttrs
 		var ok bool
-		if key, ok = obj.(string); !ok {
+		if key, ok = obj.(ResourceAttrs); !ok {
 			// As the item in the workqueue is actually invalid, we call
 			// Forget here else we'd go into a loop of attempting to
 			// process a work item that is invalid.
@@ -158,7 +230,7 @@ func (c *Controller) processNextWorkItem() bool {
 			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		if err := c.syncHandler(key); err != nil {
+		if err := c.syncHandler(&key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
@@ -179,12 +251,16 @@ func (c *Controller) processNextWorkItem() bool {
 
 // syncHandler compares the actual state with the desired, and attempts to
 // converge the two.
-func (c *Controller) syncHandler(key string) error {
-	klog.V(4).Infof("start processing Description %s", key)
-	return c.syncHandlerFunc(key)
+func (c *Controller) syncHandler(resAttrs *ResourceAttrs) error {
+	if resAttrs == nil {
+		return fmt.Errorf("error resAttrs is nil")
+	}
+
+	klog.V(4).Infof("start processing Description %s/%s", resAttrs.Namespace, resAttrs.Name)
+	return c.syncHandlerFunc(resAttrs)
 }
 
 // enqueue puts key onto the work queue.
-func (c *Controller) enqueue(key string) {
-	c.workqueue.Add(key)
+func (c *Controller) enqueue(resAttrs *ResourceAttrs) {
+	c.workqueue.Add(*resAttrs)
 }

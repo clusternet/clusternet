@@ -19,7 +19,7 @@ package generic
 import (
 	"context"
 	"fmt"
-	"strings"
+	"reflect"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -27,14 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
@@ -74,7 +72,11 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	appDeployerConfig *rest.Config, clusternetClient *clusternetclientset.Clientset,
 	clusternetInformerFactory clusternetinformers.SharedInformerFactory,
 	recorder record.EventRecorder) (*Deployer, error) {
-	childKubeClient, err := kubernetes.NewForConfig(appDeployerConfig)
+	httpClient, err := rest.HTTPClientFor(appDeployerConfig)
+	if err != nil {
+		return nil, err
+	}
+	mapper, err := apiutil.NewDynamicRESTMapper(appDeployerConfig, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +89,7 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 		syncMode:            syncMode,
 		appPusherEnabled:    appPusherEnabled,
 		dynamicClient:       dynamicClient,
-		discoveryRESTMapper: restmapper.NewDeferredDiscoveryRESTMapper(cacheddiscovery.NewMemCacheClient(childKubeClient.Discovery())),
+		discoveryRESTMapper: mapper,
 		clusternetClient:    clusternetClient,
 		descLister:          clusternetInformerFactory.Apps().V1alpha1().Descriptions().Lister(),
 		descSynced:          clusternetInformerFactory.Apps().V1alpha1().Descriptions().Informer().HasSynced,
@@ -109,18 +111,13 @@ func NewDeployer(syncMode clusterapi.ClusterSyncMode, appPusherEnabled bool,
 	return deployer, nil
 }
 
-func (deployer *Deployer) Run(workers int, stopCh <-chan struct{}) {
+func (deployer *Deployer) Run(workers int, ctx context.Context) {
 	klog.Info("starting generic deployer...")
 	defer klog.Info("shutting generic deployer")
 
-	// Wait for the caches to be synced before starting workers
-	if !cache.WaitForNamedCacheSync("generic-deployer", stopCh, deployer.descSynced) {
-		return
-	}
+	go deployer.descController.Run(workers, ctx)
 
-	go deployer.descController.Run(workers, stopCh)
-
-	<-stopCh
+	<-ctx.Done()
 }
 
 func (deployer *Deployer) handleDescription(desc *appsapi.Description) error {
@@ -148,8 +145,13 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 	gvk := resource.GroupVersionKind()
 
 	if !deployer.ControllerHasStarted(gvk) {
-		restMapping, _ := deployer.discoveryRESTMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
-		//add informer
+		restMapping, err := deployer.discoveryRESTMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		if err != nil {
+			klog.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
+			return err
+		}
+
+		// add informer
 		apiResource := &metav1.APIResource{
 			Group:      resource.GroupVersionKind().Group,
 			Version:    resource.GroupVersionKind().Version,
@@ -167,42 +169,52 @@ func (deployer *Deployer) ResourceCallbackHandler(resource *unstructured.Unstruc
 			return err
 		}
 
-		//DO NOT recycle resource controller so they live forever as resource controller cache
-		deployer.AddController(gvk, resourceController)
-		stopChan := make(chan struct{})
-		resourceController.Run(known.DefaultThreadiness, stopChan)
+		// DO NOT recycle resource controller so they live forever as resource controller cache
+		if deployer.AddController(gvk, resourceController) {
+			go func() {
+				stopChan := make(chan struct{})
+				resourceController.Run(known.DefaultThreadiness, stopChan)
+			}()
+		}
 	}
 	return nil
 }
 
-func (deployer *Deployer) handleResource(ownedByValue string) error {
-	// get description ns and name
-	parts := strings.Split(ownedByValue, ".")
-	if len(parts) < 2 {
-		return fmt.Errorf("unexpected value for annotation %s: %s", known.ObjectOwnedByDescriptionAnnotation, ownedByValue)
+func (deployer *Deployer) handleResource(resAttrs *resourcecontroller.ResourceAttrs) error {
+	klog.Infof("handle handleResource [%s]", resAttrs)
+	if resAttrs == nil {
+		return fmt.Errorf("unexpected value for resAttrs nil")
 	}
-	// namespace contains no ".", while name does
-	namespace := parts[0]
-	name := strings.TrimPrefix(ownedByValue, namespace+".")
 
-	desc, err := deployer.descLister.Descriptions(namespace).Get(name)
+	desc, err := deployer.descLister.Descriptions(resAttrs.Namespace).Get(resAttrs.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(2).Infof("the owner description %q has been deleted", ownedByValue)
+			klog.V(2).Infof("the owner description %s/%s has been deleted", resAttrs.Namespace, resAttrs.Name)
 			return nil
 		}
 		return err
 	}
 
 	if desc.DeletionTimestamp != nil {
-		klog.V(4).Infof("do not rollback in-deleting Description %s", ownedByValue)
+		klog.V(4).Infof("do not rollback in-deleting Description %s/%s", resAttrs.Namespace, resAttrs.Name)
 		return nil
 	}
 
-	err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
-		deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil, true)
-	if err == nil {
-		klog.V(4).Infof("successfully rollback Description %s", ownedByValue)
+	if resAttrs.ObjectAction != resourcecontroller.ObjectDelete {
+		err = deployer.SyncDescriptionStatus(deployer.dynamicClient, deployer.discoveryRESTMapper, desc)
+		if err != nil {
+			klog.Errorf("failed to sync Description %s status with error: %v", klog.KObj(desc).String(), err)
+			return err
+		}
+		klog.V(5).Infof("successfully update Description %s manifestStatus", klog.KObj(desc).String())
+	}
+
+	if resAttrs.ObjectAction != resourcecontroller.ObjectUpdateStatus {
+		err = utils.ApplyDescription(context.TODO(), deployer.clusternetClient, deployer.dynamicClient,
+			deployer.discoveryRESTMapper, desc, deployer.recorder, false, nil, true)
+		if err == nil {
+			klog.V(4).Infof("successfully rollback Description %s/%s", resAttrs.Namespace, resAttrs.Name)
+		}
 	}
 	return err
 }
@@ -217,12 +229,87 @@ func (deployer *Deployer) ControllerHasStarted(gvk schema.GroupVersionKind) bool
 	}
 }
 
-func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller *resourcecontroller.Controller) {
+func (deployer *Deployer) AddController(gvk schema.GroupVersionKind, controller *resourcecontroller.Controller) bool {
 	deployer.lock.Lock()
 	defer deployer.lock.Unlock()
 	if _, ok := deployer.rsControllers[gvk]; ok {
-		return
+		return false
 	} else {
 		deployer.rsControllers[gvk] = controller
+		return true
 	}
+}
+
+func (deployer *Deployer) SyncDescriptionStatus(
+	dynamicClient dynamic.Interface,
+	restMapper meta.RESTMapper,
+	desc *appsapi.Description,
+) error {
+	descStatus := desc.Status.DeepCopy()
+	// descStatusMap for check and update exsit ManifestStatus
+	descStatusMap := make(map[string]int)
+	for index, status := range descStatus.ManifestStatuses {
+		descStatusMap[status.Namespace+"/"+status.Name] = index
+	}
+
+	objectsToBeDeployed := desc.Spec.Raw
+	for _, object := range objectsToBeDeployed {
+		resource := &unstructured.Unstructured{}
+		err := resource.UnmarshalJSON(object)
+		if err != nil {
+			msg := fmt.Sprintf("failed to unmarshal resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			continue
+		}
+
+		restMapping, err := restMapper.RESTMapping(resource.GroupVersionKind().GroupKind(), resource.GroupVersionKind().Version)
+		if err != nil {
+			klog.Errorf("please check whether the advertised apiserver of current child cluster is accessible. %v", err)
+			return err
+		}
+
+		// Get cluster Resource
+		resourceObj, err := dynamicClient.Resource(restMapping.Resource).Namespace(resource.GetNamespace()).
+			Get(context.TODO(), resource.GetName(), metav1.GetOptions{})
+		if err != nil {
+			msg := fmt.Sprintf("failed to Get resource: %v", err)
+			klog.ErrorDepth(5, msg)
+			return err
+		}
+		manifestStatus := appsapi.ManifestStatus{
+			Feed: appsapi.Feed{
+				Kind:       resourceObj.GetKind(),
+				APIVersion: resourceObj.GetAPIVersion(),
+				Namespace:  resourceObj.GetNamespace(),
+				Name:       resourceObj.GetName(),
+			},
+		}
+		statusMap, _, err := unstructured.NestedMap(resourceObj.Object, "status")
+		if err != nil {
+			klog.Errorf("Failed to get status field from %s(%s/%s), error: %v", resourceObj.GetKind(),
+				resourceObj.GetNamespace(), resourceObj.GetName(), err)
+			return err
+		}
+		result := &unstructured.Unstructured{}
+		result.SetUnstructuredContent(statusMap)
+
+		manifestStatus.ObservedStatus.Reset()
+		manifestStatus.ObservedStatus.Object = result.DeepCopyObject()
+
+		key := manifestStatus.Namespace + "/" + manifestStatus.Name
+		if index, ok := descStatusMap[key]; ok {
+			descStatus.ManifestStatuses[index] = *manifestStatus.DeepCopy()
+		} else {
+			descStatus.ManifestStatuses = append(descStatus.ManifestStatuses, *manifestStatus.DeepCopy())
+			descStatusMap[key] = len(descStatus.ManifestStatuses) - 1
+		}
+	}
+
+	// try to update Descriptions Status
+	var err error
+	if !reflect.DeepEqual(desc.Status.ManifestStatuses, descStatus.ManifestStatuses) {
+		err = utils.UpdateDescriptionStatus(context.TODO(), desc, descStatus, deployer.clusternetClient, false)
+	}
+
+	return err
 }

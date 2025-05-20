@@ -19,9 +19,12 @@ package v1alpha1
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 	"time"
 
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	scheme "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -46,6 +49,8 @@ type HelmReleaseInterface interface {
 	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.HelmReleaseList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.HelmRelease, err error)
+	Apply(ctx context.Context, helmRelease *appsv1alpha1.HelmReleaseApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmRelease, err error)
+	ApplyStatus(ctx context.Context, helmRelease *appsv1alpha1.HelmReleaseApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmRelease, err error)
 	HelmReleaseExpansion
 }
 
@@ -187,6 +192,62 @@ func (c *helmReleases) Patch(ctx context.Context, name string, pt types.PatchTyp
 		Name(name).
 		SubResource(subresources...).
 		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(data).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied helmRelease.
+func (c *helmReleases) Apply(ctx context.Context, helmRelease *appsv1alpha1.HelmReleaseApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmRelease, err error) {
+	if helmRelease == nil {
+		return nil, fmt.Errorf("helmRelease provided to Apply must not be nil")
+	}
+	patchOpts := opts.ToPatchOptions()
+	data, err := json.Marshal(helmRelease)
+	if err != nil {
+		return nil, err
+	}
+	name := helmRelease.Name
+	if name == nil {
+		return nil, fmt.Errorf("helmRelease.Name must be provided to Apply")
+	}
+	result = &v1alpha1.HelmRelease{}
+	err = c.client.Patch(types.ApplyPatchType).
+		Namespace(c.ns).
+		Resource("helmreleases").
+		Name(*name).
+		VersionedParams(&patchOpts, scheme.ParameterCodec).
+		Body(data).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *helmReleases) ApplyStatus(ctx context.Context, helmRelease *appsv1alpha1.HelmReleaseApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmRelease, err error) {
+	if helmRelease == nil {
+		return nil, fmt.Errorf("helmRelease provided to Apply must not be nil")
+	}
+	patchOpts := opts.ToPatchOptions()
+	data, err := json.Marshal(helmRelease)
+	if err != nil {
+		return nil, err
+	}
+
+	name := helmRelease.Name
+	if name == nil {
+		return nil, fmt.Errorf("helmRelease.Name must be provided to Apply")
+	}
+
+	result = &v1alpha1.HelmRelease{}
+	err = c.client.Patch(types.ApplyPatchType).
+		Namespace(c.ns).
+		Resource("helmreleases").
+		Name(*name).
+		SubResource("status").
+		VersionedParams(&patchOpts, scheme.ParameterCodec).
 		Body(data).
 		Do(ctx).
 		Into(result)

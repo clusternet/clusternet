@@ -9,6 +9,7 @@ kind: ServiceAccount
 metadata:
   name: clusternet-scheduler
   namespace: clusternet-system
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -33,7 +34,7 @@ spec:
           operator: Exists
       containers:
         - name: clusternet-scheduler
-          image: ghcr.io/clusternet/clusternet-scheduler:v0.9.1
+          image: ghcr.io/clusternet/clusternet-scheduler:v0.18.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SYSTEM_NAMESPACE
@@ -42,4 +43,7 @@ spec:
                   fieldPath: metadata.namespace
           command:
             - /usr/local/bin/clusternet-scheduler
+          args:
+            - --leader-elect=true
             - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
+            - --feature-gates=FailOver=true,FeasibleClustersToleration=true

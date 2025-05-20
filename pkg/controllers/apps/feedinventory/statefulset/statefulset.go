@@ -17,11 +17,11 @@ limitations under the License.
 package statefulset
 
 import (
-	"encoding/json"
+	k8sappsv1 "k8s.io/api/apps/v1"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	"github.com/clusternet/clusternet/pkg/controllers/apps/feedinventory/utils"
-	k8sappsv1 "k8s.io/api/apps/v1"
+	pkgutils "github.com/clusternet/clusternet/pkg/utils"
 )
 
 type Plugin struct {
@@ -39,7 +39,7 @@ func (pl *Plugin) Parser(rawData []byte) (*int32, appsapi.ReplicaRequirements, s
 	// all the fields that we needed are backward compatible with apps/v1beta1, apps/v1beta2, extensions/v1beta1
 	sts := &k8sappsv1.StatefulSet{}
 
-	if err := json.Unmarshal(rawData, sts); err != nil {
+	if err := pkgutils.Unmarshal(rawData, sts); err != nil {
 		return nil, appsapi.ReplicaRequirements{}, "", err
 	}
 

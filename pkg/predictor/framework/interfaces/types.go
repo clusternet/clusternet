@@ -20,11 +20,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-const DefaultAcceptableReplicasKey = "default"
-
-// AcceptableReplicas records the max acceptable replicas in this cluster
-type AcceptableReplicas map[string]int32
-
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	// Overall node information.

@@ -19,7 +19,11 @@ package names
 const (
 	StaticAssigner = "StaticAssigner"
 
+	DynamicAssigner = "DynamicAssigner"
+
 	DefaultBinder = "DefaultBinder"
 
 	TaintToleration = "TaintToleration"
+
+	Predictor = "Predictor"
 )

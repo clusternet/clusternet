@@ -19,11 +19,13 @@ package fake
 
 import (
 	"context"
+	json "encoding/json"
+	"fmt"
 
 	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/clusters/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -34,9 +36,9 @@ type FakeClusterRegistrationRequests struct {
 	Fake *FakeClustersV1beta1
 }
 
-var clusterregistrationrequestsResource = schema.GroupVersionResource{Group: "clusters.clusternet.io", Version: "v1beta1", Resource: "clusterregistrationrequests"}
+var clusterregistrationrequestsResource = v1beta1.SchemeGroupVersion.WithResource("clusterregistrationrequests")
 
-var clusterregistrationrequestsKind = schema.GroupVersionKind{Group: "clusters.clusternet.io", Version: "v1beta1", Kind: "ClusterRegistrationRequest"}
+var clusterregistrationrequestsKind = v1beta1.SchemeGroupVersion.WithKind("ClusterRegistrationRequest")
 
 // Get takes name of the clusterRegistrationRequest, and returns the corresponding clusterRegistrationRequest object, and an error if there is any.
 func (c *FakeClusterRegistrationRequests) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
@@ -125,6 +127,49 @@ func (c *FakeClusterRegistrationRequests) DeleteCollection(ctx context.Context, 
 func (c *FakeClusterRegistrationRequests) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.ClusterRegistrationRequest, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootPatchSubresourceAction(clusterregistrationrequestsResource, name, pt, data, subresources...), &v1beta1.ClusterRegistrationRequest{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1beta1.ClusterRegistrationRequest), err
+}
+
+// Apply takes the given apply declarative configuration, applies it and returns the applied clusterRegistrationRequest.
+func (c *FakeClusterRegistrationRequests) Apply(ctx context.Context, clusterRegistrationRequest *clustersv1beta1.ClusterRegistrationRequestApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
+	if clusterRegistrationRequest == nil {
+		return nil, fmt.Errorf("clusterRegistrationRequest provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(clusterRegistrationRequest)
+	if err != nil {
+		return nil, err
+	}
+	name := clusterRegistrationRequest.Name
+	if name == nil {
+		return nil, fmt.Errorf("clusterRegistrationRequest.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewRootPatchSubresourceAction(clusterregistrationrequestsResource, *name, types.ApplyPatchType, data), &v1beta1.ClusterRegistrationRequest{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1beta1.ClusterRegistrationRequest), err
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *FakeClusterRegistrationRequests) ApplyStatus(ctx context.Context, clusterRegistrationRequest *clustersv1beta1.ClusterRegistrationRequestApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
+	if clusterRegistrationRequest == nil {
+		return nil, fmt.Errorf("clusterRegistrationRequest provided to Apply must not be nil")
+	}
+	data, err := json.Marshal(clusterRegistrationRequest)
+	if err != nil {
+		return nil, err
+	}
+	name := clusterRegistrationRequest.Name
+	if name == nil {
+		return nil, fmt.Errorf("clusterRegistrationRequest.Name must be provided to Apply")
+	}
+	obj, err := c.Fake.
+		Invokes(testing.NewRootPatchSubresourceAction(clusterregistrationrequestsResource, *name, types.ApplyPatchType, data, "status"), &v1beta1.ClusterRegistrationRequest{})
 	if obj == nil {
 		return nil, err
 	}

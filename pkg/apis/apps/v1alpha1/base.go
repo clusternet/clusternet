@@ -16,25 +16,6 @@ limitations under the License.
 
 package v1alpha1
 
-import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-// Important: Run "make generated" to regenerate code after modifying this file
-
-// +genclient
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Namespaced",categories=clusternet
-// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
-
-// Base represents the referenced resources/templates before rendering.
-type Base struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec BaseSpec `json:"spec"`
-}
-
 // BaseSpec defines the desired state of Base
 type BaseSpec struct {
 	// Feeds
@@ -42,14 +23,4 @@ type BaseSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	Feeds []Feed `json:"feeds"`
-}
-
-// +kubebuilder:object:root=true
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// BaseList contains a list of Base
-type BaseList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Base `json:"items"`
 }

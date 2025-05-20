@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clusternet-system
+
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: clusternet-controller-manager
+  namespace: clusternet-system
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clusternet-controller-manager
+  namespace: clusternet-system
+  labels:
+    app: clusternet-controller-manager
+spec:
+  ports:
+    - port: 8443
+      name: https
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    app: clusternet-controller-manager
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clusternet-controller-manager
+  namespace: clusternet-system
+  labels:
+    app: clusternet-controller-manager
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: clusternet-controller-manager
+  template:
+    metadata:
+      labels:
+        app: clusternet-controller-manager
+    spec:
+      serviceAccountName: clusternet-controller-manager
+      volumes:
+        - hostPath:
+            path: /etc/clusternet
+            type: DirectoryOrCreate
+          name: clusternet
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+      containers:
+        - name: clusternet-controller-manager
+          image: ghcr.io/clusternet/clusternet-controller-manager:v0.18.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SYSTEM_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: RESERVED_NAMESPACE
+              value: clusternet-reserved
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          command:
+            - /usr/local/bin/clusternet-controller-manager
+          args:
+            - --secure-port=8443
+            - --anonymous-auth-supported=true
+            - --leader-elect=true
+            - --leader-elect-resource-namespace=$(SYSTEM_NAMESPACE)
+            - --reserved-namespace=$(RESERVED_NAMESPACE)
+            - --feature-gates=SocketConnection=true,Deployer=true,FeedInUseProtection=true,FeedInventory=true,ClusterInit=false
+            - --controllers=*
+            # -v=4
+            # --cluster-api-kubeconfig=/etc/clusternet/my-capi.conf
+          volumeMounts:
+            - mountPath: /etc/clusternet
+              name: clusternet
+              readOnly: true

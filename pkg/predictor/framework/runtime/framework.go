@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	appsapi "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	schedulerapi "github.com/clusternet/clusternet/pkg/apis/scheduler"
 	predictorapis "github.com/clusternet/clusternet/pkg/predictor/apis"
 	framework "github.com/clusternet/clusternet/pkg/predictor/framework/interfaces"
 	"github.com/clusternet/clusternet/pkg/predictor/metrics"
@@ -198,7 +199,7 @@ func NewFramework(r Registry, plugins *predictorapis.Plugins, opts ...Option) (f
 	for name, factory := range r {
 		p, err := factory(nil, f)
 		if err != nil {
-			return nil, fmt.Errorf("initializing plugin %q: %w", name, err)
+			return nil, fmt.Errorf("initializing plugin %q: %v", name, err)
 		}
 		pluginsMap[name] = p
 	}
@@ -263,7 +264,8 @@ func (f *frameworkImpl) RunPreFilterPlugins(ctx context.Context, requirements *a
 			if status.IsUnpredictable() {
 				return status
 			}
-			return framework.AsStatus(fmt.Errorf("running PreFilter plugin %q: %w", pl.Name(), status.AsError())).WithFailedPlugin(pl.Name())
+			return framework.AsStatus(fmt.Errorf("running PreFilter plugin %q: %v", pl.Name(),
+				status.AsError())).WithFailedPlugin(pl.Name())
 		}
 	}
 
@@ -289,7 +291,8 @@ func (f *frameworkImpl) RunFilterPlugins(ctx context.Context, requirements *apps
 			if !pluginStatus.IsUnpredictable() {
 				// Filter plugins are not supposed to return any status other than
 				// Success or Unpredictable.
-				errStatus := framework.AsStatus(fmt.Errorf("running %q filter plugin: %w", pl.Name(), pluginStatus.AsError())).WithFailedPlugin(pl.Name())
+				errStatus := framework.AsStatus(fmt.Errorf("running %q filter plugin: %v", pl.Name(),
+					pluginStatus.AsError())).WithFailedPlugin(pl.Name())
 				return map[string]*framework.Status{pl.Name(): errStatus}
 			}
 			pluginStatus.SetFailedPlugin(pl.Name())
@@ -347,7 +350,7 @@ func (f *frameworkImpl) RunPreComputePlugins(ctx context.Context, requirements *
 	for _, pl := range f.preComputePlugins {
 		status = f.runPreComputePlugin(ctx, pl, requirements, nodesInfo)
 		if !status.IsSuccess() {
-			return framework.AsStatus(fmt.Errorf("running PreCompute plugin %q: %w", pl.Name(), status.AsError()))
+			return framework.AsStatus(fmt.Errorf("running PreCompute plugin %q: %v", pl.Name(), status.AsError()))
 		}
 	}
 
@@ -378,7 +381,7 @@ func (f *frameworkImpl) RunComputePlugins(ctx context.Context, requirements *app
 		for i, pl := range f.computePlugins {
 			replicas, calStatus := f.runComputePlugin(ctx, pl, requirements, nodesInfo[index])
 			if !calStatus.IsSuccess() {
-				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+				err := fmt.Errorf("plugin %q failed with: %v", pl.Name(), calStatus.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
 				return
 			}
@@ -392,7 +395,7 @@ func (f *frameworkImpl) RunComputePlugins(ctx context.Context, requirements *app
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Compute plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Compute plugins: %v", err))
 	}
 
 	return availableList, nil
@@ -415,7 +418,7 @@ func (f *frameworkImpl) RunPreScorePlugins(ctx context.Context, requirements *ap
 	for _, pl := range f.preScorePlugins {
 		status = f.runPreScorePlugin(ctx, pl, requirements, nodes)
 		if !status.IsSuccess() {
-			return framework.AsStatus(fmt.Errorf("running PreScore plugin %q: %w", pl.Name(), status.AsError()))
+			return framework.AsStatus(fmt.Errorf("running PreScore plugin %q: %v", pl.Name(), status.AsError()))
 		}
 	}
 
@@ -445,13 +448,14 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, requirements *appsa
 	ctx, cancel := context.WithCancel(ctx)
 	errCh := parallelize.NewErrorChannel()
 
+	var s int64
 	// Run Score method for each node in parallel.
 	f.Parallelizer().Until(ctx, len(nodes), func(index int) {
 		for _, pl := range f.scorePlugins {
 			nodeName := nodes[index].Name
-			s, status := f.runScorePlugin(ctx, pl, requirements, nodeName)
+			s, status = f.runScorePlugin(ctx, pl, requirements, nodeName)
 			if !status.IsSuccess() {
-				err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+				err := fmt.Errorf("plugin %q failed with: %v", pl.Name(), status.AsError())
 				errCh.SendErrorWithCancel(err, cancel)
 				return
 			}
@@ -462,7 +466,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, requirements *appsa
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Score plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Score plugins: %v", err))
 	}
 
 	// Run NormalizeScore method for each ScorePlugin in parallel.
@@ -472,15 +476,15 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, requirements *appsa
 		if pl.ScoreExtensions() == nil {
 			return
 		}
-		status := f.runScoreExtension(ctx, pl, requirements, nodeScoreList)
+		status = f.runScoreExtension(ctx, pl, requirements, nodeScoreList)
 		if !status.IsSuccess() {
-			err := fmt.Errorf("plugin %q failed with: %w", pl.Name(), status.AsError())
+			err := fmt.Errorf("plugin %q failed with: %v", pl.Name(), status.AsError())
 			errCh.SendErrorWithCancel(err, cancel)
 			return
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("running Normalize on Score plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("running Normalize on Score plugins: %v", err))
 	}
 
 	// Apply score defaultWeights for each ScorePlugin in parallel.
@@ -501,7 +505,7 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, requirements *appsa
 		}
 	})
 	if err := errCh.ReceiveError(); err != nil {
-		return nil, framework.AsStatus(fmt.Errorf("applying score defaultWeights on Score plugins: %w", err))
+		return nil, framework.AsStatus(fmt.Errorf("applying score defaultWeights on Score plugins: %v", err))
 	}
 
 	return pluginToNodeScores, nil
@@ -529,7 +533,7 @@ func (f *frameworkImpl) RunPreAggregatePlugins(ctx context.Context, requirements
 	for _, pl := range f.preAggregatePlugins {
 		status = f.runPreAggregatePlugin(ctx, pl, requirements, scores)
 		if !status.IsSuccess() {
-			return framework.AsStatus(fmt.Errorf("running PreAssign plugin %q: %w", pl.Name(), status.AsError()))
+			return framework.AsStatus(fmt.Errorf("running PreAssign plugin %q: %v", pl.Name(), status.AsError()))
 		}
 	}
 	return nil
@@ -542,7 +546,7 @@ func (f *frameworkImpl) runPreAggregatePlugin(ctx context.Context, pl framework.
 	return status
 }
 
-func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result framework.AcceptableReplicas, status *framework.Status) {
+func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result schedulerapi.PredictorReplicas, status *framework.Status) {
 	startTime := time.Now()
 	defer func() {
 		metrics.FrameworkExtensionPointDuration.WithLabelValues(aggregate, status.Code().String(), f.profileName).Observe(metrics.SinceInSeconds(startTime))
@@ -550,14 +554,14 @@ func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *a
 	if len(f.aggregatePlugins) == 0 {
 		return nil, framework.NewStatus(framework.Skip, "empty aggregate plugins")
 	}
-	result = make(framework.AcceptableReplicas)
+	result = make(schedulerapi.PredictorReplicas)
 	for _, ap := range f.aggregatePlugins {
 		aggreateResult, pluginStatus := f.runAggregatePlugin(ctx, ap, requirements, scores)
 		if pluginStatus != nil && pluginStatus.Code() == framework.Skip {
 			continue
 		}
 		if !pluginStatus.IsSuccess() {
-			return nil, framework.AsStatus(fmt.Errorf("running Assign plugin %q: %w", ap.Name(), status.AsError()))
+			return nil, framework.AsStatus(fmt.Errorf("running Assign plugin %q: %v", ap.Name(), status.AsError()))
 		}
 		for key := range aggreateResult {
 			if _, ok := result[key]; ok {
@@ -569,7 +573,7 @@ func (f *frameworkImpl) RunAggregatePlugins(ctx context.Context, requirements *a
 	return result, nil
 }
 
-func (f *frameworkImpl) runAggregatePlugin(ctx context.Context, ap framework.AggregatePlugin, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result framework.AcceptableReplicas, status *framework.Status) {
+func (f *frameworkImpl) runAggregatePlugin(ctx context.Context, ap framework.AggregatePlugin, requirements *appsapi.ReplicaRequirements, scores framework.NodeScoreList) (result schedulerapi.PredictorReplicas, status *framework.Status) {
 	startTime := time.Now()
 	result, status = ap.Aggregate(ctx, requirements, scores)
 	f.metricsRecorder.observePluginDurationAsync(aggregate, ap.Name(), status, metrics.SinceInSeconds(startTime))

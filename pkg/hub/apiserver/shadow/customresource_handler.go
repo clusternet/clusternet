@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emicklei/go-restful"
+	"github.com/emicklei/go-restful/v3"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -41,7 +41,6 @@ import (
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/endpoints"
-	"k8s.io/apiserver/pkg/endpoints/discovery"
 	apiserverdiscovery "k8s.io/apiserver/pkg/endpoints/discovery"
 	"k8s.io/apiserver/pkg/endpoints/handlers"
 	"k8s.io/apiserver/pkg/endpoints/handlers/negotiation"
@@ -56,8 +55,8 @@ import (
 	shadowapi "github.com/clusternet/clusternet/pkg/apis/shadow/v1alpha1"
 	clusternet "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	applisters "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	"github.com/clusternet/clusternet/pkg/hub/registry/shadow/template"
 	"github.com/clusternet/clusternet/pkg/known"
-	"github.com/clusternet/clusternet/pkg/registry/shadow/template"
 )
 
 type crdHandler struct {
@@ -156,11 +155,15 @@ func (r *crdHandler) SetRootWebService(ws *restful.WebService) {
 		Writes(metav1.APIResourceList{}))
 
 	// start event handler after ws is set
-	r.crdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := r.crdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    r.addCustomResourceDefinition,
 		UpdateFunc: r.updateCustomResourceDefinition,
 		DeleteFunc: r.deleteCustomResourceDefinition,
 	})
+	if err != nil {
+		klog.Fatalf("failed to add event handler for crd: %v", err)
+		return
+	}
 }
 
 func (r *crdHandler) addCustomResourceDefinition(obj interface{}) {
@@ -203,13 +206,13 @@ func (r *crdHandler) updateCustomResourceDefinition(old, cur interface{}) {
 func (r *crdHandler) deleteCustomResourceDefinition(obj interface{}) {
 	crd, ok := obj.(*apiextensionsv1.CustomResourceDefinition)
 	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
+		tombstone, ok2 := obj.(cache.DeletedFinalStateUnknown)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		crd, ok = tombstone.Obj.(*apiextensionsv1.CustomResourceDefinition)
-		if !ok {
+		crd, ok2 = tombstone.Obj.(*apiextensionsv1.CustomResourceDefinition)
+		if !ok2 {
 			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a CustomResourceDefinition %#v", obj))
 			return
 		}
@@ -279,10 +282,11 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	if !canBeAddedToStorage(crd.Spec.Group, storageVersion, crd.Spec.Names.Plural, r.apiserviceLister) {
 		return nil
 	}
+	metav1.AddToGroupVersion(Scheme, schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion})
 
 	r.versionDiscoveryHandler.updateCRD(crd)
 
-	crdGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, ParameterCodec, Codecs)
+	crdGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(shadowapi.GroupName, Scheme, runtime.NewParameterCodec(Scheme), Codecs)
 	var standardSerializers []runtime.SerializerInfo
 	for _, s := range crdGroupInfo.NegotiatedSerializer.SupportedMediaTypes() {
 		if s.MediaType == runtime.ContentTypeProtobuf {
@@ -293,21 +297,15 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 
 	kind := crd.Spec.Names.Kind
 	resource := crd.Spec.Names.Plural
-	selfLinkPrefix := ""
-	switch crd.Spec.Scope {
-	case apiextensionsv1.ClusterScoped:
-		selfLinkPrefix = "/" + path.Join("apis", shadowapi.GroupName, shadowapi.SchemeGroupVersion.Version) + "/" + resource + "/"
-	case apiextensionsv1.NamespaceScoped:
-		selfLinkPrefix = "/" + path.Join("apis", shadowapi.GroupName, shadowapi.SchemeGroupVersion.Version, "namespaces") + "/"
-	}
 
-	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, ParameterCodec, r.manifestLister, r.reservedNamespace)
+	restStorage := template.NewREST(r.kubeRESTClient, r.clusternetClient, runtime.NewParameterCodec(Scheme), r.manifestLister, r.reservedNamespace)
 	restStorage.SetNamespaceScoped(crd.Spec.Scope == apiextensionsv1.NamespaceScoped)
 	restStorage.SetName(resource)
 	restStorage.SetShortNames(crd.Spec.Names.ShortNames)
 	restStorage.SetKind(crd.Spec.Names.Kind)
 	restStorage.SetGroup(crd.Spec.Group)
 	restStorage.SetVersion(storageVersion)
+	restStorage.SetCRD(crd)
 
 	groupVersionKind := restStorage.GroupVersionKind(schema.GroupVersion{})
 	groupVersionResource := groupVersionKind.GroupVersion().WithResource(resource)
@@ -330,9 +328,8 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	r.storages[resource] = restStorage
 	r.requestScopes[resource] = &handlers.RequestScope{
 		Namer: handlers.ContextBasedNaming{
-			SelfLinker:         meta.NewAccessor(),
-			ClusterScoped:      crd.Spec.Scope == apiextensionsv1.ClusterScoped,
-			SelfLinkPathPrefix: selfLinkPrefix,
+			Namer:         meta.NewAccessor(),
+			ClusterScoped: crd.Spec.Scope == apiextensionsv1.ClusterScoped,
 		},
 		Serializer:               crdGroupInfo.NegotiatedSerializer,
 		ParameterCodec:           crdGroupInfo.ParameterCodec,
@@ -658,7 +655,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 type versionDiscoveryHandler struct {
 	lock sync.RWMutex
 
-	apiVersionHandler  *discovery.APIVersionHandler
+	apiVersionHandler  *apiserverdiscovery.APIVersionHandler
 	nonCRDAPIResources []metav1.APIResource
 
 	crdAPIResources []metav1.APIResource
@@ -669,7 +666,7 @@ func newVersionDiscoveryHandler(serializer runtime.NegotiatedSerializer, groupVe
 		nonCRDAPIResources: nonCRDAPIResources,
 		crdAPIResources:    []metav1.APIResource{},
 	}
-	s.apiVersionHandler = discovery.NewAPIVersionHandler(serializer, groupVersion, s)
+	s.apiVersionHandler = apiserverdiscovery.NewAPIVersionHandler(serializer, groupVersion, s)
 	return s
 }
 

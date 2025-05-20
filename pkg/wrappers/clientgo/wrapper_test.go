@@ -90,6 +90,12 @@ func TestNormalizeLocation(t *testing.T) {
 			normalizedURL: "https://my.k8s.io/apis/shadow/v1alpha1/namespaces/abc/foos/abc",
 		},
 		{
+			name:          "apis - get namespace-scoped virtualmachines abc",
+			host:          "https://my.k8s.io",
+			requestURL:    "https://my.k8s.io/apis/far/v1bar/namespaces/abc/virtualmachines/abc",
+			normalizedURL: "https://my.k8s.io/apis/shadow/v1alpha1/namespaces/abc/virtualmachines/abc",
+		},
+		{
 			name:          "apis - watch namespace-scoped foos",
 			host:          "https://my.k8s.io",
 			requestURL:    "https://my.k8s.io/apis/far/v1bar1/namespaces/abc/foos?resourceVersion=17825795&watch=true",

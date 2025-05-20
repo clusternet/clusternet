@@ -1,0 +1,21 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Subscription
+metadata:
+  name: nfd-all-children
+  namespace: default
+spec:
+  subscribers: # defines the clusters to be distributed to
+    - clusterAffinity:
+        matchLabels:
+          clusters.clusternet.io/cluster-id: d1b34d4c-9deb-4b3b-949d-5454eb35b929 # PLEASE UPDATE THIS CLUSTER-ID TO YOURS!!!
+  feeds: # defines all the resources to be deployed with
+    - apiVersion: v1
+      kind: Namespace
+      name: node-feature-discovery
+    - apiVersion: apps.clusternet.io/v1alpha1
+      kind: HelmChart
+      name: node-feature-discovery
+      namespace: default
+    - apiVersion: nfd.k8s-sigs.io/v1alpha1
+      kind: NodeFeatureRule
+      name: label-aggregate-rule

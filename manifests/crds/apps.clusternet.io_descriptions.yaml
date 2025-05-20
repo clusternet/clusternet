@@ -1,11 +1,9 @@
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.7.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: descriptions.apps.clusternet.io
 spec:
   group: apps.clusternet.io
@@ -36,20 +34,32 @@ spec:
         description: Description is the Schema for the resources to be installed
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
           spec:
             description: DescriptionSpec defines the spec of Description
             properties:
+              chartRaw:
+                description: ChartRaw is the underlying serialization of all helm
+                  chart objects.
+                items:
+                  format: byte
+                  type: string
+                type: array
               charts:
                 description: Charts describe all the helm charts to be installed
                 items:
@@ -83,12 +93,50 @@ spec:
           status:
             description: DescriptionStatus defines the observed state of Description
             properties:
+              manifestStatuses:
+                description: ManifestStatuses contains a list of running statuses
+                  of manifests in DescriptionSpec.
+                items:
+                  description: ManifestStatus contains details for the current status
+                    of this feed.
+                  properties:
+                    apiVersion:
+                      description: APIVersion defines the versioned schema of this
+                        representation of an object.
+                      type: string
+                    kind:
+                      description: |-
+                        Kind is a string value representing the REST resource this object represents.
+                        In CamelCase.
+                      type: string
+                    name:
+                      description: Name of the target resource.
+                      type: string
+                    namespace:
+                      description: Namespace of the target resource.
+                      type: string
+                    observedStatus:
+                      description: ObservedStatus reflects observed status of current
+                        feed.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - apiVersion
+                  - kind
+                  - name
+                  type: object
+                type: array
               phase:
                 description: Phase denotes the phase of Description
                 enum:
                 - Pending
                 - Success
                 - Failure
+                - Installing
+                - Upgrading
+                - Uninstalling
+                - Superseded
+                - Unknown
                 type: string
               reason:
                 description: Reason indicates the reason of DescriptionPhase
@@ -101,9 +149,3 @@ spec:
     storage: true
     subresources:
       status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []

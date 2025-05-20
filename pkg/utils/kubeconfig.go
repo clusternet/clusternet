@@ -79,7 +79,7 @@ func CreateKubeConfigWithToken(serverURL, token string, caCert []byte) *clientcm
 
 // CreateKubeConfigForSocketProxyWithToken creates a KubeConfig object with access to the API server with a token
 func CreateKubeConfigForSocketProxyWithToken(secretLister corev1lister.SecretLister,
-	systemNamespace, serverURL, token string, AnonymousAuthSupported bool) (*clientcmdapi.Config, error) {
+	systemNamespace, serverURL, token string, anonymousAuthSupported bool) (*clientcmdapi.Config, error) {
 	authInfo := &clientcmdapi.AuthInfo{
 		Impersonate: "clusternet",
 		ImpersonateUserExtra: map[string][]string{
@@ -89,7 +89,7 @@ func CreateKubeConfigForSocketProxyWithToken(secretLister corev1lister.SecretLis
 		},
 	}
 
-	if AnonymousAuthSupported {
+	if anonymousAuthSupported {
 		authInfo.Username = user.Anonymous
 	} else {
 		secrets, err := secretLister.Secrets(systemNamespace).List(labels.Everything())
@@ -124,7 +124,6 @@ func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionCo
 	}
 
 	var cfg *rest.Config
-	var clientConfig *clientcmdapi.Config
 	var err error
 
 	switch clientConnectionCfg.Kubeconfig {
@@ -132,11 +131,7 @@ func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionCo
 		// use in-cluster config
 		cfg, err = rest.InClusterConfig()
 	default:
-		clientConfig, err = clientcmd.LoadFromFile(clientConnectionCfg.Kubeconfig)
-		if err != nil {
-			return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", clientConnectionCfg.Kubeconfig, err)
-		}
-		cfg, err = clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+		cfg, err = LoadsKubeConfigFromFile(clientConnectionCfg.Kubeconfig)
 	}
 
 	if err != nil {
@@ -149,30 +144,34 @@ func LoadsKubeConfig(clientConnectionCfg *componentbaseconfig.ClientConnectionCo
 	return cfg, nil
 }
 
+// LoadsKubeConfigFromFile tries to load kubeconfig from specified kubeconfig file
+func LoadsKubeConfigFromFile(fileName string) (*rest.Config, error) {
+	clientConfig, err := clientcmd.LoadFromFile(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("error while loading kubeconfig from file %v: %v", fileName, err)
+	}
+	return clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
+}
+
 // GenerateKubeConfigFromToken composes a kubeconfig from token
-func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte, flowRate int) (*rest.Config, error) {
+func GenerateKubeConfigFromToken(serverURL, token string, caCert []byte) (*rest.Config, error) {
 	clientConfig := CreateKubeConfigWithToken(serverURL, token, caCert)
 	config, err := clientcmd.NewDefaultClientConfig(*clientConfig, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error while creating kubeconfig: %v", err)
 	}
-
-	if flowRate < 0 {
-		flowRate = 1
-	}
-
-	// here we magnify the default qps and burst in client-go
-	config.QPS = rest.DefaultQPS * float32(flowRate)
-	config.Burst = rest.DefaultBurst * flowRate
-
 	return config, nil
 }
 
-func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister clusterlisters.ManagedClusterLister,
-	namespace, clusterID, parentAPIServerURL, systemNamespace string, proxyingWithAnonymous bool) (*clientcmdapi.Config, error) {
+func GetChildClusterConfig(
+	secretLister corev1lister.SecretLister,
+	clusterLister clusterlisters.ManagedClusterLister,
+	namespace, clusterID, parentAPIServerURL, systemNamespace string,
+	proxyingWithAnonymous bool,
+) (*clientcmdapi.Config, float32, int32, error) {
 	childClusterSecret, err := secretLister.Secrets(namespace).Get(known.ChildClusterSecretName)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
 	labelSet := labels.Set{}
@@ -183,10 +182,10 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 	mcls, err := clusterLister.ManagedClusters(namespace).List(
 		labels.SelectorFromSet(labelSet))
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	if mcls == nil {
-		return nil, fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", namespace)
+		return nil, 0, 0, fmt.Errorf("failed to find a ManagedCluster declaration in namespace %s", namespace)
 	}
 
 	var config *clientcmdapi.Config
@@ -197,7 +196,7 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 		var childClusterAPIServer string
 		childClusterAPIServer, err = getChildAPIServerProxyURL(parentAPIServerURL, mcls[0])
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		config, err = CreateKubeConfigForSocketProxyWithToken(
 			secretLister,
@@ -213,7 +212,7 @@ func GetChildClusterConfig(secretLister corev1lister.SecretLister, clusterLister
 			childClusterSecret.Data[corev1.ServiceAccountRootCAKey],
 		)
 	}
-	return config, err
+	return config, mcls[0].Status.KubeQPS, mcls[0].Status.KubeBurst, err
 }
 
 func getChildAPIServerProxyURL(parentAPIServerURL string, mcls *clusterapi.ManagedCluster) (string, error) {
