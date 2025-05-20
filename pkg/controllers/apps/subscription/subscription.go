@@ -52,6 +52,7 @@ type Controller struct {
 
 	clusternetClient clusternetclientset.Interface
 	subsLister       applisters.SubscriptionLister
+	subsIndexer      cache.Indexer
 	recorder         record.EventRecorder
 	syncHandlerFunc  SyncHandlerFunc
 }
@@ -68,6 +69,7 @@ func NewController(
 	c := &Controller{
 		clusternetClient: clusternetClient,
 		subsLister:       subsInformer.Lister(),
+		subsIndexer:      subsInformer.Informer().GetIndexer(),
 		recorder:         recorder,
 		syncHandlerFunc:  syncHandlerFunc,
 	}
@@ -107,8 +109,13 @@ func NewController(
 			return true, nil
 		})
 
+	err := subsInformer.Informer().AddIndexers(cache.Indexers{known.IndexKeyForSubscriptionUID: utils.SubUidIndexFunc})
+	if err != nil {
+		return nil, err
+	}
+
 	// Manage the addition/update of Subscription
-	_, err := subsInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
+	_, err = subsInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
 	if err != nil {
 		return nil, err
 	}
@@ -254,4 +261,13 @@ func (c *Controller) patchSubscriptionLabels(sub *appsapi.Subscription, labels m
 		types.MergePatchType,
 		patchData,
 		metav1.PatchOptions{})
+}
+
+func (c *Controller) FindSubByUID(uid string) (*appsapi.Subscription, error) {
+	objs, err := c.subsIndexer.ByIndex(known.IndexKeyForSubscriptionUID, uid)
+	if err != nil || len(objs) == 0 {
+		return nil, fmt.Errorf("find sub by uid %s failed: %v %d", uid, err, len(objs))
+	}
+
+	return objs[0].(*appsapi.Subscription), nil
 }
