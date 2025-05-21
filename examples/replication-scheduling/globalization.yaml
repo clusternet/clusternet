@@ -67,6 +67,13 @@ spec:
     kind: Deployment
     name: my-nginx
     namespace: foo
+  clusterAffinity: # defines the clusters to which this Globalization applies
+    matchExpressions:
+      - key: clusters.clusternet.io/cluster-name
+        operator: In
+        values:
+        - area1-cluster
+        - area2-cluster
   overrides: # defines all the overrides to be processed with
     - name: add-update-labels
       type: MergePatch
