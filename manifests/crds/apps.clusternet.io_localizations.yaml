@@ -110,7 +110,8 @@ spec:
                       - Helm
                       - JSONPatch
                       - MergePatch
-                      - FieldPatch
+                      - FieldJSONPatch
+                      - FieldMergePatch
                       type: string
                     value:
                       description: Value represents override value.

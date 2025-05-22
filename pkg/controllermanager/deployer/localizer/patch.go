@@ -17,6 +17,7 @@ limitations under the License.
 package localizer
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -34,6 +35,10 @@ import (
 const (
 	// maximum number of operations a single json patch may contain.
 	maxJSONPatchOperations = 10000
+	// nonIndent is the non-indented format for json patch.
+	nonIndent = ""
+	// jsonIndent is the indented format for json patch.
+	jsonIndent = "    "
 )
 
 // applyOverrides applies the overrides to the current resource.
@@ -79,7 +84,7 @@ func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []ap
 				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}
 		case appsapi.JSONPatchType:
-			genericResult, err = applyJSONPatch(genericResult, overrideBytes, "")
+			genericResult, err = applyJSONPatch(genericResult, overrideBytes, nonIndent)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}
@@ -88,8 +93,14 @@ func applyOverrides(genericOriginal []byte, chartOriginal []byte, overrides []ap
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
 			}
-		case appsapi.FieldPatchType:
-			genericResult, err = applyFieldPatch(
+		case appsapi.FieldJSONPatchType:
+			genericResult, err = applyFieldJSONPatch(
+				genericResult, overrideConfig.FieldPath, overrideConfig.FieldFormat, overrideBytes)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
+			}
+		case appsapi.FieldMergePatchType:
+			genericResult, err = applyFieldMergePatch(
 				genericResult, overrideConfig.FieldPath, overrideConfig.FieldFormat, overrideBytes)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to apply OverrideConfig %s: %v", overrideConfig.Name, err)
@@ -140,7 +151,7 @@ func applyHelmValuesOverride(currentByte, overrideByte []byte) ([]byte, error) {
 	return utils.Marshal(chartutil.CoalesceTables(overrideValues, currentObj))
 }
 
-func applyFieldPatch(cur []byte, fieldPath string, fieldFormat appsapi.FieldFormatType, overrideBytes []byte) (
+func applyFieldJSONPatch(cur []byte, fieldPath string, fieldFormat appsapi.FieldFormatType, overrideBytes []byte) (
 	[]byte, error) {
 
 	fieldValue, err := findField(cur, fieldPath)
@@ -154,24 +165,80 @@ func applyFieldPatch(cur []byte, fieldPath string, fieldFormat appsapi.FieldForm
 	var result []byte
 	switch fieldFormat {
 	case appsapi.JSONFormat:
-		result, err = applyJSONPatch([]byte(fieldValue), overrideBytes, "    ")
+		result, err = applyJSONPatch([]byte(fieldValue), overrideBytes, jsonIndent)
 		if err != nil {
 			return nil, err
 		}
 	case appsapi.YAMLFormat:
 		var fieldValueJSON []byte
-		var resultYAML []byte
+		var resultJSON []byte
 		fieldValueJSON, err = yaml.YAMLToJSON([]byte(fieldValue))
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert patch %s to JSON: %v", cur, err)
 		}
-		resultYAML, err = jsonpatch.MergePatch(fieldValueJSON, overrideBytes)
+		resultJSON, err = applyJSONPatch(fieldValueJSON, overrideBytes, jsonIndent)
 		if err != nil {
 			return nil, err
 		}
-		result, err = yaml.JSONToYAML(resultYAML)
+		result, err = yaml.JSONToYAML(resultJSON)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert json %s to yaml, error: %v", resultYAML, err)
+			return nil, fmt.Errorf("failed to convert json %s to yaml, error: %v", string(resultJSON), err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported FieldFormatType %s", fieldFormat)
+	}
+	patches := []utils.JsonPatchOption{
+		{
+			Op:    "replace",
+			Path:  fieldPath,
+			Value: string(result),
+		},
+	}
+	patchesBytes, _ := jsoniter.MarshalToString(patches)
+	return applyJSONPatch(
+		cur, []byte(patchesBytes), "")
+}
+
+func applyFieldMergePatch(cur []byte, fieldPath string, fieldFormat appsapi.FieldFormatType, overrideBytes []byte) (
+	[]byte, error) {
+
+	fieldValue, err := findField(cur, fieldPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(fieldValue) == 0 {
+		return cur, nil
+	}
+
+	var result []byte
+	switch fieldFormat {
+	case appsapi.JSONFormat:
+		result, err = jsonpatch.MergePatch([]byte(fieldValue), overrideBytes)
+		if err != nil {
+			return nil, err
+		}
+		var tmpObj map[string]interface{}
+		if err = json.Unmarshal(result, &tmpObj); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal %s to json, error: %v", string(result), err)
+		}
+		result, err = json.MarshalIndent(tmpObj, nonIndent, jsonIndent)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal %v to json, error: %v", tmpObj, err)
+		}
+	case appsapi.YAMLFormat:
+		var fieldValueJSON []byte
+		var resultJSON []byte
+		fieldValueJSON, err = yaml.YAMLToJSON([]byte(fieldValue))
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert patch %s to JSON: %v", cur, err)
+		}
+		resultJSON, err = jsonpatch.MergePatch(fieldValueJSON, overrideBytes)
+		if err != nil {
+			return nil, err
+		}
+		result, err = yaml.JSONToYAML(resultJSON)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert json %s to yaml, error: %v", string(resultJSON), err)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported FieldFormatType %s", fieldFormat)
