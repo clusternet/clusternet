@@ -95,6 +95,20 @@ const (
 
 	// StrategicMergePatchType won't be supported, since `patchStrategy`
 	// and `patchMergeKey` can not be retrieved.
+
+	// FieldPatchType applies a field patch for all matched objects.
+	// Note: FieldPatchType does not work with HelmChart(s).
+	FieldPatchType OverrideType = "FieldPatch"
+)
+
+type FieldFormatType string
+
+const (
+	// YAMLFormat is the default format for FieldPatchType.
+	YAMLFormat FieldFormatType = "YAML"
+
+	// JSONFormat is the format for FieldPatchType.
+	JSONFormat FieldFormatType = "JSON"
 )
 
 // OverrideConfig holds information that describes a override config.
@@ -116,13 +130,25 @@ type OverrideConfig struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:Enum=Helm;JSONPatch;MergePatch
+	// +kubebuilder:validation:Enum=Helm;JSONPatch;MergePatch;FieldPatch
 	Type OverrideType `json:"type"`
 
 	// OverrideChart indicates whether the override value for the HelmChart CR.
 	//
 	// +optional
 	OverrideChart bool `json:"overrideChart,omitempty"`
+
+	// FieldPath indicates the field path for the override value for FieldPatch.
+	//
+	// +optional
+	FieldPath string `json:"fieldPath,omitempty"`
+
+	// FieldFormat indicates the field format for the override value for FieldPatch.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Enum=YAML;JSON
+	FieldFormat FieldFormatType `json:"fieldFormat,omitempty"`
 }
 
 // +kubebuilder:object:root=true
