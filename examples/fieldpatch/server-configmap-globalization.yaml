@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-conf
+  namespace: qux
+data:
+  server.conf: |
+    {
+        "db_address": "127.0.0.1:3306",
+        "region_id": "default",
+        "zone_id": "default",
+        "server":{
+            "tls_ca_file": "/data/ca.crt",
+            "tls_cert_file": "/data/server.crt",
+            "tls_key_file": "/data/server.key",
+            "tls_passwd_file": "/data/encrypt.key",
+            "bind_ip": "::",
+            "bind_port": 8080,
+            "bind_port_v1": 8081
+        },
+        "metric":{
+            "exporter_bind_ip": "::",
+            "exporter_bind_port": 29402,
+            "exporter_thread_num": 8
+        }
+    }
+---
+
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Globalization
+metadata:
+  name: server-conf-overrides-demo
+  namespace: qux
+spec:
+  # Priority is an integer defining the relative importance of this Globalization compared to others.
+  # Lower numbers are considered lower priority.
+  # Override values in lower Globalization will be overridden by those in higher Globalization.
+  # (Optional) Default priority is 500.
+  priority: 600
+  feed:
+    apiVersion: v1
+    kind: ConfigMap
+    name: server-conf
+    namespace: qux
+  clusterAffinity: # defines the clusters to which this Globalization applies
+    matchExpressions:
+      - key: clusters.clusternet.io/cluster-name
+        operator: In
+        values:
+        - us-west
+  overrides: # defines all the overrides to be processed with
+    - name: update-zoneid-regionid
+      type: FieldMergePatch
+      # Path is the path of the field to be patched.
+      fieldPath: /data/server.conf
+      # FieldFormat is the format of the field to be patched.
+      fieldFormat: JSON
+      # Value is a YAML/JSON format patch that provides FieldMergePatch to current resource defined by feed.
+      # This override adds or updates some labels.
+      value: |-
+        {
+            "db_address": "local:3306",
+            "region_id": "us-west-1",
+            "zone_id": "zone-1"
+        }
