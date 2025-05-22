@@ -86,6 +86,17 @@ spec:
                   description: OverrideConfig holds information that describes a override
                     config.
                   properties:
+                    fieldFormat:
+                      description: FieldFormat indicates the field format for the
+                        override value for FieldPatch.
+                      enum:
+                      - YAML
+                      - JSON
+                      type: string
+                    fieldPath:
+                      description: FieldPath indicates the field path for the override
+                        value for FieldPatch.
+                      type: string
                     name:
                       description: Name indicate the OverrideConfig name.
                       type: string
@@ -99,6 +110,8 @@ spec:
                       - Helm
                       - JSONPatch
                       - MergePatch
+                      - FieldJSONPatch
+                      - FieldMergePatch
                       type: string
                     value:
                       description: Value represents override value.
