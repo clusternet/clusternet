@@ -1,0 +1,25 @@
+apiVersion: apps.clusternet.io/v1alpha1
+kind: Subscription
+metadata:
+  name: dynamic-dividing-scheduling-demo
+spec:
+  subscribers: # filter out a set of desired clusters
+    - clusterAffinity:
+        matchExpressions:
+          - key: clusters.clusternet.io/cluster-name
+            operator: Exists
+  schedulingStrategy: Dividing
+  priority: 100
+  dividingScheduling:
+    type: Dynamic
+    dynamicDividing:
+      strategy: Spread # currently we only support Spread dividing strategy
+  feeds: # defines all the resources to be deployed with
+    - apiVersion: apps/v1 # with a total of 6 replicas
+      kind: Deployment
+      name: my-server
+      namespace: qux
+    - apiVersion: v1
+      kind: ConfigMap
+      name: server-conf
+      namespace: qux
