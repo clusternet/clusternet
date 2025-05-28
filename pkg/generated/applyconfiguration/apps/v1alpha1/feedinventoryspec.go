@@ -17,13 +17,13 @@ limitations under the License.
 
 package v1alpha1
 
-// FeedInventorySpecApplyConfiguration represents an declarative configuration of the FeedInventorySpec type for use
+// FeedInventorySpecApplyConfiguration represents a declarative configuration of the FeedInventorySpec type for use
 // with apply.
 type FeedInventorySpecApplyConfiguration struct {
 	Feeds []FeedOrderApplyConfiguration `json:"feeds,omitempty"`
 }
 
-// FeedInventorySpecApplyConfiguration constructs an declarative configuration of the FeedInventorySpec type for use with
+// FeedInventorySpecApplyConfiguration constructs a declarative configuration of the FeedInventorySpec type for use with
 // apply.
 func FeedInventorySpec() *FeedInventorySpecApplyConfiguration {
 	return &FeedInventorySpecApplyConfiguration{}

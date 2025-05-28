@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	apisappsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // Localizations.
 type LocalizationInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.LocalizationLister
+	Lister() appsv1alpha1.LocalizationLister
 }
 
 type localizationInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredLocalizationInformer(client versioned.Interface, namespace strin
 				return client.AppsV1alpha1().Localizations(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&appsv1alpha1.Localization{},
+		&apisappsv1alpha1.Localization{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *localizationInformer) defaultInformer(client versioned.Interface, resyn
 }
 
 func (f *localizationInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&appsv1alpha1.Localization{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisappsv1alpha1.Localization{}, f.defaultInformer)
 }
 
-func (f *localizationInformer) Lister() v1alpha1.LocalizationLister {
-	return v1alpha1.NewLocalizationLister(f.Informer().GetIndexer())
+func (f *localizationInformer) Lister() appsv1alpha1.LocalizationLister {
+	return appsv1alpha1.NewLocalizationLister(f.Informer().GetIndexer())
 }

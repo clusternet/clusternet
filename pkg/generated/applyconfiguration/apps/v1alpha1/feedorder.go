@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1alpha1
 
-// FeedOrderApplyConfiguration represents an declarative configuration of the FeedOrder type for use
+// FeedOrderApplyConfiguration represents a declarative configuration of the FeedOrder type for use
 // with apply.
 type FeedOrderApplyConfiguration struct {
 	FeedApplyConfiguration `json:",inline"`
@@ -26,7 +26,7 @@ type FeedOrderApplyConfiguration struct {
 	ReplicaJsonPath        *string                                `json:"replicaJsonPath,omitempty"`
 }
 
-// FeedOrderApplyConfiguration constructs an declarative configuration of the FeedOrder type for use with
+// FeedOrderApplyConfiguration constructs a declarative configuration of the FeedOrder type for use with
 // apply.
 func FeedOrder() *FeedOrderApplyConfiguration {
 	return &FeedOrderApplyConfiguration{}
@@ -36,7 +36,7 @@ func FeedOrder() *FeedOrderApplyConfiguration {
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
 func (b *FeedOrderApplyConfiguration) WithKind(value string) *FeedOrderApplyConfiguration {
-	b.Kind = &value
+	b.FeedApplyConfiguration.Kind = &value
 	return b
 }
 
@@ -44,7 +44,7 @@ func (b *FeedOrderApplyConfiguration) WithKind(value string) *FeedOrderApplyConf
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
 func (b *FeedOrderApplyConfiguration) WithAPIVersion(value string) *FeedOrderApplyConfiguration {
-	b.APIVersion = &value
+	b.FeedApplyConfiguration.APIVersion = &value
 	return b
 }
 
@@ -52,7 +52,7 @@ func (b *FeedOrderApplyConfiguration) WithAPIVersion(value string) *FeedOrderApp
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
 func (b *FeedOrderApplyConfiguration) WithNamespace(value string) *FeedOrderApplyConfiguration {
-	b.Namespace = &value
+	b.FeedApplyConfiguration.Namespace = &value
 	return b
 }
 
@@ -60,7 +60,7 @@ func (b *FeedOrderApplyConfiguration) WithNamespace(value string) *FeedOrderAppl
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
 func (b *FeedOrderApplyConfiguration) WithName(value string) *FeedOrderApplyConfiguration {
-	b.Name = &value
+	b.FeedApplyConfiguration.Name = &value
 	return b
 }
 

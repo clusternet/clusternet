@@ -17,14 +17,14 @@ limitations under the License.
 
 package v1alpha1
 
-// ChartReferenceApplyConfiguration represents an declarative configuration of the ChartReference type for use
+// ChartReferenceApplyConfiguration represents a declarative configuration of the ChartReference type for use
 // with apply.
 type ChartReferenceApplyConfiguration struct {
 	Namespace *string `json:"namespace,omitempty"`
 	Name      *string `json:"name,omitempty"`
 }
 
-// ChartReferenceApplyConfiguration constructs an declarative configuration of the ChartReference type for use with
+// ChartReferenceApplyConfiguration constructs a declarative configuration of the ChartReference type for use with
 // apply.
 func ChartReference() *ChartReferenceApplyConfiguration {
 	return &ChartReferenceApplyConfiguration{}

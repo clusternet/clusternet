@@ -21,14 +21,14 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
-// ManifestStatusApplyConfiguration represents an declarative configuration of the ManifestStatus type for use
+// ManifestStatusApplyConfiguration represents a declarative configuration of the ManifestStatus type for use
 // with apply.
 type ManifestStatusApplyConfiguration struct {
 	FeedApplyConfiguration `json:",inline"`
 	ObservedStatus         *runtime.RawExtension `json:"observedStatus,omitempty"`
 }
 
-// ManifestStatusApplyConfiguration constructs an declarative configuration of the ManifestStatus type for use with
+// ManifestStatusApplyConfiguration constructs a declarative configuration of the ManifestStatus type for use with
 // apply.
 func ManifestStatus() *ManifestStatusApplyConfiguration {
 	return &ManifestStatusApplyConfiguration{}
@@ -38,7 +38,7 @@ func ManifestStatus() *ManifestStatusApplyConfiguration {
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
 func (b *ManifestStatusApplyConfiguration) WithKind(value string) *ManifestStatusApplyConfiguration {
-	b.Kind = &value
+	b.FeedApplyConfiguration.Kind = &value
 	return b
 }
 
@@ -46,7 +46,7 @@ func (b *ManifestStatusApplyConfiguration) WithKind(value string) *ManifestStatu
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
 func (b *ManifestStatusApplyConfiguration) WithAPIVersion(value string) *ManifestStatusApplyConfiguration {
-	b.APIVersion = &value
+	b.FeedApplyConfiguration.APIVersion = &value
 	return b
 }
 
@@ -54,7 +54,7 @@ func (b *ManifestStatusApplyConfiguration) WithAPIVersion(value string) *Manifes
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
 func (b *ManifestStatusApplyConfiguration) WithNamespace(value string) *ManifestStatusApplyConfiguration {
-	b.Namespace = &value
+	b.FeedApplyConfiguration.Namespace = &value
 	return b
 }
 
@@ -62,7 +62,7 @@ func (b *ManifestStatusApplyConfiguration) WithNamespace(value string) *Manifest
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
 func (b *ManifestStatusApplyConfiguration) WithName(value string) *ManifestStatusApplyConfiguration {
-	b.Name = &value
+	b.FeedApplyConfiguration.Name = &value
 	return b
 }
 

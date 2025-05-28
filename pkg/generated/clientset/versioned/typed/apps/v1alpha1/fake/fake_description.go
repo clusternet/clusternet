@@ -18,171 +18,35 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-	json "encoding/json"
-	"fmt"
-
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	typedappsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/apps/v1alpha1"
+	gentype "k8s.io/client-go/gentype"
 )
 
-// FakeDescriptions implements DescriptionInterface
-type FakeDescriptions struct {
+// fakeDescriptions implements DescriptionInterface
+type fakeDescriptions struct {
+	*gentype.FakeClientWithListAndApply[*v1alpha1.Description, *v1alpha1.DescriptionList, *appsv1alpha1.DescriptionApplyConfiguration]
 	Fake *FakeAppsV1alpha1
-	ns   string
 }
 
-var descriptionsResource = v1alpha1.SchemeGroupVersion.WithResource("descriptions")
-
-var descriptionsKind = v1alpha1.SchemeGroupVersion.WithKind("Description")
-
-// Get takes name of the description, and returns the corresponding description object, and an error if there is any.
-func (c *FakeDescriptions) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Description, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(descriptionsResource, c.ns, name), &v1alpha1.Description{})
-
-	if obj == nil {
-		return nil, err
+func newFakeDescriptions(fake *FakeAppsV1alpha1, namespace string) typedappsv1alpha1.DescriptionInterface {
+	return &fakeDescriptions{
+		gentype.NewFakeClientWithListAndApply[*v1alpha1.Description, *v1alpha1.DescriptionList, *appsv1alpha1.DescriptionApplyConfiguration](
+			fake.Fake,
+			namespace,
+			v1alpha1.SchemeGroupVersion.WithResource("descriptions"),
+			v1alpha1.SchemeGroupVersion.WithKind("Description"),
+			func() *v1alpha1.Description { return &v1alpha1.Description{} },
+			func() *v1alpha1.DescriptionList { return &v1alpha1.DescriptionList{} },
+			func(dst, src *v1alpha1.DescriptionList) { dst.ListMeta = src.ListMeta },
+			func(list *v1alpha1.DescriptionList) []*v1alpha1.Description {
+				return gentype.ToPointerSlice(list.Items)
+			},
+			func(list *v1alpha1.DescriptionList, items []*v1alpha1.Description) {
+				list.Items = gentype.FromPointerSlice(items)
+			},
+		),
+		fake,
 	}
-	return obj.(*v1alpha1.Description), err
-}
-
-// List takes label and field selectors, and returns the list of Descriptions that match those selectors.
-func (c *FakeDescriptions) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.DescriptionList, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewListAction(descriptionsResource, descriptionsKind, c.ns, opts), &v1alpha1.DescriptionList{})
-
-	if obj == nil {
-		return nil, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1alpha1.DescriptionList{ListMeta: obj.(*v1alpha1.DescriptionList).ListMeta}
-	for _, item := range obj.(*v1alpha1.DescriptionList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested descriptions.
-func (c *FakeDescriptions) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(descriptionsResource, c.ns, opts))
-
-}
-
-// Create takes the representation of a description and creates it.  Returns the server's representation of the description, and an error, if there is any.
-func (c *FakeDescriptions) Create(ctx context.Context, description *v1alpha1.Description, opts v1.CreateOptions) (result *v1alpha1.Description, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(descriptionsResource, c.ns, description), &v1alpha1.Description{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Description), err
-}
-
-// Update takes the representation of a description and updates it. Returns the server's representation of the description, and an error, if there is any.
-func (c *FakeDescriptions) Update(ctx context.Context, description *v1alpha1.Description, opts v1.UpdateOptions) (result *v1alpha1.Description, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(descriptionsResource, c.ns, description), &v1alpha1.Description{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Description), err
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeDescriptions) UpdateStatus(ctx context.Context, description *v1alpha1.Description, opts v1.UpdateOptions) (*v1alpha1.Description, error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(descriptionsResource, "status", c.ns, description), &v1alpha1.Description{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Description), err
-}
-
-// Delete takes name of the description and deletes it. Returns an error if one occurs.
-func (c *FakeDescriptions) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(descriptionsResource, c.ns, name, opts), &v1alpha1.Description{})
-
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeDescriptions) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(descriptionsResource, c.ns, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1alpha1.DescriptionList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched description.
-func (c *FakeDescriptions) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Description, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(descriptionsResource, c.ns, name, pt, data, subresources...), &v1alpha1.Description{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Description), err
-}
-
-// Apply takes the given apply declarative configuration, applies it and returns the applied description.
-func (c *FakeDescriptions) Apply(ctx context.Context, description *appsv1alpha1.DescriptionApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Description, err error) {
-	if description == nil {
-		return nil, fmt.Errorf("description provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(description)
-	if err != nil {
-		return nil, err
-	}
-	name := description.Name
-	if name == nil {
-		return nil, fmt.Errorf("description.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(descriptionsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.Description{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Description), err
-}
-
-// ApplyStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
-func (c *FakeDescriptions) ApplyStatus(ctx context.Context, description *appsv1alpha1.DescriptionApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Description, err error) {
-	if description == nil {
-		return nil, fmt.Errorf("description provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(description)
-	if err != nil {
-		return nil, err
-	}
-	name := description.Name
-	if name == nil {
-		return nil, fmt.Errorf("description.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(descriptionsResource, c.ns, *name, types.ApplyPatchType, data, "status"), &v1alpha1.Description{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Description), err
 }

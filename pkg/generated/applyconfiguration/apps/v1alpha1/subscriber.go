@@ -21,7 +21,7 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// SubscriberApplyConfiguration represents an declarative configuration of the Subscriber type for use
+// SubscriberApplyConfiguration represents a declarative configuration of the Subscriber type for use
 // with apply.
 type SubscriberApplyConfiguration struct {
 	ClusterAffinity  *v1.LabelSelectorApplyConfiguration `json:"clusterAffinity,omitempty"`
@@ -29,7 +29,7 @@ type SubscriberApplyConfiguration struct {
 	SubGroupStrategy *SubGroupStrategyApplyConfiguration `json:"subGroupStrategy,omitempty"`
 }
 
-// SubscriberApplyConfiguration constructs an declarative configuration of the Subscriber type for use with
+// SubscriberApplyConfiguration constructs a declarative configuration of the Subscriber type for use with
 // apply.
 func Subscriber() *SubscriberApplyConfiguration {
 	return &SubscriberApplyConfiguration{}

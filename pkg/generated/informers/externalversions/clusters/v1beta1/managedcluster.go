@@ -18,13 +18,13 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	apisclustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1beta1 "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // ManagedClusters.
 type ManagedClusterInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1beta1.ManagedClusterLister
+	Lister() clustersv1beta1.ManagedClusterLister
 }
 
 type managedClusterInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredManagedClusterInformer(client versioned.Interface, namespace str
 				return client.ClustersV1beta1().ManagedClusters(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&clustersv1beta1.ManagedCluster{},
+		&apisclustersv1beta1.ManagedCluster{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *managedClusterInformer) defaultInformer(client versioned.Interface, res
 }
 
 func (f *managedClusterInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&clustersv1beta1.ManagedCluster{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisclustersv1beta1.ManagedCluster{}, f.defaultInformer)
 }
 
-func (f *managedClusterInformer) Lister() v1beta1.ManagedClusterLister {
-	return v1beta1.NewManagedClusterLister(f.Informer().GetIndexer())
+func (f *managedClusterInformer) Lister() clustersv1beta1.ManagedClusterLister {
+	return clustersv1beta1.NewManagedClusterLister(f.Informer().GetIndexer())
 }

@@ -18,25 +18,25 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 )
 
-// SubscriptionSpecApplyConfiguration represents an declarative configuration of the SubscriptionSpec type for use
+// SubscriptionSpecApplyConfiguration represents a declarative configuration of the SubscriptionSpec type for use
 // with apply.
 type SubscriptionSpecApplyConfiguration struct {
 	SchedulerName        *string                               `json:"schedulerName,omitempty"`
 	SchedulingBySubGroup *bool                                 `json:"schedulingBySubGroup,omitempty"`
-	SchedulingStrategy   *v1alpha1.SchedulingStrategyType      `json:"schedulingStrategy,omitempty"`
+	SchedulingStrategy   *appsv1alpha1.SchedulingStrategyType  `json:"schedulingStrategy,omitempty"`
 	DividingScheduling   *DividingSchedulingApplyConfiguration `json:"dividingScheduling,omitempty"`
 	Priority             *int32                                `json:"priority,omitempty"`
-	PreemptionPolicy     *v1alpha1.PreemptionPolicy            `json:"preemptionPolicy,omitempty"`
+	PreemptionPolicy     *appsv1alpha1.PreemptionPolicy        `json:"preemptionPolicy,omitempty"`
 	Subscribers          []SubscriberApplyConfiguration        `json:"subscribers,omitempty"`
 	ClusterTolerations   []v1.Toleration                       `json:"clusterTolerations,omitempty"`
 	Feeds                []FeedApplyConfiguration              `json:"feeds,omitempty"`
 }
 
-// SubscriptionSpecApplyConfiguration constructs an declarative configuration of the SubscriptionSpec type for use with
+// SubscriptionSpecApplyConfiguration constructs a declarative configuration of the SubscriptionSpec type for use with
 // apply.
 func SubscriptionSpec() *SubscriptionSpecApplyConfiguration {
 	return &SubscriptionSpecApplyConfiguration{}
@@ -61,7 +61,7 @@ func (b *SubscriptionSpecApplyConfiguration) WithSchedulingBySubGroup(value bool
 // WithSchedulingStrategy sets the SchedulingStrategy field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SchedulingStrategy field is set to the value of the last call.
-func (b *SubscriptionSpecApplyConfiguration) WithSchedulingStrategy(value v1alpha1.SchedulingStrategyType) *SubscriptionSpecApplyConfiguration {
+func (b *SubscriptionSpecApplyConfiguration) WithSchedulingStrategy(value appsv1alpha1.SchedulingStrategyType) *SubscriptionSpecApplyConfiguration {
 	b.SchedulingStrategy = &value
 	return b
 }
@@ -85,7 +85,7 @@ func (b *SubscriptionSpecApplyConfiguration) WithPriority(value int32) *Subscrip
 // WithPreemptionPolicy sets the PreemptionPolicy field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PreemptionPolicy field is set to the value of the last call.
-func (b *SubscriptionSpecApplyConfiguration) WithPreemptionPolicy(value v1alpha1.PreemptionPolicy) *SubscriptionSpecApplyConfiguration {
+func (b *SubscriptionSpecApplyConfiguration) WithPreemptionPolicy(value appsv1alpha1.PreemptionPolicy) *SubscriptionSpecApplyConfiguration {
 	b.PreemptionPolicy = &value
 	return b
 }

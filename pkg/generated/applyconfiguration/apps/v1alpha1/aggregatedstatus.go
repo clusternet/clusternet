@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1alpha1
 
-// AggregatedStatusApplyConfiguration represents an declarative configuration of the AggregatedStatus type for use
+// AggregatedStatusApplyConfiguration represents a declarative configuration of the AggregatedStatus type for use
 // with apply.
 type AggregatedStatusApplyConfiguration struct {
 	FeedApplyConfiguration `json:",inline"`
@@ -25,7 +25,7 @@ type AggregatedStatusApplyConfiguration struct {
 	FeedStatusDetails      []FeedStatusPerClusterApplyConfiguration `json:"feedStatusDetails,omitempty"`
 }
 
-// AggregatedStatusApplyConfiguration constructs an declarative configuration of the AggregatedStatus type for use with
+// AggregatedStatusApplyConfiguration constructs a declarative configuration of the AggregatedStatus type for use with
 // apply.
 func AggregatedStatus() *AggregatedStatusApplyConfiguration {
 	return &AggregatedStatusApplyConfiguration{}
@@ -35,7 +35,7 @@ func AggregatedStatus() *AggregatedStatusApplyConfiguration {
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
 func (b *AggregatedStatusApplyConfiguration) WithKind(value string) *AggregatedStatusApplyConfiguration {
-	b.Kind = &value
+	b.FeedApplyConfiguration.Kind = &value
 	return b
 }
 
@@ -43,7 +43,7 @@ func (b *AggregatedStatusApplyConfiguration) WithKind(value string) *AggregatedS
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
 func (b *AggregatedStatusApplyConfiguration) WithAPIVersion(value string) *AggregatedStatusApplyConfiguration {
-	b.APIVersion = &value
+	b.FeedApplyConfiguration.APIVersion = &value
 	return b
 }
 
@@ -51,7 +51,7 @@ func (b *AggregatedStatusApplyConfiguration) WithAPIVersion(value string) *Aggre
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
 func (b *AggregatedStatusApplyConfiguration) WithNamespace(value string) *AggregatedStatusApplyConfiguration {
-	b.Namespace = &value
+	b.FeedApplyConfiguration.Namespace = &value
 	return b
 }
 
@@ -59,7 +59,7 @@ func (b *AggregatedStatusApplyConfiguration) WithNamespace(value string) *Aggreg
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
 func (b *AggregatedStatusApplyConfiguration) WithName(value string) *AggregatedStatusApplyConfiguration {
-	b.Name = &value
+	b.FeedApplyConfiguration.Name = &value
 	return b
 }
 

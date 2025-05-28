@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	apisappsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // Globalizations.
 type GlobalizationInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.GlobalizationLister
+	Lister() appsv1alpha1.GlobalizationLister
 }
 
 type globalizationInformer struct {
@@ -69,7 +69,7 @@ func NewFilteredGlobalizationInformer(client versioned.Interface, resyncPeriod t
 				return client.AppsV1alpha1().Globalizations().Watch(context.TODO(), options)
 			},
 		},
-		&appsv1alpha1.Globalization{},
+		&apisappsv1alpha1.Globalization{},
 		resyncPeriod,
 		indexers,
 	)
@@ -80,9 +80,9 @@ func (f *globalizationInformer) defaultInformer(client versioned.Interface, resy
 }
 
 func (f *globalizationInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&appsv1alpha1.Globalization{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisappsv1alpha1.Globalization{}, f.defaultInformer)
 }
 
-func (f *globalizationInformer) Lister() v1alpha1.GlobalizationLister {
-	return v1alpha1.NewGlobalizationLister(f.Informer().GetIndexer())
+func (f *globalizationInformer) Lister() appsv1alpha1.GlobalizationLister {
+	return appsv1alpha1.NewGlobalizationLister(f.Informer().GetIndexer())
 }

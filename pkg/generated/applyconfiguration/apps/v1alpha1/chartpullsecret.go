@@ -17,14 +17,14 @@ limitations under the License.
 
 package v1alpha1
 
-// ChartPullSecretApplyConfiguration represents an declarative configuration of the ChartPullSecret type for use
+// ChartPullSecretApplyConfiguration represents a declarative configuration of the ChartPullSecret type for use
 // with apply.
 type ChartPullSecretApplyConfiguration struct {
 	Name      *string `json:"name,omitempty"`
 	Namespace *string `json:"namespace,omitempty"`
 }
 
-// ChartPullSecretApplyConfiguration constructs an declarative configuration of the ChartPullSecret type for use with
+// ChartPullSecretApplyConfiguration constructs a declarative configuration of the ChartPullSecret type for use with
 // apply.
 func ChartPullSecret() *ChartPullSecretApplyConfiguration {
 	return &ChartPullSecretApplyConfiguration{}

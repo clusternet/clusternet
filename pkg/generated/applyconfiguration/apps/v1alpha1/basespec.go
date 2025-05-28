@@ -17,13 +17,13 @@ limitations under the License.
 
 package v1alpha1
 
-// BaseSpecApplyConfiguration represents an declarative configuration of the BaseSpec type for use
+// BaseSpecApplyConfiguration represents a declarative configuration of the BaseSpec type for use
 // with apply.
 type BaseSpecApplyConfiguration struct {
 	Feeds []FeedApplyConfiguration `json:"feeds,omitempty"`
 }
 
-// BaseSpecApplyConfiguration constructs an declarative configuration of the BaseSpec type for use with
+// BaseSpecApplyConfiguration constructs a declarative configuration of the BaseSpec type for use with
 // apply.
 func BaseSpec() *BaseSpecApplyConfiguration {
 	return &BaseSpecApplyConfiguration{}

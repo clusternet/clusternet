@@ -18,18 +18,15 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-	json "encoding/json"
-	"fmt"
-	"time"
+	context "context"
 
-	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
-	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	applyconfigurationclustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/clusters/v1beta1"
 	scheme "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	rest "k8s.io/client-go/rest"
+	gentype "k8s.io/client-go/gentype"
 )
 
 // ManagedClustersGetter has a method to return a ManagedClusterInterface.
@@ -40,216 +37,37 @@ type ManagedClustersGetter interface {
 
 // ManagedClusterInterface has methods to work with ManagedCluster resources.
 type ManagedClusterInterface interface {
-	Create(ctx context.Context, managedCluster *v1beta1.ManagedCluster, opts v1.CreateOptions) (*v1beta1.ManagedCluster, error)
-	Update(ctx context.Context, managedCluster *v1beta1.ManagedCluster, opts v1.UpdateOptions) (*v1beta1.ManagedCluster, error)
-	UpdateStatus(ctx context.Context, managedCluster *v1beta1.ManagedCluster, opts v1.UpdateOptions) (*v1beta1.ManagedCluster, error)
+	Create(ctx context.Context, managedCluster *clustersv1beta1.ManagedCluster, opts v1.CreateOptions) (*clustersv1beta1.ManagedCluster, error)
+	Update(ctx context.Context, managedCluster *clustersv1beta1.ManagedCluster, opts v1.UpdateOptions) (*clustersv1beta1.ManagedCluster, error)
+	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+	UpdateStatus(ctx context.Context, managedCluster *clustersv1beta1.ManagedCluster, opts v1.UpdateOptions) (*clustersv1beta1.ManagedCluster, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1beta1.ManagedCluster, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1beta1.ManagedClusterList, error)
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*clustersv1beta1.ManagedCluster, error)
+	List(ctx context.Context, opts v1.ListOptions) (*clustersv1beta1.ManagedClusterList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.ManagedCluster, err error)
-	Apply(ctx context.Context, managedCluster *clustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ManagedCluster, err error)
-	ApplyStatus(ctx context.Context, managedCluster *clustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ManagedCluster, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *clustersv1beta1.ManagedCluster, err error)
+	Apply(ctx context.Context, managedCluster *applyconfigurationclustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *clustersv1beta1.ManagedCluster, err error)
+	// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+	ApplyStatus(ctx context.Context, managedCluster *applyconfigurationclustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *clustersv1beta1.ManagedCluster, err error)
 	ManagedClusterExpansion
 }
 
 // managedClusters implements ManagedClusterInterface
 type managedClusters struct {
-	client rest.Interface
-	ns     string
+	*gentype.ClientWithListAndApply[*clustersv1beta1.ManagedCluster, *clustersv1beta1.ManagedClusterList, *applyconfigurationclustersv1beta1.ManagedClusterApplyConfiguration]
 }
 
 // newManagedClusters returns a ManagedClusters
 func newManagedClusters(c *ClustersV1beta1Client, namespace string) *managedClusters {
 	return &managedClusters{
-		client: c.RESTClient(),
-		ns:     namespace,
+		gentype.NewClientWithListAndApply[*clustersv1beta1.ManagedCluster, *clustersv1beta1.ManagedClusterList, *applyconfigurationclustersv1beta1.ManagedClusterApplyConfiguration](
+			"managedclusters",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			namespace,
+			func() *clustersv1beta1.ManagedCluster { return &clustersv1beta1.ManagedCluster{} },
+			func() *clustersv1beta1.ManagedClusterList { return &clustersv1beta1.ManagedClusterList{} },
+		),
 	}
-}
-
-// Get takes name of the managedCluster, and returns the corresponding managedCluster object, and an error if there is any.
-func (c *managedClusters) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.ManagedCluster, err error) {
-	result = &v1beta1.ManagedCluster{}
-	err = c.client.Get().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		Name(name).
-		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// List takes label and field selectors, and returns the list of ManagedClusters that match those selectors.
-func (c *managedClusters) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.ManagedClusterList, err error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	result = &v1beta1.ManagedClusterList{}
-	err = c.client.Get().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Watch returns a watch.Interface that watches the requested managedClusters.
-func (c *managedClusters) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	opts.Watch = true
-	return c.client.Get().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Watch(ctx)
-}
-
-// Create takes the representation of a managedCluster and creates it.  Returns the server's representation of the managedCluster, and an error, if there is any.
-func (c *managedClusters) Create(ctx context.Context, managedCluster *v1beta1.ManagedCluster, opts v1.CreateOptions) (result *v1beta1.ManagedCluster, err error) {
-	result = &v1beta1.ManagedCluster{}
-	err = c.client.Post().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(managedCluster).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Update takes the representation of a managedCluster and updates it. Returns the server's representation of the managedCluster, and an error, if there is any.
-func (c *managedClusters) Update(ctx context.Context, managedCluster *v1beta1.ManagedCluster, opts v1.UpdateOptions) (result *v1beta1.ManagedCluster, err error) {
-	result = &v1beta1.ManagedCluster{}
-	err = c.client.Put().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		Name(managedCluster.Name).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(managedCluster).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *managedClusters) UpdateStatus(ctx context.Context, managedCluster *v1beta1.ManagedCluster, opts v1.UpdateOptions) (result *v1beta1.ManagedCluster, err error) {
-	result = &v1beta1.ManagedCluster{}
-	err = c.client.Put().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		Name(managedCluster.Name).
-		SubResource("status").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(managedCluster).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Delete takes name of the managedCluster and deletes it. Returns an error if one occurs.
-func (c *managedClusters) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	return c.client.Delete().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		Name(name).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *managedClusters) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	var timeout time.Duration
-	if listOpts.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
-	}
-	return c.client.Delete().
-		Namespace(c.ns).
-		Resource("managedclusters").
-		VersionedParams(&listOpts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// Patch applies the patch and returns the patched managedCluster.
-func (c *managedClusters) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.ManagedCluster, err error) {
-	result = &v1beta1.ManagedCluster{}
-	err = c.client.Patch(pt).
-		Namespace(c.ns).
-		Resource("managedclusters").
-		Name(name).
-		SubResource(subresources...).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Apply takes the given apply declarative configuration, applies it and returns the applied managedCluster.
-func (c *managedClusters) Apply(ctx context.Context, managedCluster *clustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ManagedCluster, err error) {
-	if managedCluster == nil {
-		return nil, fmt.Errorf("managedCluster provided to Apply must not be nil")
-	}
-	patchOpts := opts.ToPatchOptions()
-	data, err := json.Marshal(managedCluster)
-	if err != nil {
-		return nil, err
-	}
-	name := managedCluster.Name
-	if name == nil {
-		return nil, fmt.Errorf("managedCluster.Name must be provided to Apply")
-	}
-	result = &v1beta1.ManagedCluster{}
-	err = c.client.Patch(types.ApplyPatchType).
-		Namespace(c.ns).
-		Resource("managedclusters").
-		Name(*name).
-		VersionedParams(&patchOpts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// ApplyStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
-func (c *managedClusters) ApplyStatus(ctx context.Context, managedCluster *clustersv1beta1.ManagedClusterApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ManagedCluster, err error) {
-	if managedCluster == nil {
-		return nil, fmt.Errorf("managedCluster provided to Apply must not be nil")
-	}
-	patchOpts := opts.ToPatchOptions()
-	data, err := json.Marshal(managedCluster)
-	if err != nil {
-		return nil, err
-	}
-
-	name := managedCluster.Name
-	if name == nil {
-		return nil, fmt.Errorf("managedCluster.Name must be provided to Apply")
-	}
-
-	result = &v1beta1.ManagedCluster{}
-	err = c.client.Patch(types.ApplyPatchType).
-		Namespace(c.ns).
-		Resource("managedclusters").
-		Name(*name).
-		SubResource("status").
-		VersionedParams(&patchOpts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
 }

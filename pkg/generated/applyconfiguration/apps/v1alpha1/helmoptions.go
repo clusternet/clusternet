@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1alpha1
 
-// HelmOptionsApplyConfiguration represents an declarative configuration of the HelmOptions type for use
+// HelmOptionsApplyConfiguration represents a declarative configuration of the HelmOptions type for use
 // with apply.
 type HelmOptionsApplyConfiguration struct {
 	Repository      *string                            `json:"repo,omitempty"`
@@ -37,7 +37,7 @@ type HelmOptionsApplyConfiguration struct {
 	Force           *bool                              `json:"force,omitempty"`
 }
 
-// HelmOptionsApplyConfiguration constructs an declarative configuration of the HelmOptions type for use with
+// HelmOptionsApplyConfiguration constructs a declarative configuration of the HelmOptions type for use with
 // apply.
 func HelmOptions() *HelmOptionsApplyConfiguration {
 	return &HelmOptionsApplyConfiguration{}
