@@ -18,19 +18,19 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
-// LocalizationSpecApplyConfiguration represents an declarative configuration of the LocalizationSpec type for use
+// LocalizationSpecApplyConfiguration represents a declarative configuration of the LocalizationSpec type for use
 // with apply.
 type LocalizationSpecApplyConfiguration struct {
-	OverridePolicy          *v1alpha1.OverridePolicy           `json:"overridePolicy,omitempty"`
+	OverridePolicy          *appsv1alpha1.OverridePolicy       `json:"overridePolicy,omitempty"`
 	Overrides               []OverrideConfigApplyConfiguration `json:"overrides,omitempty"`
 	Priority                *int32                             `json:"priority,omitempty"`
 	*FeedApplyConfiguration `json:"feed,omitempty"`
 }
 
-// LocalizationSpecApplyConfiguration constructs an declarative configuration of the LocalizationSpec type for use with
+// LocalizationSpecApplyConfiguration constructs a declarative configuration of the LocalizationSpec type for use with
 // apply.
 func LocalizationSpec() *LocalizationSpecApplyConfiguration {
 	return &LocalizationSpecApplyConfiguration{}
@@ -39,7 +39,7 @@ func LocalizationSpec() *LocalizationSpecApplyConfiguration {
 // WithOverridePolicy sets the OverridePolicy field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the OverridePolicy field is set to the value of the last call.
-func (b *LocalizationSpecApplyConfiguration) WithOverridePolicy(value v1alpha1.OverridePolicy) *LocalizationSpecApplyConfiguration {
+func (b *LocalizationSpecApplyConfiguration) WithOverridePolicy(value appsv1alpha1.OverridePolicy) *LocalizationSpecApplyConfiguration {
 	b.OverridePolicy = &value
 	return b
 }
@@ -70,7 +70,7 @@ func (b *LocalizationSpecApplyConfiguration) WithPriority(value int32) *Localiza
 // If called multiple times, the Kind field is set to the value of the last call.
 func (b *LocalizationSpecApplyConfiguration) WithKind(value string) *LocalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.Kind = &value
+	b.FeedApplyConfiguration.Kind = &value
 	return b
 }
 
@@ -79,7 +79,7 @@ func (b *LocalizationSpecApplyConfiguration) WithKind(value string) *Localizatio
 // If called multiple times, the APIVersion field is set to the value of the last call.
 func (b *LocalizationSpecApplyConfiguration) WithAPIVersion(value string) *LocalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.APIVersion = &value
+	b.FeedApplyConfiguration.APIVersion = &value
 	return b
 }
 
@@ -88,7 +88,7 @@ func (b *LocalizationSpecApplyConfiguration) WithAPIVersion(value string) *Local
 // If called multiple times, the Namespace field is set to the value of the last call.
 func (b *LocalizationSpecApplyConfiguration) WithNamespace(value string) *LocalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.Namespace = &value
+	b.FeedApplyConfiguration.Namespace = &value
 	return b
 }
 
@@ -97,7 +97,7 @@ func (b *LocalizationSpecApplyConfiguration) WithNamespace(value string) *Locali
 // If called multiple times, the Name field is set to the value of the last call.
 func (b *LocalizationSpecApplyConfiguration) WithName(value string) *LocalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.Name = &value
+	b.FeedApplyConfiguration.Name = &value
 	return b
 }
 

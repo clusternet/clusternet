@@ -18,22 +18,22 @@ limitations under the License.
 package v1beta1
 
 import (
-	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	types "k8s.io/apimachinery/pkg/types"
 )
 
-// ClusterRegistrationRequestSpecApplyConfiguration represents an declarative configuration of the ClusterRegistrationRequestSpec type for use
+// ClusterRegistrationRequestSpecApplyConfiguration represents a declarative configuration of the ClusterRegistrationRequestSpec type for use
 // with apply.
 type ClusterRegistrationRequestSpecApplyConfiguration struct {
-	ClusterID        *types.UID               `json:"clusterId,omitempty"`
-	ClusterType      *v1beta1.ClusterType     `json:"clusterType,omitempty"`
-	ClusterName      *string                  `json:"clusterName,omitempty"`
-	ClusterNamespace *string                  `json:"clusterNamespace,omitempty"`
-	ClusterLabels    map[string]string        `json:"clusterLabels,omitempty"`
-	SyncMode         *v1beta1.ClusterSyncMode `json:"syncMode,omitempty"`
+	ClusterID        *types.UID                       `json:"clusterId,omitempty"`
+	ClusterType      *clustersv1beta1.ClusterType     `json:"clusterType,omitempty"`
+	ClusterName      *string                          `json:"clusterName,omitempty"`
+	ClusterNamespace *string                          `json:"clusterNamespace,omitempty"`
+	ClusterLabels    map[string]string                `json:"clusterLabels,omitempty"`
+	SyncMode         *clustersv1beta1.ClusterSyncMode `json:"syncMode,omitempty"`
 }
 
-// ClusterRegistrationRequestSpecApplyConfiguration constructs an declarative configuration of the ClusterRegistrationRequestSpec type for use with
+// ClusterRegistrationRequestSpecApplyConfiguration constructs a declarative configuration of the ClusterRegistrationRequestSpec type for use with
 // apply.
 func ClusterRegistrationRequestSpec() *ClusterRegistrationRequestSpecApplyConfiguration {
 	return &ClusterRegistrationRequestSpecApplyConfiguration{}
@@ -50,7 +50,7 @@ func (b *ClusterRegistrationRequestSpecApplyConfiguration) WithClusterID(value t
 // WithClusterType sets the ClusterType field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ClusterType field is set to the value of the last call.
-func (b *ClusterRegistrationRequestSpecApplyConfiguration) WithClusterType(value v1beta1.ClusterType) *ClusterRegistrationRequestSpecApplyConfiguration {
+func (b *ClusterRegistrationRequestSpecApplyConfiguration) WithClusterType(value clustersv1beta1.ClusterType) *ClusterRegistrationRequestSpecApplyConfiguration {
 	b.ClusterType = &value
 	return b
 }
@@ -88,7 +88,7 @@ func (b *ClusterRegistrationRequestSpecApplyConfiguration) WithClusterLabels(ent
 // WithSyncMode sets the SyncMode field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SyncMode field is set to the value of the last call.
-func (b *ClusterRegistrationRequestSpecApplyConfiguration) WithSyncMode(value v1beta1.ClusterSyncMode) *ClusterRegistrationRequestSpecApplyConfiguration {
+func (b *ClusterRegistrationRequestSpecApplyConfiguration) WithSyncMode(value clustersv1beta1.ClusterSyncMode) *ClusterRegistrationRequestSpecApplyConfiguration {
 	b.SyncMode = &value
 	return b
 }

@@ -18,13 +18,13 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	apisclustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1beta1 "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/listers/clusters/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // ClusterRegistrationRequests.
 type ClusterRegistrationRequestInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1beta1.ClusterRegistrationRequestLister
+	Lister() clustersv1beta1.ClusterRegistrationRequestLister
 }
 
 type clusterRegistrationRequestInformer struct {
@@ -69,7 +69,7 @@ func NewFilteredClusterRegistrationRequestInformer(client versioned.Interface, r
 				return client.ClustersV1beta1().ClusterRegistrationRequests().Watch(context.TODO(), options)
 			},
 		},
-		&clustersv1beta1.ClusterRegistrationRequest{},
+		&apisclustersv1beta1.ClusterRegistrationRequest{},
 		resyncPeriod,
 		indexers,
 	)
@@ -80,9 +80,9 @@ func (f *clusterRegistrationRequestInformer) defaultInformer(client versioned.In
 }
 
 func (f *clusterRegistrationRequestInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&clustersv1beta1.ClusterRegistrationRequest{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisclustersv1beta1.ClusterRegistrationRequest{}, f.defaultInformer)
 }
 
-func (f *clusterRegistrationRequestInformer) Lister() v1beta1.ClusterRegistrationRequestLister {
-	return v1beta1.NewClusterRegistrationRequestLister(f.Informer().GetIndexer())
+func (f *clusterRegistrationRequestInformer) Lister() clustersv1beta1.ClusterRegistrationRequestLister {
+	return clustersv1beta1.NewClusterRegistrationRequestLister(f.Informer().GetIndexer())
 }

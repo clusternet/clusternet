@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1alpha1
 
-// HelmReleaseSpecApplyConfiguration represents an declarative configuration of the HelmReleaseSpec type for use
+// HelmReleaseSpecApplyConfiguration represents a declarative configuration of the HelmReleaseSpec type for use
 // with apply.
 type HelmReleaseSpecApplyConfiguration struct {
 	HelmOptionsApplyConfiguration `json:",inline"`
@@ -26,7 +26,7 @@ type HelmReleaseSpecApplyConfiguration struct {
 	Overrides                     []byte  `json:"overrides,omitempty"`
 }
 
-// HelmReleaseSpecApplyConfiguration constructs an declarative configuration of the HelmReleaseSpec type for use with
+// HelmReleaseSpecApplyConfiguration constructs a declarative configuration of the HelmReleaseSpec type for use with
 // apply.
 func HelmReleaseSpec() *HelmReleaseSpecApplyConfiguration {
 	return &HelmReleaseSpecApplyConfiguration{}
@@ -36,7 +36,7 @@ func HelmReleaseSpec() *HelmReleaseSpecApplyConfiguration {
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Repository field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithRepository(value string) *HelmReleaseSpecApplyConfiguration {
-	b.Repository = &value
+	b.HelmOptionsApplyConfiguration.Repository = &value
 	return b
 }
 
@@ -44,7 +44,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithRepository(value string) *HelmRe
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ChartPullSecret field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithChartPullSecret(value *ChartPullSecretApplyConfiguration) *HelmReleaseSpecApplyConfiguration {
-	b.ChartPullSecret = value
+	b.HelmOptionsApplyConfiguration.ChartPullSecret = value
 	return b
 }
 
@@ -52,7 +52,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithChartPullSecret(value *ChartPull
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Chart field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithChart(value string) *HelmReleaseSpecApplyConfiguration {
-	b.Chart = &value
+	b.HelmOptionsApplyConfiguration.Chart = &value
 	return b
 }
 
@@ -60,7 +60,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithChart(value string) *HelmRelease
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ChartVersion field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithChartVersion(value string) *HelmReleaseSpecApplyConfiguration {
-	b.ChartVersion = &value
+	b.HelmOptionsApplyConfiguration.ChartVersion = &value
 	return b
 }
 
@@ -68,7 +68,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithChartVersion(value string) *Helm
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreateNamespace field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithCreateNamespace(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.CreateNamespace = &value
+	b.HelmOptionsApplyConfiguration.CreateNamespace = &value
 	return b
 }
 
@@ -76,7 +76,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithCreateNamespace(value bool) *Hel
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the TimeoutSeconds field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithTimeoutSeconds(value int32) *HelmReleaseSpecApplyConfiguration {
-	b.TimeoutSeconds = &value
+	b.HelmOptionsApplyConfiguration.TimeoutSeconds = &value
 	return b
 }
 
@@ -84,7 +84,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithTimeoutSeconds(value int32) *Hel
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Wait field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithWait(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.Wait = &value
+	b.HelmOptionsApplyConfiguration.Wait = &value
 	return b
 }
 
@@ -92,7 +92,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithWait(value bool) *HelmReleaseSpe
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the WaitForJob field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithWaitForJob(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.WaitForJob = &value
+	b.HelmOptionsApplyConfiguration.WaitForJob = &value
 	return b
 }
 
@@ -100,7 +100,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithWaitForJob(value bool) *HelmRele
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Replace field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithReplace(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.Replace = &value
+	b.HelmOptionsApplyConfiguration.Replace = &value
 	return b
 }
 
@@ -108,7 +108,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithReplace(value bool) *HelmRelease
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Atomic field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithAtomic(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.Atomic = &value
+	b.HelmOptionsApplyConfiguration.Atomic = &value
 	return b
 }
 
@@ -116,7 +116,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithAtomic(value bool) *HelmReleaseS
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UpgradeAtomic field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithUpgradeAtomic(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.UpgradeAtomic = &value
+	b.HelmOptionsApplyConfiguration.UpgradeAtomic = &value
 	return b
 }
 
@@ -124,7 +124,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithUpgradeAtomic(value bool) *HelmR
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SkipCRDs field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithSkipCRDs(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.SkipCRDs = &value
+	b.HelmOptionsApplyConfiguration.SkipCRDs = &value
 	return b
 }
 
@@ -132,7 +132,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithSkipCRDs(value bool) *HelmReleas
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ReplaceCRDs field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithReplaceCRDs(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.ReplaceCRDs = &value
+	b.HelmOptionsApplyConfiguration.ReplaceCRDs = &value
 	return b
 }
 
@@ -140,7 +140,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithReplaceCRDs(value bool) *HelmRel
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DisableHooks field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithDisableHooks(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.DisableHooks = &value
+	b.HelmOptionsApplyConfiguration.DisableHooks = &value
 	return b
 }
 
@@ -148,7 +148,7 @@ func (b *HelmReleaseSpecApplyConfiguration) WithDisableHooks(value bool) *HelmRe
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Force field is set to the value of the last call.
 func (b *HelmReleaseSpecApplyConfiguration) WithForce(value bool) *HelmReleaseSpecApplyConfiguration {
-	b.Force = &value
+	b.HelmOptionsApplyConfiguration.Force = &value
 	return b
 }
 

@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1alpha1
 
-// FeedApplyConfiguration represents an declarative configuration of the Feed type for use
+// FeedApplyConfiguration represents a declarative configuration of the Feed type for use
 // with apply.
 type FeedApplyConfiguration struct {
 	Kind       *string `json:"kind,omitempty"`
@@ -26,7 +26,7 @@ type FeedApplyConfiguration struct {
 	Name       *string `json:"name,omitempty"`
 }
 
-// FeedApplyConfiguration constructs an declarative configuration of the Feed type for use with
+// FeedApplyConfiguration constructs a declarative configuration of the Feed type for use with
 // apply.
 func Feed() *FeedApplyConfiguration {
 	return &FeedApplyConfiguration{}

@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1alpha1
 
-// SubscriptionStatusApplyConfiguration represents an declarative configuration of the SubscriptionStatus type for use
+// SubscriptionStatusApplyConfiguration represents a declarative configuration of the SubscriptionStatus type for use
 // with apply.
 type SubscriptionStatusApplyConfiguration struct {
 	BindingClusters    []string                             `json:"bindingClusters,omitempty"`
@@ -28,7 +28,7 @@ type SubscriptionStatusApplyConfiguration struct {
 	AggregatedStatuses []AggregatedStatusApplyConfiguration `json:"aggregatedStatuses,omitempty"`
 }
 
-// SubscriptionStatusApplyConfiguration constructs an declarative configuration of the SubscriptionStatus type for use with
+// SubscriptionStatusApplyConfiguration constructs a declarative configuration of the SubscriptionStatus type for use with
 // apply.
 func SubscriptionStatus() *SubscriptionStatusApplyConfiguration {
 	return &SubscriptionStatusApplyConfiguration{}

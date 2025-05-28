@@ -21,7 +21,7 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 )
 
-// FeedStatusPerClusterApplyConfiguration represents an declarative configuration of the FeedStatusPerCluster type for use
+// FeedStatusPerClusterApplyConfiguration represents a declarative configuration of the FeedStatusPerCluster type for use
 // with apply.
 type FeedStatusPerClusterApplyConfiguration struct {
 	ClusterID                    *types.UID `json:"clusterId,omitempty"`
@@ -29,7 +29,7 @@ type FeedStatusPerClusterApplyConfiguration struct {
 	FeedStatusApplyConfiguration `json:",inline"`
 }
 
-// FeedStatusPerClusterApplyConfiguration constructs an declarative configuration of the FeedStatusPerCluster type for use with
+// FeedStatusPerClusterApplyConfiguration constructs a declarative configuration of the FeedStatusPerCluster type for use with
 // apply.
 func FeedStatusPerCluster() *FeedStatusPerClusterApplyConfiguration {
 	return &FeedStatusPerClusterApplyConfiguration{}
@@ -55,7 +55,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithClusterName(value string) *
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Available field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithAvailable(value bool) *FeedStatusPerClusterApplyConfiguration {
-	b.Available = &value
+	b.FeedStatusApplyConfiguration.Available = &value
 	return b
 }
 
@@ -64,7 +64,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithAvailable(value bool) *Feed
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithObservedGeneration(value int64) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.ObservedGeneration = &value
+	b.ReplicaStatusApplyConfiguration.ObservedGeneration = &value
 	return b
 }
 
@@ -73,7 +73,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithObservedGeneration(value in
 // If called multiple times, the Replicas field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithReplicas(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Replicas = &value
+	b.ReplicaStatusApplyConfiguration.Replicas = &value
 	return b
 }
 
@@ -82,7 +82,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithReplicas(value int32) *Feed
 // If called multiple times, the UpdatedReplicas field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithUpdatedReplicas(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.UpdatedReplicas = &value
+	b.ReplicaStatusApplyConfiguration.UpdatedReplicas = &value
 	return b
 }
 
@@ -91,7 +91,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithUpdatedReplicas(value int32
 // If called multiple times, the CurrentReplicas field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithCurrentReplicas(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.CurrentReplicas = &value
+	b.ReplicaStatusApplyConfiguration.CurrentReplicas = &value
 	return b
 }
 
@@ -100,7 +100,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithCurrentReplicas(value int32
 // If called multiple times, the ReadyReplicas field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithReadyReplicas(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.ReadyReplicas = &value
+	b.ReplicaStatusApplyConfiguration.ReadyReplicas = &value
 	return b
 }
 
@@ -109,7 +109,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithReadyReplicas(value int32) 
 // If called multiple times, the AvailableReplicas field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithAvailableReplicas(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.AvailableReplicas = &value
+	b.ReplicaStatusApplyConfiguration.AvailableReplicas = &value
 	return b
 }
 
@@ -118,7 +118,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithAvailableReplicas(value int
 // If called multiple times, the UnavailableReplicas field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithUnavailableReplicas(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.UnavailableReplicas = &value
+	b.ReplicaStatusApplyConfiguration.UnavailableReplicas = &value
 	return b
 }
 
@@ -127,7 +127,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithUnavailableReplicas(value i
 // If called multiple times, the Active field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithActive(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Active = &value
+	b.ReplicaStatusApplyConfiguration.Active = &value
 	return b
 }
 
@@ -136,7 +136,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithActive(value int32) *FeedSt
 // If called multiple times, the Succeeded field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithSucceeded(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Succeeded = &value
+	b.ReplicaStatusApplyConfiguration.Succeeded = &value
 	return b
 }
 
@@ -145,7 +145,7 @@ func (b *FeedStatusPerClusterApplyConfiguration) WithSucceeded(value int32) *Fee
 // If called multiple times, the Failed field is set to the value of the last call.
 func (b *FeedStatusPerClusterApplyConfiguration) WithFailed(value int32) *FeedStatusPerClusterApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Failed = &value
+	b.ReplicaStatusApplyConfiguration.Failed = &value
 	return b
 }
 

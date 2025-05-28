@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1alpha1
 
-// ReplicaStatusApplyConfiguration represents an declarative configuration of the ReplicaStatus type for use
+// ReplicaStatusApplyConfiguration represents a declarative configuration of the ReplicaStatus type for use
 // with apply.
 type ReplicaStatusApplyConfiguration struct {
 	ObservedGeneration  *int64 `json:"observedGeneration,omitempty"`
@@ -32,7 +32,7 @@ type ReplicaStatusApplyConfiguration struct {
 	Failed              *int32 `json:"failed,omitempty"`
 }
 
-// ReplicaStatusApplyConfiguration constructs an declarative configuration of the ReplicaStatus type for use with
+// ReplicaStatusApplyConfiguration constructs a declarative configuration of the ReplicaStatus type for use with
 // apply.
 func ReplicaStatus() *ReplicaStatusApplyConfiguration {
 	return &ReplicaStatusApplyConfiguration{}

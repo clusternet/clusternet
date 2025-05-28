@@ -18,18 +18,18 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
-// DescriptionStatusApplyConfiguration represents an declarative configuration of the DescriptionStatus type for use
+// DescriptionStatusApplyConfiguration represents a declarative configuration of the DescriptionStatus type for use
 // with apply.
 type DescriptionStatusApplyConfiguration struct {
-	Phase            *v1alpha1.DescriptionPhase         `json:"phase,omitempty"`
+	Phase            *appsv1alpha1.DescriptionPhase     `json:"phase,omitempty"`
 	Reason           *string                            `json:"reason,omitempty"`
 	ManifestStatuses []ManifestStatusApplyConfiguration `json:"manifestStatuses,omitempty"`
 }
 
-// DescriptionStatusApplyConfiguration constructs an declarative configuration of the DescriptionStatus type for use with
+// DescriptionStatusApplyConfiguration constructs a declarative configuration of the DescriptionStatus type for use with
 // apply.
 func DescriptionStatus() *DescriptionStatusApplyConfiguration {
 	return &DescriptionStatusApplyConfiguration{}
@@ -38,7 +38,7 @@ func DescriptionStatus() *DescriptionStatusApplyConfiguration {
 // WithPhase sets the Phase field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Phase field is set to the value of the last call.
-func (b *DescriptionStatusApplyConfiguration) WithPhase(value v1alpha1.DescriptionPhase) *DescriptionStatusApplyConfiguration {
+func (b *DescriptionStatusApplyConfiguration) WithPhase(value appsv1alpha1.DescriptionPhase) *DescriptionStatusApplyConfiguration {
 	b.Phase = &value
 	return b
 }

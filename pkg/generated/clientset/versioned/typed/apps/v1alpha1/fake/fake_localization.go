@@ -18,136 +18,35 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-	json "encoding/json"
-	"fmt"
-
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	typedappsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/apps/v1alpha1"
+	gentype "k8s.io/client-go/gentype"
 )
 
-// FakeLocalizations implements LocalizationInterface
-type FakeLocalizations struct {
+// fakeLocalizations implements LocalizationInterface
+type fakeLocalizations struct {
+	*gentype.FakeClientWithListAndApply[*v1alpha1.Localization, *v1alpha1.LocalizationList, *appsv1alpha1.LocalizationApplyConfiguration]
 	Fake *FakeAppsV1alpha1
-	ns   string
 }
 
-var localizationsResource = v1alpha1.SchemeGroupVersion.WithResource("localizations")
-
-var localizationsKind = v1alpha1.SchemeGroupVersion.WithKind("Localization")
-
-// Get takes name of the localization, and returns the corresponding localization object, and an error if there is any.
-func (c *FakeLocalizations) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Localization, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(localizationsResource, c.ns, name), &v1alpha1.Localization{})
-
-	if obj == nil {
-		return nil, err
+func newFakeLocalizations(fake *FakeAppsV1alpha1, namespace string) typedappsv1alpha1.LocalizationInterface {
+	return &fakeLocalizations{
+		gentype.NewFakeClientWithListAndApply[*v1alpha1.Localization, *v1alpha1.LocalizationList, *appsv1alpha1.LocalizationApplyConfiguration](
+			fake.Fake,
+			namespace,
+			v1alpha1.SchemeGroupVersion.WithResource("localizations"),
+			v1alpha1.SchemeGroupVersion.WithKind("Localization"),
+			func() *v1alpha1.Localization { return &v1alpha1.Localization{} },
+			func() *v1alpha1.LocalizationList { return &v1alpha1.LocalizationList{} },
+			func(dst, src *v1alpha1.LocalizationList) { dst.ListMeta = src.ListMeta },
+			func(list *v1alpha1.LocalizationList) []*v1alpha1.Localization {
+				return gentype.ToPointerSlice(list.Items)
+			},
+			func(list *v1alpha1.LocalizationList, items []*v1alpha1.Localization) {
+				list.Items = gentype.FromPointerSlice(items)
+			},
+		),
+		fake,
 	}
-	return obj.(*v1alpha1.Localization), err
-}
-
-// List takes label and field selectors, and returns the list of Localizations that match those selectors.
-func (c *FakeLocalizations) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.LocalizationList, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewListAction(localizationsResource, localizationsKind, c.ns, opts), &v1alpha1.LocalizationList{})
-
-	if obj == nil {
-		return nil, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1alpha1.LocalizationList{ListMeta: obj.(*v1alpha1.LocalizationList).ListMeta}
-	for _, item := range obj.(*v1alpha1.LocalizationList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested localizations.
-func (c *FakeLocalizations) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(localizationsResource, c.ns, opts))
-
-}
-
-// Create takes the representation of a localization and creates it.  Returns the server's representation of the localization, and an error, if there is any.
-func (c *FakeLocalizations) Create(ctx context.Context, localization *v1alpha1.Localization, opts v1.CreateOptions) (result *v1alpha1.Localization, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(localizationsResource, c.ns, localization), &v1alpha1.Localization{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Localization), err
-}
-
-// Update takes the representation of a localization and updates it. Returns the server's representation of the localization, and an error, if there is any.
-func (c *FakeLocalizations) Update(ctx context.Context, localization *v1alpha1.Localization, opts v1.UpdateOptions) (result *v1alpha1.Localization, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(localizationsResource, c.ns, localization), &v1alpha1.Localization{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Localization), err
-}
-
-// Delete takes name of the localization and deletes it. Returns an error if one occurs.
-func (c *FakeLocalizations) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(localizationsResource, c.ns, name, opts), &v1alpha1.Localization{})
-
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeLocalizations) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(localizationsResource, c.ns, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1alpha1.LocalizationList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched localization.
-func (c *FakeLocalizations) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Localization, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(localizationsResource, c.ns, name, pt, data, subresources...), &v1alpha1.Localization{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Localization), err
-}
-
-// Apply takes the given apply declarative configuration, applies it and returns the applied localization.
-func (c *FakeLocalizations) Apply(ctx context.Context, localization *appsv1alpha1.LocalizationApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Localization, err error) {
-	if localization == nil {
-		return nil, fmt.Errorf("localization provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(localization)
-	if err != nil {
-		return nil, err
-	}
-	name := localization.Name
-	if name == nil {
-		return nil, fmt.Errorf("localization.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(localizationsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.Localization{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Localization), err
 }

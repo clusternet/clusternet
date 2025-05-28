@@ -28,11 +28,11 @@ type FakeClustersV1beta1 struct {
 }
 
 func (c *FakeClustersV1beta1) ClusterRegistrationRequests() v1beta1.ClusterRegistrationRequestInterface {
-	return &FakeClusterRegistrationRequests{c}
+	return newFakeClusterRegistrationRequests(c)
 }
 
 func (c *FakeClustersV1beta1) ManagedClusters(namespace string) v1beta1.ManagedClusterInterface {
-	return &FakeManagedClusters{c, namespace}
+	return newFakeManagedClusters(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate

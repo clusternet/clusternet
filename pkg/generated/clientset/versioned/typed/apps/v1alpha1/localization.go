@@ -18,18 +18,15 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
-	json "encoding/json"
-	"fmt"
-	"time"
+	context "context"
 
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	applyconfigurationappsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
 	scheme "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	rest "k8s.io/client-go/rest"
+	gentype "k8s.io/client-go/gentype"
 )
 
 // LocalizationsGetter has a method to return a LocalizationInterface.
@@ -40,168 +37,33 @@ type LocalizationsGetter interface {
 
 // LocalizationInterface has methods to work with Localization resources.
 type LocalizationInterface interface {
-	Create(ctx context.Context, localization *v1alpha1.Localization, opts v1.CreateOptions) (*v1alpha1.Localization, error)
-	Update(ctx context.Context, localization *v1alpha1.Localization, opts v1.UpdateOptions) (*v1alpha1.Localization, error)
+	Create(ctx context.Context, localization *appsv1alpha1.Localization, opts v1.CreateOptions) (*appsv1alpha1.Localization, error)
+	Update(ctx context.Context, localization *appsv1alpha1.Localization, opts v1.UpdateOptions) (*appsv1alpha1.Localization, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.Localization, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.LocalizationList, error)
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*appsv1alpha1.Localization, error)
+	List(ctx context.Context, opts v1.ListOptions) (*appsv1alpha1.LocalizationList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Localization, err error)
-	Apply(ctx context.Context, localization *appsv1alpha1.LocalizationApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Localization, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *appsv1alpha1.Localization, err error)
+	Apply(ctx context.Context, localization *applyconfigurationappsv1alpha1.LocalizationApplyConfiguration, opts v1.ApplyOptions) (result *appsv1alpha1.Localization, err error)
 	LocalizationExpansion
 }
 
 // localizations implements LocalizationInterface
 type localizations struct {
-	client rest.Interface
-	ns     string
+	*gentype.ClientWithListAndApply[*appsv1alpha1.Localization, *appsv1alpha1.LocalizationList, *applyconfigurationappsv1alpha1.LocalizationApplyConfiguration]
 }
 
 // newLocalizations returns a Localizations
 func newLocalizations(c *AppsV1alpha1Client, namespace string) *localizations {
 	return &localizations{
-		client: c.RESTClient(),
-		ns:     namespace,
+		gentype.NewClientWithListAndApply[*appsv1alpha1.Localization, *appsv1alpha1.LocalizationList, *applyconfigurationappsv1alpha1.LocalizationApplyConfiguration](
+			"localizations",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			namespace,
+			func() *appsv1alpha1.Localization { return &appsv1alpha1.Localization{} },
+			func() *appsv1alpha1.LocalizationList { return &appsv1alpha1.LocalizationList{} },
+		),
 	}
-}
-
-// Get takes name of the localization, and returns the corresponding localization object, and an error if there is any.
-func (c *localizations) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Localization, err error) {
-	result = &v1alpha1.Localization{}
-	err = c.client.Get().
-		Namespace(c.ns).
-		Resource("localizations").
-		Name(name).
-		VersionedParams(&options, scheme.ParameterCodec).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// List takes label and field selectors, and returns the list of Localizations that match those selectors.
-func (c *localizations) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.LocalizationList, err error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	result = &v1alpha1.LocalizationList{}
-	err = c.client.Get().
-		Namespace(c.ns).
-		Resource("localizations").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Watch returns a watch.Interface that watches the requested localizations.
-func (c *localizations) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	var timeout time.Duration
-	if opts.TimeoutSeconds != nil {
-		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
-	}
-	opts.Watch = true
-	return c.client.Get().
-		Namespace(c.ns).
-		Resource("localizations").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Watch(ctx)
-}
-
-// Create takes the representation of a localization and creates it.  Returns the server's representation of the localization, and an error, if there is any.
-func (c *localizations) Create(ctx context.Context, localization *v1alpha1.Localization, opts v1.CreateOptions) (result *v1alpha1.Localization, err error) {
-	result = &v1alpha1.Localization{}
-	err = c.client.Post().
-		Namespace(c.ns).
-		Resource("localizations").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(localization).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Update takes the representation of a localization and updates it. Returns the server's representation of the localization, and an error, if there is any.
-func (c *localizations) Update(ctx context.Context, localization *v1alpha1.Localization, opts v1.UpdateOptions) (result *v1alpha1.Localization, err error) {
-	result = &v1alpha1.Localization{}
-	err = c.client.Put().
-		Namespace(c.ns).
-		Resource("localizations").
-		Name(localization.Name).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(localization).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Delete takes name of the localization and deletes it. Returns an error if one occurs.
-func (c *localizations) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	return c.client.Delete().
-		Namespace(c.ns).
-		Resource("localizations").
-		Name(name).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *localizations) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	var timeout time.Duration
-	if listOpts.TimeoutSeconds != nil {
-		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
-	}
-	return c.client.Delete().
-		Namespace(c.ns).
-		Resource("localizations").
-		VersionedParams(&listOpts, scheme.ParameterCodec).
-		Timeout(timeout).
-		Body(&opts).
-		Do(ctx).
-		Error()
-}
-
-// Patch applies the patch and returns the patched localization.
-func (c *localizations) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Localization, err error) {
-	result = &v1alpha1.Localization{}
-	err = c.client.Patch(pt).
-		Namespace(c.ns).
-		Resource("localizations").
-		Name(name).
-		SubResource(subresources...).
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
-}
-
-// Apply takes the given apply declarative configuration, applies it and returns the applied localization.
-func (c *localizations) Apply(ctx context.Context, localization *appsv1alpha1.LocalizationApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Localization, err error) {
-	if localization == nil {
-		return nil, fmt.Errorf("localization provided to Apply must not be nil")
-	}
-	patchOpts := opts.ToPatchOptions()
-	data, err := json.Marshal(localization)
-	if err != nil {
-		return nil, err
-	}
-	name := localization.Name
-	if name == nil {
-		return nil, fmt.Errorf("localization.Name must be provided to Apply")
-	}
-	result = &v1alpha1.Localization{}
-	err = c.client.Patch(types.ApplyPatchType).
-		Namespace(c.ns).
-		Resource("localizations").
-		Name(*name).
-		VersionedParams(&patchOpts, scheme.ParameterCodec).
-		Body(data).
-		Do(ctx).
-		Into(result)
-	return
 }

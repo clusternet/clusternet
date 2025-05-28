@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	apisappsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // FeedInventories.
 type FeedInventoryInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.FeedInventoryLister
+	Lister() appsv1alpha1.FeedInventoryLister
 }
 
 type feedInventoryInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredFeedInventoryInformer(client versioned.Interface, namespace stri
 				return client.AppsV1alpha1().FeedInventories(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&appsv1alpha1.FeedInventory{},
+		&apisappsv1alpha1.FeedInventory{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *feedInventoryInformer) defaultInformer(client versioned.Interface, resy
 }
 
 func (f *feedInventoryInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&appsv1alpha1.FeedInventory{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisappsv1alpha1.FeedInventory{}, f.defaultInformer)
 }
 
-func (f *feedInventoryInformer) Lister() v1alpha1.FeedInventoryLister {
-	return v1alpha1.NewFeedInventoryLister(f.Informer().GetIndexer())
+func (f *feedInventoryInformer) Lister() appsv1alpha1.FeedInventoryLister {
+	return appsv1alpha1.NewFeedInventoryLister(f.Informer().GetIndexer())
 }

@@ -18,21 +18,21 @@ limitations under the License.
 package v1beta1
 
 import (
-	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 )
 
-// ClusterRegistrationRequestStatusApplyConfiguration represents an declarative configuration of the ClusterRegistrationRequestStatus type for use
+// ClusterRegistrationRequestStatusApplyConfiguration represents a declarative configuration of the ClusterRegistrationRequestStatus type for use
 // with apply.
 type ClusterRegistrationRequestStatusApplyConfiguration struct {
-	DedicatedNamespace *string                 `json:"dedicatedNamespace,omitempty"`
-	DedicatedToken     []byte                  `json:"token,omitempty"`
-	CACertificate      []byte                  `json:"caCertificate,omitempty"`
-	Result             *v1beta1.ApprovedResult `json:"result,omitempty"`
-	ErrorMessage       *string                 `json:"errorMessage,omitempty"`
-	ManagedClusterName *string                 `json:"managedClusterName,omitempty"`
+	DedicatedNamespace *string                         `json:"dedicatedNamespace,omitempty"`
+	DedicatedToken     []byte                          `json:"token,omitempty"`
+	CACertificate      []byte                          `json:"caCertificate,omitempty"`
+	Result             *clustersv1beta1.ApprovedResult `json:"result,omitempty"`
+	ErrorMessage       *string                         `json:"errorMessage,omitempty"`
+	ManagedClusterName *string                         `json:"managedClusterName,omitempty"`
 }
 
-// ClusterRegistrationRequestStatusApplyConfiguration constructs an declarative configuration of the ClusterRegistrationRequestStatus type for use with
+// ClusterRegistrationRequestStatusApplyConfiguration constructs a declarative configuration of the ClusterRegistrationRequestStatus type for use with
 // apply.
 func ClusterRegistrationRequestStatus() *ClusterRegistrationRequestStatusApplyConfiguration {
 	return &ClusterRegistrationRequestStatusApplyConfiguration{}
@@ -69,7 +69,7 @@ func (b *ClusterRegistrationRequestStatusApplyConfiguration) WithCACertificate(v
 // WithResult sets the Result field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Result field is set to the value of the last call.
-func (b *ClusterRegistrationRequestStatusApplyConfiguration) WithResult(value v1beta1.ApprovedResult) *ClusterRegistrationRequestStatusApplyConfiguration {
+func (b *ClusterRegistrationRequestStatusApplyConfiguration) WithResult(value clustersv1beta1.ApprovedResult) *ClusterRegistrationRequestStatusApplyConfiguration {
 	b.Result = &value
 	return b
 }

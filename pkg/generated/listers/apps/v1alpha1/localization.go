@@ -18,10 +18,10 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/tools/cache"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // LocalizationLister helps list Localizations.
@@ -29,7 +29,7 @@ import (
 type LocalizationLister interface {
 	// List lists all Localizations in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.Localization, err error)
+	List(selector labels.Selector) (ret []*appsv1alpha1.Localization, err error)
 	// Localizations returns an object that can list and get Localizations.
 	Localizations(namespace string) LocalizationNamespaceLister
 	LocalizationListerExpansion
@@ -37,25 +37,17 @@ type LocalizationLister interface {
 
 // localizationLister implements the LocalizationLister interface.
 type localizationLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*appsv1alpha1.Localization]
 }
 
 // NewLocalizationLister returns a new LocalizationLister.
 func NewLocalizationLister(indexer cache.Indexer) LocalizationLister {
-	return &localizationLister{indexer: indexer}
-}
-
-// List lists all Localizations in the indexer.
-func (s *localizationLister) List(selector labels.Selector) (ret []*v1alpha1.Localization, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.Localization))
-	})
-	return ret, err
+	return &localizationLister{listers.New[*appsv1alpha1.Localization](indexer, appsv1alpha1.Resource("localization"))}
 }
 
 // Localizations returns an object that can list and get Localizations.
 func (s *localizationLister) Localizations(namespace string) LocalizationNamespaceLister {
-	return localizationNamespaceLister{indexer: s.indexer, namespace: namespace}
+	return localizationNamespaceLister{listers.NewNamespaced[*appsv1alpha1.Localization](s.ResourceIndexer, namespace)}
 }
 
 // LocalizationNamespaceLister helps list and get Localizations.
@@ -63,36 +55,15 @@ func (s *localizationLister) Localizations(namespace string) LocalizationNamespa
 type LocalizationNamespaceLister interface {
 	// List lists all Localizations in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.Localization, err error)
+	List(selector labels.Selector) (ret []*appsv1alpha1.Localization, err error)
 	// Get retrieves the Localization from the indexer for a given namespace and name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1alpha1.Localization, error)
+	Get(name string) (*appsv1alpha1.Localization, error)
 	LocalizationNamespaceListerExpansion
 }
 
 // localizationNamespaceLister implements the LocalizationNamespaceLister
 // interface.
 type localizationNamespaceLister struct {
-	indexer   cache.Indexer
-	namespace string
-}
-
-// List lists all Localizations in the indexer for a given namespace.
-func (s localizationNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Localization, err error) {
-	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.Localization))
-	})
-	return ret, err
-}
-
-// Get retrieves the Localization from the indexer for a given namespace and name.
-func (s localizationNamespaceLister) Get(name string) (*v1alpha1.Localization, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1alpha1.Resource("localization"), name)
-	}
-	return obj.(*v1alpha1.Localization), nil
+	listers.ResourceIndexer[*appsv1alpha1.Localization]
 }

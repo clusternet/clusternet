@@ -17,7 +17,7 @@ limitations under the License.
 
 package v1beta1
 
-// NodeStatisticsApplyConfiguration represents an declarative configuration of the NodeStatistics type for use
+// NodeStatisticsApplyConfiguration represents a declarative configuration of the NodeStatistics type for use
 // with apply.
 type NodeStatisticsApplyConfiguration struct {
 	ReadyNodes    *int32 `json:"readyNodes,omitempty"`
@@ -26,7 +26,7 @@ type NodeStatisticsApplyConfiguration struct {
 	LostNodes     *int32 `json:"lostNodes,omitempty"`
 }
 
-// NodeStatisticsApplyConfiguration constructs an declarative configuration of the NodeStatistics type for use with
+// NodeStatisticsApplyConfiguration constructs a declarative configuration of the NodeStatistics type for use with
 // apply.
 func NodeStatistics() *NodeStatisticsApplyConfiguration {
 	return &NodeStatisticsApplyConfiguration{}

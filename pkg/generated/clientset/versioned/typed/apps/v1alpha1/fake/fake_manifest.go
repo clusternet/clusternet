@@ -18,136 +18,33 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-	json "encoding/json"
-	"fmt"
-
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	typedappsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/apps/v1alpha1"
+	gentype "k8s.io/client-go/gentype"
 )
 
-// FakeManifests implements ManifestInterface
-type FakeManifests struct {
+// fakeManifests implements ManifestInterface
+type fakeManifests struct {
+	*gentype.FakeClientWithListAndApply[*v1alpha1.Manifest, *v1alpha1.ManifestList, *appsv1alpha1.ManifestApplyConfiguration]
 	Fake *FakeAppsV1alpha1
-	ns   string
 }
 
-var manifestsResource = v1alpha1.SchemeGroupVersion.WithResource("manifests")
-
-var manifestsKind = v1alpha1.SchemeGroupVersion.WithKind("Manifest")
-
-// Get takes name of the manifest, and returns the corresponding manifest object, and an error if there is any.
-func (c *FakeManifests) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Manifest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(manifestsResource, c.ns, name), &v1alpha1.Manifest{})
-
-	if obj == nil {
-		return nil, err
+func newFakeManifests(fake *FakeAppsV1alpha1, namespace string) typedappsv1alpha1.ManifestInterface {
+	return &fakeManifests{
+		gentype.NewFakeClientWithListAndApply[*v1alpha1.Manifest, *v1alpha1.ManifestList, *appsv1alpha1.ManifestApplyConfiguration](
+			fake.Fake,
+			namespace,
+			v1alpha1.SchemeGroupVersion.WithResource("manifests"),
+			v1alpha1.SchemeGroupVersion.WithKind("Manifest"),
+			func() *v1alpha1.Manifest { return &v1alpha1.Manifest{} },
+			func() *v1alpha1.ManifestList { return &v1alpha1.ManifestList{} },
+			func(dst, src *v1alpha1.ManifestList) { dst.ListMeta = src.ListMeta },
+			func(list *v1alpha1.ManifestList) []*v1alpha1.Manifest { return gentype.ToPointerSlice(list.Items) },
+			func(list *v1alpha1.ManifestList, items []*v1alpha1.Manifest) {
+				list.Items = gentype.FromPointerSlice(items)
+			},
+		),
+		fake,
 	}
-	return obj.(*v1alpha1.Manifest), err
-}
-
-// List takes label and field selectors, and returns the list of Manifests that match those selectors.
-func (c *FakeManifests) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.ManifestList, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewListAction(manifestsResource, manifestsKind, c.ns, opts), &v1alpha1.ManifestList{})
-
-	if obj == nil {
-		return nil, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1alpha1.ManifestList{ListMeta: obj.(*v1alpha1.ManifestList).ListMeta}
-	for _, item := range obj.(*v1alpha1.ManifestList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested manifests.
-func (c *FakeManifests) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(manifestsResource, c.ns, opts))
-
-}
-
-// Create takes the representation of a manifest and creates it.  Returns the server's representation of the manifest, and an error, if there is any.
-func (c *FakeManifests) Create(ctx context.Context, manifest *v1alpha1.Manifest, opts v1.CreateOptions) (result *v1alpha1.Manifest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(manifestsResource, c.ns, manifest), &v1alpha1.Manifest{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Manifest), err
-}
-
-// Update takes the representation of a manifest and updates it. Returns the server's representation of the manifest, and an error, if there is any.
-func (c *FakeManifests) Update(ctx context.Context, manifest *v1alpha1.Manifest, opts v1.UpdateOptions) (result *v1alpha1.Manifest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(manifestsResource, c.ns, manifest), &v1alpha1.Manifest{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Manifest), err
-}
-
-// Delete takes name of the manifest and deletes it. Returns an error if one occurs.
-func (c *FakeManifests) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(manifestsResource, c.ns, name, opts), &v1alpha1.Manifest{})
-
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeManifests) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(manifestsResource, c.ns, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1alpha1.ManifestList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched manifest.
-func (c *FakeManifests) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.Manifest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(manifestsResource, c.ns, name, pt, data, subresources...), &v1alpha1.Manifest{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Manifest), err
-}
-
-// Apply takes the given apply declarative configuration, applies it and returns the applied manifest.
-func (c *FakeManifests) Apply(ctx context.Context, manifest *appsv1alpha1.ManifestApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.Manifest, err error) {
-	if manifest == nil {
-		return nil, fmt.Errorf("manifest provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(manifest)
-	if err != nil {
-		return nil, err
-	}
-	name := manifest.Name
-	if name == nil {
-		return nil, fmt.Errorf("manifest.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(manifestsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.Manifest{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.Manifest), err
 }

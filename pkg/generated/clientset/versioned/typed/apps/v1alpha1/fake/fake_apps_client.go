@@ -28,39 +28,39 @@ type FakeAppsV1alpha1 struct {
 }
 
 func (c *FakeAppsV1alpha1) Bases(namespace string) v1alpha1.BaseInterface {
-	return &FakeBases{c, namespace}
+	return newFakeBases(c, namespace)
 }
 
 func (c *FakeAppsV1alpha1) Descriptions(namespace string) v1alpha1.DescriptionInterface {
-	return &FakeDescriptions{c, namespace}
+	return newFakeDescriptions(c, namespace)
 }
 
 func (c *FakeAppsV1alpha1) FeedInventories(namespace string) v1alpha1.FeedInventoryInterface {
-	return &FakeFeedInventories{c, namespace}
+	return newFakeFeedInventories(c, namespace)
 }
 
 func (c *FakeAppsV1alpha1) Globalizations() v1alpha1.GlobalizationInterface {
-	return &FakeGlobalizations{c}
+	return newFakeGlobalizations(c)
 }
 
 func (c *FakeAppsV1alpha1) HelmCharts(namespace string) v1alpha1.HelmChartInterface {
-	return &FakeHelmCharts{c, namespace}
+	return newFakeHelmCharts(c, namespace)
 }
 
 func (c *FakeAppsV1alpha1) HelmReleases(namespace string) v1alpha1.HelmReleaseInterface {
-	return &FakeHelmReleases{c, namespace}
+	return newFakeHelmReleases(c, namespace)
 }
 
 func (c *FakeAppsV1alpha1) Localizations(namespace string) v1alpha1.LocalizationInterface {
-	return &FakeLocalizations{c, namespace}
+	return newFakeLocalizations(c, namespace)
 }
 
 func (c *FakeAppsV1alpha1) Manifests(namespace string) v1alpha1.ManifestInterface {
-	return &FakeManifests{c, namespace}
+	return newFakeManifests(c, namespace)
 }
 
 func (c *FakeAppsV1alpha1) Subscriptions(namespace string) v1alpha1.SubscriptionInterface {
-	return &FakeSubscriptions{c, namespace}
+	return newFakeSubscriptions(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate

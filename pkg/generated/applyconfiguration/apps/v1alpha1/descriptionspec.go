@@ -18,19 +18,19 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
-// DescriptionSpecApplyConfiguration represents an declarative configuration of the DescriptionSpec type for use
+// DescriptionSpecApplyConfiguration represents a declarative configuration of the DescriptionSpec type for use
 // with apply.
 type DescriptionSpecApplyConfiguration struct {
-	Deployer *v1alpha1.DescriptionDeployer      `json:"deployer,omitempty"`
+	Deployer *appsv1alpha1.DescriptionDeployer  `json:"deployer,omitempty"`
 	Charts   []ChartReferenceApplyConfiguration `json:"charts,omitempty"`
 	Raw      [][]byte                           `json:"raw,omitempty"`
 	ChartRaw [][]byte                           `json:"chartRaw,omitempty"`
 }
 
-// DescriptionSpecApplyConfiguration constructs an declarative configuration of the DescriptionSpec type for use with
+// DescriptionSpecApplyConfiguration constructs a declarative configuration of the DescriptionSpec type for use with
 // apply.
 func DescriptionSpec() *DescriptionSpecApplyConfiguration {
 	return &DescriptionSpecApplyConfiguration{}
@@ -39,7 +39,7 @@ func DescriptionSpec() *DescriptionSpecApplyConfiguration {
 // WithDeployer sets the Deployer field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Deployer field is set to the value of the last call.
-func (b *DescriptionSpecApplyConfiguration) WithDeployer(value v1alpha1.DescriptionDeployer) *DescriptionSpecApplyConfiguration {
+func (b *DescriptionSpecApplyConfiguration) WithDeployer(value appsv1alpha1.DescriptionDeployer) *DescriptionSpecApplyConfiguration {
 	b.Deployer = &value
 	return b
 }

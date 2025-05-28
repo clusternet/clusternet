@@ -18,17 +18,17 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
-// HelmChartStatusApplyConfiguration represents an declarative configuration of the HelmChartStatus type for use
+// HelmChartStatusApplyConfiguration represents a declarative configuration of the HelmChartStatus type for use
 // with apply.
 type HelmChartStatusApplyConfiguration struct {
-	Phase  *v1alpha1.HelmChartPhase `json:"phase,omitempty"`
-	Reason *string                  `json:"reason,omitempty"`
+	Phase  *appsv1alpha1.HelmChartPhase `json:"phase,omitempty"`
+	Reason *string                      `json:"reason,omitempty"`
 }
 
-// HelmChartStatusApplyConfiguration constructs an declarative configuration of the HelmChartStatus type for use with
+// HelmChartStatusApplyConfiguration constructs a declarative configuration of the HelmChartStatus type for use with
 // apply.
 func HelmChartStatus() *HelmChartStatusApplyConfiguration {
 	return &HelmChartStatusApplyConfiguration{}
@@ -37,7 +37,7 @@ func HelmChartStatus() *HelmChartStatusApplyConfiguration {
 // WithPhase sets the Phase field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Phase field is set to the value of the last call.
-func (b *HelmChartStatusApplyConfiguration) WithPhase(value v1alpha1.HelmChartPhase) *HelmChartStatusApplyConfiguration {
+func (b *HelmChartStatusApplyConfiguration) WithPhase(value appsv1alpha1.HelmChartPhase) *HelmChartStatusApplyConfiguration {
 	b.Phase = &value
 	return b
 }

@@ -18,21 +18,21 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 )
 
-// DynamicDividingApplyConfiguration represents an declarative configuration of the DynamicDividing type for use
+// DynamicDividingApplyConfiguration represents a declarative configuration of the DynamicDividing type for use
 // with apply.
 type DynamicDividingApplyConfiguration struct {
-	Strategy                  *v1alpha1.DynamicDividingStrategy `json:"strategy,omitempty"`
-	TopologySpreadConstraints []v1.TopologySpreadConstraint     `json:"topologySpreadConstraints,omitempty"`
-	PreferredClusters         []v1.PreferredSchedulingTerm      `json:"preferredClusters,omitempty"`
-	MinClusters               *int32                            `json:"minClusters,omitempty"`
-	MaxClusters               *int32                            `json:"maxClusters,omitempty"`
+	Strategy                  *appsv1alpha1.DynamicDividingStrategy `json:"strategy,omitempty"`
+	TopologySpreadConstraints []v1.TopologySpreadConstraint         `json:"topologySpreadConstraints,omitempty"`
+	PreferredClusters         []v1.PreferredSchedulingTerm          `json:"preferredClusters,omitempty"`
+	MinClusters               *int32                                `json:"minClusters,omitempty"`
+	MaxClusters               *int32                                `json:"maxClusters,omitempty"`
 }
 
-// DynamicDividingApplyConfiguration constructs an declarative configuration of the DynamicDividing type for use with
+// DynamicDividingApplyConfiguration constructs a declarative configuration of the DynamicDividing type for use with
 // apply.
 func DynamicDividing() *DynamicDividingApplyConfiguration {
 	return &DynamicDividingApplyConfiguration{}
@@ -41,7 +41,7 @@ func DynamicDividing() *DynamicDividingApplyConfiguration {
 // WithStrategy sets the Strategy field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Strategy field is set to the value of the last call.
-func (b *DynamicDividingApplyConfiguration) WithStrategy(value v1alpha1.DynamicDividingStrategy) *DynamicDividingApplyConfiguration {
+func (b *DynamicDividingApplyConfiguration) WithStrategy(value appsv1alpha1.DynamicDividingStrategy) *DynamicDividingApplyConfiguration {
 	b.Strategy = &value
 	return b
 }

@@ -17,13 +17,13 @@ limitations under the License.
 
 package v1alpha1
 
-// SubGroupStrategyApplyConfiguration represents an declarative configuration of the SubGroupStrategy type for use
+// SubGroupStrategyApplyConfiguration represents a declarative configuration of the SubGroupStrategy type for use
 // with apply.
 type SubGroupStrategyApplyConfiguration struct {
 	MinClusters *int32 `json:"minClusters,omitempty"`
 }
 
-// SubGroupStrategyApplyConfiguration constructs an declarative configuration of the SubGroupStrategy type for use with
+// SubGroupStrategyApplyConfiguration constructs a declarative configuration of the SubGroupStrategy type for use with
 // apply.
 func SubGroupStrategy() *SubGroupStrategyApplyConfiguration {
 	return &SubGroupStrategyApplyConfiguration{}

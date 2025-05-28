@@ -21,7 +21,7 @@ import (
 	release "helm.sh/helm/v3/pkg/release"
 )
 
-// HelmReleaseStatusApplyConfiguration represents an declarative configuration of the HelmReleaseStatus type for use
+// HelmReleaseStatusApplyConfiguration represents a declarative configuration of the HelmReleaseStatus type for use
 // with apply.
 type HelmReleaseStatusApplyConfiguration struct {
 	FirstDeployed *string         `json:"firstDeployed,omitempty"`
@@ -32,7 +32,7 @@ type HelmReleaseStatusApplyConfiguration struct {
 	Version       *int            `json:"version,omitempty"`
 }
 
-// HelmReleaseStatusApplyConfiguration constructs an declarative configuration of the HelmReleaseStatus type for use with
+// HelmReleaseStatusApplyConfiguration constructs a declarative configuration of the HelmReleaseStatus type for use with
 // apply.
 func HelmReleaseStatus() *HelmReleaseStatusApplyConfiguration {
 	return &HelmReleaseStatusApplyConfiguration{}
