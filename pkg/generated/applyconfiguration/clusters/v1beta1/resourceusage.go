@@ -21,14 +21,14 @@ import (
 	resource "k8s.io/apimachinery/pkg/api/resource"
 )
 
-// ResourceUsageApplyConfiguration represents an declarative configuration of the ResourceUsage type for use
+// ResourceUsageApplyConfiguration represents a declarative configuration of the ResourceUsage type for use
 // with apply.
 type ResourceUsageApplyConfiguration struct {
 	CpuUsage    *resource.Quantity `json:"cpuUsage,omitempty"`
 	MemoryUsage *resource.Quantity `json:"memoryUsage,omitempty"`
 }
 
-// ResourceUsageApplyConfiguration constructs an declarative configuration of the ResourceUsage type for use with
+// ResourceUsageApplyConfiguration constructs a declarative configuration of the ResourceUsage type for use with
 // apply.
 func ResourceUsage() *ResourceUsageApplyConfiguration {
 	return &ResourceUsageApplyConfiguration{}

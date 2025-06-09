@@ -18,22 +18,22 @@ limitations under the License.
 package v1beta1
 
 import (
-	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
+	clustersv1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	types "k8s.io/apimachinery/pkg/types"
 )
 
-// ManagedClusterSpecApplyConfiguration represents an declarative configuration of the ManagedClusterSpec type for use
+// ManagedClusterSpecApplyConfiguration represents a declarative configuration of the ManagedClusterSpec type for use
 // with apply.
 type ManagedClusterSpecApplyConfiguration struct {
-	ClusterID           *types.UID               `json:"clusterId,omitempty"`
-	ClusterType         *v1beta1.ClusterType     `json:"clusterType,omitempty"`
-	ClusterInitBaseName *string                  `json:"clusterInitBaseName,omitempty"`
-	SyncMode            *v1beta1.ClusterSyncMode `json:"syncMode,omitempty"`
-	Taints              []v1.Taint               `json:"taints,omitempty"`
+	ClusterID           *types.UID                       `json:"clusterId,omitempty"`
+	ClusterType         *clustersv1beta1.ClusterType     `json:"clusterType,omitempty"`
+	ClusterInitBaseName *string                          `json:"clusterInitBaseName,omitempty"`
+	SyncMode            *clustersv1beta1.ClusterSyncMode `json:"syncMode,omitempty"`
+	Taints              []v1.Taint                       `json:"taints,omitempty"`
 }
 
-// ManagedClusterSpecApplyConfiguration constructs an declarative configuration of the ManagedClusterSpec type for use with
+// ManagedClusterSpecApplyConfiguration constructs a declarative configuration of the ManagedClusterSpec type for use with
 // apply.
 func ManagedClusterSpec() *ManagedClusterSpecApplyConfiguration {
 	return &ManagedClusterSpecApplyConfiguration{}
@@ -50,7 +50,7 @@ func (b *ManagedClusterSpecApplyConfiguration) WithClusterID(value types.UID) *M
 // WithClusterType sets the ClusterType field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ClusterType field is set to the value of the last call.
-func (b *ManagedClusterSpecApplyConfiguration) WithClusterType(value v1beta1.ClusterType) *ManagedClusterSpecApplyConfiguration {
+func (b *ManagedClusterSpecApplyConfiguration) WithClusterType(value clustersv1beta1.ClusterType) *ManagedClusterSpecApplyConfiguration {
 	b.ClusterType = &value
 	return b
 }
@@ -66,7 +66,7 @@ func (b *ManagedClusterSpecApplyConfiguration) WithClusterInitBaseName(value str
 // WithSyncMode sets the SyncMode field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SyncMode field is set to the value of the last call.
-func (b *ManagedClusterSpecApplyConfiguration) WithSyncMode(value v1beta1.ClusterSyncMode) *ManagedClusterSpecApplyConfiguration {
+func (b *ManagedClusterSpecApplyConfiguration) WithSyncMode(value clustersv1beta1.ClusterSyncMode) *ManagedClusterSpecApplyConfiguration {
 	b.SyncMode = &value
 	return b
 }

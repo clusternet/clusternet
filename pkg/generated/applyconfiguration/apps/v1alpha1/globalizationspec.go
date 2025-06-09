@@ -18,21 +18,21 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// GlobalizationSpecApplyConfiguration represents an declarative configuration of the GlobalizationSpec type for use
+// GlobalizationSpecApplyConfiguration represents a declarative configuration of the GlobalizationSpec type for use
 // with apply.
 type GlobalizationSpecApplyConfiguration struct {
-	OverridePolicy          *v1alpha1.OverridePolicy            `json:"overridePolicy,omitempty"`
+	OverridePolicy          *appsv1alpha1.OverridePolicy        `json:"overridePolicy,omitempty"`
 	ClusterAffinity         *v1.LabelSelectorApplyConfiguration `json:"clusterAffinity,omitempty"`
 	Overrides               []OverrideConfigApplyConfiguration  `json:"overrides,omitempty"`
 	Priority                *int32                              `json:"priority,omitempty"`
 	*FeedApplyConfiguration `json:"feed,omitempty"`
 }
 
-// GlobalizationSpecApplyConfiguration constructs an declarative configuration of the GlobalizationSpec type for use with
+// GlobalizationSpecApplyConfiguration constructs a declarative configuration of the GlobalizationSpec type for use with
 // apply.
 func GlobalizationSpec() *GlobalizationSpecApplyConfiguration {
 	return &GlobalizationSpecApplyConfiguration{}
@@ -41,7 +41,7 @@ func GlobalizationSpec() *GlobalizationSpecApplyConfiguration {
 // WithOverridePolicy sets the OverridePolicy field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the OverridePolicy field is set to the value of the last call.
-func (b *GlobalizationSpecApplyConfiguration) WithOverridePolicy(value v1alpha1.OverridePolicy) *GlobalizationSpecApplyConfiguration {
+func (b *GlobalizationSpecApplyConfiguration) WithOverridePolicy(value appsv1alpha1.OverridePolicy) *GlobalizationSpecApplyConfiguration {
 	b.OverridePolicy = &value
 	return b
 }
@@ -80,7 +80,7 @@ func (b *GlobalizationSpecApplyConfiguration) WithPriority(value int32) *Globali
 // If called multiple times, the Kind field is set to the value of the last call.
 func (b *GlobalizationSpecApplyConfiguration) WithKind(value string) *GlobalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.Kind = &value
+	b.FeedApplyConfiguration.Kind = &value
 	return b
 }
 
@@ -89,7 +89,7 @@ func (b *GlobalizationSpecApplyConfiguration) WithKind(value string) *Globalizat
 // If called multiple times, the APIVersion field is set to the value of the last call.
 func (b *GlobalizationSpecApplyConfiguration) WithAPIVersion(value string) *GlobalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.APIVersion = &value
+	b.FeedApplyConfiguration.APIVersion = &value
 	return b
 }
 
@@ -98,7 +98,7 @@ func (b *GlobalizationSpecApplyConfiguration) WithAPIVersion(value string) *Glob
 // If called multiple times, the Namespace field is set to the value of the last call.
 func (b *GlobalizationSpecApplyConfiguration) WithNamespace(value string) *GlobalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.Namespace = &value
+	b.FeedApplyConfiguration.Namespace = &value
 	return b
 }
 
@@ -107,7 +107,7 @@ func (b *GlobalizationSpecApplyConfiguration) WithNamespace(value string) *Globa
 // If called multiple times, the Name field is set to the value of the last call.
 func (b *GlobalizationSpecApplyConfiguration) WithName(value string) *GlobalizationSpecApplyConfiguration {
 	b.ensureFeedApplyConfigurationExists()
-	b.Name = &value
+	b.FeedApplyConfiguration.Name = &value
 	return b
 }
 

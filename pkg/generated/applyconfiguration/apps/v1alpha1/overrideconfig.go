@@ -18,19 +18,19 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
-// OverrideConfigApplyConfiguration represents an declarative configuration of the OverrideConfig type for use
+// OverrideConfigApplyConfiguration represents a declarative configuration of the OverrideConfig type for use
 // with apply.
 type OverrideConfigApplyConfiguration struct {
-	Name          *string                `json:"name,omitempty"`
-	Value         *string                `json:"value,omitempty"`
-	Type          *v1alpha1.OverrideType `json:"type,omitempty"`
-	OverrideChart *bool                  `json:"overrideChart,omitempty"`
+	Name          *string                    `json:"name,omitempty"`
+	Value         *string                    `json:"value,omitempty"`
+	Type          *appsv1alpha1.OverrideType `json:"type,omitempty"`
+	OverrideChart *bool                      `json:"overrideChart,omitempty"`
 }
 
-// OverrideConfigApplyConfiguration constructs an declarative configuration of the OverrideConfig type for use with
+// OverrideConfigApplyConfiguration constructs a declarative configuration of the OverrideConfig type for use with
 // apply.
 func OverrideConfig() *OverrideConfigApplyConfiguration {
 	return &OverrideConfigApplyConfiguration{}
@@ -55,7 +55,7 @@ func (b *OverrideConfigApplyConfiguration) WithValue(value string) *OverrideConf
 // WithType sets the Type field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Type field is set to the value of the last call.
-func (b *OverrideConfigApplyConfiguration) WithType(value v1alpha1.OverrideType) *OverrideConfigApplyConfiguration {
+func (b *OverrideConfigApplyConfiguration) WithType(value appsv1alpha1.OverrideType) *OverrideConfigApplyConfiguration {
 	b.Type = &value
 	return b
 }

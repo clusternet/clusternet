@@ -21,7 +21,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-// ReplicaRequirementsApplyConfiguration represents an declarative configuration of the ReplicaRequirements type for use
+// ReplicaRequirementsApplyConfiguration represents a declarative configuration of the ReplicaRequirements type for use
 // with apply.
 type ReplicaRequirementsApplyConfiguration struct {
 	NodeSelector map[string]string        `json:"nodeSelector,omitempty"`
@@ -30,7 +30,7 @@ type ReplicaRequirementsApplyConfiguration struct {
 	Resources    *v1.ResourceRequirements `json:"resources,omitempty"`
 }
 
-// ReplicaRequirementsApplyConfiguration constructs an declarative configuration of the ReplicaRequirements type for use with
+// ReplicaRequirementsApplyConfiguration constructs a declarative configuration of the ReplicaRequirements type for use with
 // apply.
 func ReplicaRequirements() *ReplicaRequirementsApplyConfiguration {
 	return &ReplicaRequirementsApplyConfiguration{}

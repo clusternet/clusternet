@@ -17,14 +17,14 @@ limitations under the License.
 
 package v1alpha1
 
-// HelmChartSpecApplyConfiguration represents an declarative configuration of the HelmChartSpec type for use
+// HelmChartSpecApplyConfiguration represents a declarative configuration of the HelmChartSpec type for use
 // with apply.
 type HelmChartSpecApplyConfiguration struct {
 	HelmOptionsApplyConfiguration `json:",inline"`
 	TargetNamespace               *string `json:"targetNamespace,omitempty"`
 }
 
-// HelmChartSpecApplyConfiguration constructs an declarative configuration of the HelmChartSpec type for use with
+// HelmChartSpecApplyConfiguration constructs a declarative configuration of the HelmChartSpec type for use with
 // apply.
 func HelmChartSpec() *HelmChartSpecApplyConfiguration {
 	return &HelmChartSpecApplyConfiguration{}
@@ -34,7 +34,7 @@ func HelmChartSpec() *HelmChartSpecApplyConfiguration {
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Repository field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithRepository(value string) *HelmChartSpecApplyConfiguration {
-	b.Repository = &value
+	b.HelmOptionsApplyConfiguration.Repository = &value
 	return b
 }
 
@@ -42,7 +42,7 @@ func (b *HelmChartSpecApplyConfiguration) WithRepository(value string) *HelmChar
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ChartPullSecret field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithChartPullSecret(value *ChartPullSecretApplyConfiguration) *HelmChartSpecApplyConfiguration {
-	b.ChartPullSecret = value
+	b.HelmOptionsApplyConfiguration.ChartPullSecret = value
 	return b
 }
 
@@ -50,7 +50,7 @@ func (b *HelmChartSpecApplyConfiguration) WithChartPullSecret(value *ChartPullSe
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Chart field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithChart(value string) *HelmChartSpecApplyConfiguration {
-	b.Chart = &value
+	b.HelmOptionsApplyConfiguration.Chart = &value
 	return b
 }
 
@@ -58,7 +58,7 @@ func (b *HelmChartSpecApplyConfiguration) WithChart(value string) *HelmChartSpec
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ChartVersion field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithChartVersion(value string) *HelmChartSpecApplyConfiguration {
-	b.ChartVersion = &value
+	b.HelmOptionsApplyConfiguration.ChartVersion = &value
 	return b
 }
 
@@ -66,7 +66,7 @@ func (b *HelmChartSpecApplyConfiguration) WithChartVersion(value string) *HelmCh
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreateNamespace field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithCreateNamespace(value bool) *HelmChartSpecApplyConfiguration {
-	b.CreateNamespace = &value
+	b.HelmOptionsApplyConfiguration.CreateNamespace = &value
 	return b
 }
 
@@ -74,7 +74,7 @@ func (b *HelmChartSpecApplyConfiguration) WithCreateNamespace(value bool) *HelmC
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the TimeoutSeconds field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithTimeoutSeconds(value int32) *HelmChartSpecApplyConfiguration {
-	b.TimeoutSeconds = &value
+	b.HelmOptionsApplyConfiguration.TimeoutSeconds = &value
 	return b
 }
 
@@ -82,7 +82,7 @@ func (b *HelmChartSpecApplyConfiguration) WithTimeoutSeconds(value int32) *HelmC
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Wait field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithWait(value bool) *HelmChartSpecApplyConfiguration {
-	b.Wait = &value
+	b.HelmOptionsApplyConfiguration.Wait = &value
 	return b
 }
 
@@ -90,7 +90,7 @@ func (b *HelmChartSpecApplyConfiguration) WithWait(value bool) *HelmChartSpecApp
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the WaitForJob field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithWaitForJob(value bool) *HelmChartSpecApplyConfiguration {
-	b.WaitForJob = &value
+	b.HelmOptionsApplyConfiguration.WaitForJob = &value
 	return b
 }
 
@@ -98,7 +98,7 @@ func (b *HelmChartSpecApplyConfiguration) WithWaitForJob(value bool) *HelmChartS
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Replace field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithReplace(value bool) *HelmChartSpecApplyConfiguration {
-	b.Replace = &value
+	b.HelmOptionsApplyConfiguration.Replace = &value
 	return b
 }
 
@@ -106,7 +106,7 @@ func (b *HelmChartSpecApplyConfiguration) WithReplace(value bool) *HelmChartSpec
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Atomic field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithAtomic(value bool) *HelmChartSpecApplyConfiguration {
-	b.Atomic = &value
+	b.HelmOptionsApplyConfiguration.Atomic = &value
 	return b
 }
 
@@ -114,7 +114,7 @@ func (b *HelmChartSpecApplyConfiguration) WithAtomic(value bool) *HelmChartSpecA
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UpgradeAtomic field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithUpgradeAtomic(value bool) *HelmChartSpecApplyConfiguration {
-	b.UpgradeAtomic = &value
+	b.HelmOptionsApplyConfiguration.UpgradeAtomic = &value
 	return b
 }
 
@@ -122,7 +122,7 @@ func (b *HelmChartSpecApplyConfiguration) WithUpgradeAtomic(value bool) *HelmCha
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SkipCRDs field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithSkipCRDs(value bool) *HelmChartSpecApplyConfiguration {
-	b.SkipCRDs = &value
+	b.HelmOptionsApplyConfiguration.SkipCRDs = &value
 	return b
 }
 
@@ -130,7 +130,7 @@ func (b *HelmChartSpecApplyConfiguration) WithSkipCRDs(value bool) *HelmChartSpe
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ReplaceCRDs field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithReplaceCRDs(value bool) *HelmChartSpecApplyConfiguration {
-	b.ReplaceCRDs = &value
+	b.HelmOptionsApplyConfiguration.ReplaceCRDs = &value
 	return b
 }
 
@@ -138,7 +138,7 @@ func (b *HelmChartSpecApplyConfiguration) WithReplaceCRDs(value bool) *HelmChart
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DisableHooks field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithDisableHooks(value bool) *HelmChartSpecApplyConfiguration {
-	b.DisableHooks = &value
+	b.HelmOptionsApplyConfiguration.DisableHooks = &value
 	return b
 }
 
@@ -146,7 +146,7 @@ func (b *HelmChartSpecApplyConfiguration) WithDisableHooks(value bool) *HelmChar
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Force field is set to the value of the last call.
 func (b *HelmChartSpecApplyConfiguration) WithForce(value bool) *HelmChartSpecApplyConfiguration {
-	b.Force = &value
+	b.HelmOptionsApplyConfiguration.Force = &value
 	return b
 }
 

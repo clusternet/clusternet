@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	apisappsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // Bases.
 type BaseInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.BaseLister
+	Lister() appsv1alpha1.BaseLister
 }
 
 type baseInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredBaseInformer(client versioned.Interface, namespace string, resyn
 				return client.AppsV1alpha1().Bases(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&appsv1alpha1.Base{},
+		&apisappsv1alpha1.Base{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *baseInformer) defaultInformer(client versioned.Interface, resyncPeriod 
 }
 
 func (f *baseInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&appsv1alpha1.Base{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisappsv1alpha1.Base{}, f.defaultInformer)
 }
 
-func (f *baseInformer) Lister() v1alpha1.BaseLister {
-	return v1alpha1.NewBaseLister(f.Informer().GetIndexer())
+func (f *baseInformer) Lister() appsv1alpha1.BaseLister {
+	return appsv1alpha1.NewBaseLister(f.Informer().GetIndexer())
 }

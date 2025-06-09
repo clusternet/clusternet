@@ -18,171 +18,33 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-	json "encoding/json"
-	"fmt"
-
 	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/apps/v1alpha1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	typedappsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/apps/v1alpha1"
+	gentype "k8s.io/client-go/gentype"
 )
 
-// FakeHelmCharts implements HelmChartInterface
-type FakeHelmCharts struct {
+// fakeHelmCharts implements HelmChartInterface
+type fakeHelmCharts struct {
+	*gentype.FakeClientWithListAndApply[*v1alpha1.HelmChart, *v1alpha1.HelmChartList, *appsv1alpha1.HelmChartApplyConfiguration]
 	Fake *FakeAppsV1alpha1
-	ns   string
 }
 
-var helmchartsResource = v1alpha1.SchemeGroupVersion.WithResource("helmcharts")
-
-var helmchartsKind = v1alpha1.SchemeGroupVersion.WithKind("HelmChart")
-
-// Get takes name of the helmChart, and returns the corresponding helmChart object, and an error if there is any.
-func (c *FakeHelmCharts) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.HelmChart, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(helmchartsResource, c.ns, name), &v1alpha1.HelmChart{})
-
-	if obj == nil {
-		return nil, err
+func newFakeHelmCharts(fake *FakeAppsV1alpha1, namespace string) typedappsv1alpha1.HelmChartInterface {
+	return &fakeHelmCharts{
+		gentype.NewFakeClientWithListAndApply[*v1alpha1.HelmChart, *v1alpha1.HelmChartList, *appsv1alpha1.HelmChartApplyConfiguration](
+			fake.Fake,
+			namespace,
+			v1alpha1.SchemeGroupVersion.WithResource("helmcharts"),
+			v1alpha1.SchemeGroupVersion.WithKind("HelmChart"),
+			func() *v1alpha1.HelmChart { return &v1alpha1.HelmChart{} },
+			func() *v1alpha1.HelmChartList { return &v1alpha1.HelmChartList{} },
+			func(dst, src *v1alpha1.HelmChartList) { dst.ListMeta = src.ListMeta },
+			func(list *v1alpha1.HelmChartList) []*v1alpha1.HelmChart { return gentype.ToPointerSlice(list.Items) },
+			func(list *v1alpha1.HelmChartList, items []*v1alpha1.HelmChart) {
+				list.Items = gentype.FromPointerSlice(items)
+			},
+		),
+		fake,
 	}
-	return obj.(*v1alpha1.HelmChart), err
-}
-
-// List takes label and field selectors, and returns the list of HelmCharts that match those selectors.
-func (c *FakeHelmCharts) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.HelmChartList, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewListAction(helmchartsResource, helmchartsKind, c.ns, opts), &v1alpha1.HelmChartList{})
-
-	if obj == nil {
-		return nil, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1alpha1.HelmChartList{ListMeta: obj.(*v1alpha1.HelmChartList).ListMeta}
-	for _, item := range obj.(*v1alpha1.HelmChartList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested helmCharts.
-func (c *FakeHelmCharts) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(helmchartsResource, c.ns, opts))
-
-}
-
-// Create takes the representation of a helmChart and creates it.  Returns the server's representation of the helmChart, and an error, if there is any.
-func (c *FakeHelmCharts) Create(ctx context.Context, helmChart *v1alpha1.HelmChart, opts v1.CreateOptions) (result *v1alpha1.HelmChart, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(helmchartsResource, c.ns, helmChart), &v1alpha1.HelmChart{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.HelmChart), err
-}
-
-// Update takes the representation of a helmChart and updates it. Returns the server's representation of the helmChart, and an error, if there is any.
-func (c *FakeHelmCharts) Update(ctx context.Context, helmChart *v1alpha1.HelmChart, opts v1.UpdateOptions) (result *v1alpha1.HelmChart, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(helmchartsResource, c.ns, helmChart), &v1alpha1.HelmChart{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.HelmChart), err
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeHelmCharts) UpdateStatus(ctx context.Context, helmChart *v1alpha1.HelmChart, opts v1.UpdateOptions) (*v1alpha1.HelmChart, error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(helmchartsResource, "status", c.ns, helmChart), &v1alpha1.HelmChart{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.HelmChart), err
-}
-
-// Delete takes name of the helmChart and deletes it. Returns an error if one occurs.
-func (c *FakeHelmCharts) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(helmchartsResource, c.ns, name, opts), &v1alpha1.HelmChart{})
-
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeHelmCharts) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(helmchartsResource, c.ns, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1alpha1.HelmChartList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched helmChart.
-func (c *FakeHelmCharts) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.HelmChart, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(helmchartsResource, c.ns, name, pt, data, subresources...), &v1alpha1.HelmChart{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.HelmChart), err
-}
-
-// Apply takes the given apply declarative configuration, applies it and returns the applied helmChart.
-func (c *FakeHelmCharts) Apply(ctx context.Context, helmChart *appsv1alpha1.HelmChartApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmChart, err error) {
-	if helmChart == nil {
-		return nil, fmt.Errorf("helmChart provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(helmChart)
-	if err != nil {
-		return nil, err
-	}
-	name := helmChart.Name
-	if name == nil {
-		return nil, fmt.Errorf("helmChart.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(helmchartsResource, c.ns, *name, types.ApplyPatchType, data), &v1alpha1.HelmChart{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.HelmChart), err
-}
-
-// ApplyStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
-func (c *FakeHelmCharts) ApplyStatus(ctx context.Context, helmChart *appsv1alpha1.HelmChartApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.HelmChart, err error) {
-	if helmChart == nil {
-		return nil, fmt.Errorf("helmChart provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(helmChart)
-	if err != nil {
-		return nil, err
-	}
-	name := helmChart.Name
-	if name == nil {
-		return nil, fmt.Errorf("helmChart.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(helmchartsResource, c.ns, *name, types.ApplyPatchType, data, "status"), &v1alpha1.HelmChart{})
-
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1alpha1.HelmChart), err
 }

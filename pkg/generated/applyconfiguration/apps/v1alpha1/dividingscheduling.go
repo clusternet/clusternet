@@ -18,17 +18,17 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 )
 
-// DividingSchedulingApplyConfiguration represents an declarative configuration of the DividingScheduling type for use
+// DividingSchedulingApplyConfiguration represents a declarative configuration of the DividingScheduling type for use
 // with apply.
 type DividingSchedulingApplyConfiguration struct {
-	Type            *v1alpha1.ReplicaDividingType      `json:"type,omitempty"`
+	Type            *appsv1alpha1.ReplicaDividingType  `json:"type,omitempty"`
 	DynamicDividing *DynamicDividingApplyConfiguration `json:"dynamicDividing,omitempty"`
 }
 
-// DividingSchedulingApplyConfiguration constructs an declarative configuration of the DividingScheduling type for use with
+// DividingSchedulingApplyConfiguration constructs a declarative configuration of the DividingScheduling type for use with
 // apply.
 func DividingScheduling() *DividingSchedulingApplyConfiguration {
 	return &DividingSchedulingApplyConfiguration{}
@@ -37,7 +37,7 @@ func DividingScheduling() *DividingSchedulingApplyConfiguration {
 // WithType sets the Type field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Type field is set to the value of the last call.
-func (b *DividingSchedulingApplyConfiguration) WithType(value v1alpha1.ReplicaDividingType) *DividingSchedulingApplyConfiguration {
+func (b *DividingSchedulingApplyConfiguration) WithType(value appsv1alpha1.ReplicaDividingType) *DividingSchedulingApplyConfiguration {
 	b.Type = &value
 	return b
 }

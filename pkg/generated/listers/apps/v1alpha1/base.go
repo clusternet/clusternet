@@ -18,10 +18,10 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/tools/cache"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // BaseLister helps list Bases.
@@ -29,7 +29,7 @@ import (
 type BaseLister interface {
 	// List lists all Bases in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.Base, err error)
+	List(selector labels.Selector) (ret []*appsv1alpha1.Base, err error)
 	// Bases returns an object that can list and get Bases.
 	Bases(namespace string) BaseNamespaceLister
 	BaseListerExpansion
@@ -37,25 +37,17 @@ type BaseLister interface {
 
 // baseLister implements the BaseLister interface.
 type baseLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*appsv1alpha1.Base]
 }
 
 // NewBaseLister returns a new BaseLister.
 func NewBaseLister(indexer cache.Indexer) BaseLister {
-	return &baseLister{indexer: indexer}
-}
-
-// List lists all Bases in the indexer.
-func (s *baseLister) List(selector labels.Selector) (ret []*v1alpha1.Base, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.Base))
-	})
-	return ret, err
+	return &baseLister{listers.New[*appsv1alpha1.Base](indexer, appsv1alpha1.Resource("base"))}
 }
 
 // Bases returns an object that can list and get Bases.
 func (s *baseLister) Bases(namespace string) BaseNamespaceLister {
-	return baseNamespaceLister{indexer: s.indexer, namespace: namespace}
+	return baseNamespaceLister{listers.NewNamespaced[*appsv1alpha1.Base](s.ResourceIndexer, namespace)}
 }
 
 // BaseNamespaceLister helps list and get Bases.
@@ -63,36 +55,15 @@ func (s *baseLister) Bases(namespace string) BaseNamespaceLister {
 type BaseNamespaceLister interface {
 	// List lists all Bases in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.Base, err error)
+	List(selector labels.Selector) (ret []*appsv1alpha1.Base, err error)
 	// Get retrieves the Base from the indexer for a given namespace and name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1alpha1.Base, error)
+	Get(name string) (*appsv1alpha1.Base, error)
 	BaseNamespaceListerExpansion
 }
 
 // baseNamespaceLister implements the BaseNamespaceLister
 // interface.
 type baseNamespaceLister struct {
-	indexer   cache.Indexer
-	namespace string
-}
-
-// List lists all Bases in the indexer for a given namespace.
-func (s baseNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Base, err error) {
-	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.Base))
-	})
-	return ret, err
-}
-
-// Get retrieves the Base from the indexer for a given namespace and name.
-func (s baseNamespaceLister) Get(name string) (*v1alpha1.Base, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1alpha1.Resource("base"), name)
-	}
-	return obj.(*v1alpha1.Base), nil
+	listers.ResourceIndexer[*appsv1alpha1.Base]
 }

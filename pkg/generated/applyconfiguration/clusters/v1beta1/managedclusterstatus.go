@@ -23,7 +23,7 @@ import (
 	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// ManagedClusterStatusApplyConfiguration represents an declarative configuration of the ManagedClusterStatus type for use
+// ManagedClusterStatusApplyConfiguration represents a declarative configuration of the ManagedClusterStatus type for use
 // with apply.
 type ManagedClusterStatusApplyConfiguration struct {
 	LastObservedTime          *v1.Time                             `json:"lastObservedTime,omitempty"`
@@ -52,7 +52,7 @@ type ManagedClusterStatusApplyConfiguration struct {
 	PredictorDirectAccess     *bool                                `json:"predictorDirectAccess,omitempty"`
 }
 
-// ManagedClusterStatusApplyConfiguration constructs an declarative configuration of the ManagedClusterStatus type for use with
+// ManagedClusterStatusApplyConfiguration constructs a declarative configuration of the ManagedClusterStatus type for use with
 // apply.
 func ManagedClusterStatus() *ManagedClusterStatusApplyConfiguration {
 	return &ManagedClusterStatusApplyConfiguration{}

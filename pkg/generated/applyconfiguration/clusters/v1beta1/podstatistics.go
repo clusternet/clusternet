@@ -17,14 +17,14 @@ limitations under the License.
 
 package v1beta1
 
-// PodStatisticsApplyConfiguration represents an declarative configuration of the PodStatistics type for use
+// PodStatisticsApplyConfiguration represents a declarative configuration of the PodStatistics type for use
 // with apply.
 type PodStatisticsApplyConfiguration struct {
 	RunningPods *int32 `json:"runningPods,omitempty"`
 	TotalPods   *int32 `json:"totalPods,omitempty"`
 }
 
-// PodStatisticsApplyConfiguration constructs an declarative configuration of the PodStatistics type for use with
+// PodStatisticsApplyConfiguration constructs a declarative configuration of the PodStatistics type for use with
 // apply.
 func PodStatistics() *PodStatisticsApplyConfiguration {
 	return &PodStatisticsApplyConfiguration{}

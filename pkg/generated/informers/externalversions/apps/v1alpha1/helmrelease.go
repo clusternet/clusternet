@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	apisappsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // HelmReleases.
 type HelmReleaseInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.HelmReleaseLister
+	Lister() appsv1alpha1.HelmReleaseLister
 }
 
 type helmReleaseInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredHelmReleaseInformer(client versioned.Interface, namespace string
 				return client.AppsV1alpha1().HelmReleases(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&appsv1alpha1.HelmRelease{},
+		&apisappsv1alpha1.HelmRelease{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *helmReleaseInformer) defaultInformer(client versioned.Interface, resync
 }
 
 func (f *helmReleaseInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&appsv1alpha1.HelmRelease{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisappsv1alpha1.HelmRelease{}, f.defaultInformer)
 }
 
-func (f *helmReleaseInformer) Lister() v1alpha1.HelmReleaseLister {
-	return v1alpha1.NewHelmReleaseLister(f.Informer().GetIndexer())
+func (f *helmReleaseInformer) Lister() appsv1alpha1.HelmReleaseLister {
+	return appsv1alpha1.NewHelmReleaseLister(f.Informer().GetIndexer())
 }

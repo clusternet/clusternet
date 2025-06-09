@@ -18,160 +18,35 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-	json "encoding/json"
-	"fmt"
-
 	v1beta1 "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 	clustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/applyconfiguration/clusters/v1beta1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	typedclustersv1beta1 "github.com/clusternet/clusternet/pkg/generated/clientset/versioned/typed/clusters/v1beta1"
+	gentype "k8s.io/client-go/gentype"
 )
 
-// FakeClusterRegistrationRequests implements ClusterRegistrationRequestInterface
-type FakeClusterRegistrationRequests struct {
+// fakeClusterRegistrationRequests implements ClusterRegistrationRequestInterface
+type fakeClusterRegistrationRequests struct {
+	*gentype.FakeClientWithListAndApply[*v1beta1.ClusterRegistrationRequest, *v1beta1.ClusterRegistrationRequestList, *clustersv1beta1.ClusterRegistrationRequestApplyConfiguration]
 	Fake *FakeClustersV1beta1
 }
 
-var clusterregistrationrequestsResource = v1beta1.SchemeGroupVersion.WithResource("clusterregistrationrequests")
-
-var clusterregistrationrequestsKind = v1beta1.SchemeGroupVersion.WithKind("ClusterRegistrationRequest")
-
-// Get takes name of the clusterRegistrationRequest, and returns the corresponding clusterRegistrationRequest object, and an error if there is any.
-func (c *FakeClusterRegistrationRequests) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(clusterregistrationrequestsResource, name), &v1beta1.ClusterRegistrationRequest{})
-	if obj == nil {
-		return nil, err
+func newFakeClusterRegistrationRequests(fake *FakeClustersV1beta1) typedclustersv1beta1.ClusterRegistrationRequestInterface {
+	return &fakeClusterRegistrationRequests{
+		gentype.NewFakeClientWithListAndApply[*v1beta1.ClusterRegistrationRequest, *v1beta1.ClusterRegistrationRequestList, *clustersv1beta1.ClusterRegistrationRequestApplyConfiguration](
+			fake.Fake,
+			"",
+			v1beta1.SchemeGroupVersion.WithResource("clusterregistrationrequests"),
+			v1beta1.SchemeGroupVersion.WithKind("ClusterRegistrationRequest"),
+			func() *v1beta1.ClusterRegistrationRequest { return &v1beta1.ClusterRegistrationRequest{} },
+			func() *v1beta1.ClusterRegistrationRequestList { return &v1beta1.ClusterRegistrationRequestList{} },
+			func(dst, src *v1beta1.ClusterRegistrationRequestList) { dst.ListMeta = src.ListMeta },
+			func(list *v1beta1.ClusterRegistrationRequestList) []*v1beta1.ClusterRegistrationRequest {
+				return gentype.ToPointerSlice(list.Items)
+			},
+			func(list *v1beta1.ClusterRegistrationRequestList, items []*v1beta1.ClusterRegistrationRequest) {
+				list.Items = gentype.FromPointerSlice(items)
+			},
+		),
+		fake,
 	}
-	return obj.(*v1beta1.ClusterRegistrationRequest), err
-}
-
-// List takes label and field selectors, and returns the list of ClusterRegistrationRequests that match those selectors.
-func (c *FakeClusterRegistrationRequests) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.ClusterRegistrationRequestList, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(clusterregistrationrequestsResource, clusterregistrationrequestsKind, opts), &v1beta1.ClusterRegistrationRequestList{})
-	if obj == nil {
-		return nil, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1beta1.ClusterRegistrationRequestList{ListMeta: obj.(*v1beta1.ClusterRegistrationRequestList).ListMeta}
-	for _, item := range obj.(*v1beta1.ClusterRegistrationRequestList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested clusterRegistrationRequests.
-func (c *FakeClusterRegistrationRequests) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(clusterregistrationrequestsResource, opts))
-}
-
-// Create takes the representation of a clusterRegistrationRequest and creates it.  Returns the server's representation of the clusterRegistrationRequest, and an error, if there is any.
-func (c *FakeClusterRegistrationRequests) Create(ctx context.Context, clusterRegistrationRequest *v1beta1.ClusterRegistrationRequest, opts v1.CreateOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(clusterregistrationrequestsResource, clusterRegistrationRequest), &v1beta1.ClusterRegistrationRequest{})
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1beta1.ClusterRegistrationRequest), err
-}
-
-// Update takes the representation of a clusterRegistrationRequest and updates it. Returns the server's representation of the clusterRegistrationRequest, and an error, if there is any.
-func (c *FakeClusterRegistrationRequests) Update(ctx context.Context, clusterRegistrationRequest *v1beta1.ClusterRegistrationRequest, opts v1.UpdateOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(clusterregistrationrequestsResource, clusterRegistrationRequest), &v1beta1.ClusterRegistrationRequest{})
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1beta1.ClusterRegistrationRequest), err
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeClusterRegistrationRequests) UpdateStatus(ctx context.Context, clusterRegistrationRequest *v1beta1.ClusterRegistrationRequest, opts v1.UpdateOptions) (*v1beta1.ClusterRegistrationRequest, error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(clusterregistrationrequestsResource, "status", clusterRegistrationRequest), &v1beta1.ClusterRegistrationRequest{})
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1beta1.ClusterRegistrationRequest), err
-}
-
-// Delete takes name of the clusterRegistrationRequest and deletes it. Returns an error if one occurs.
-func (c *FakeClusterRegistrationRequests) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(clusterregistrationrequestsResource, name, opts), &v1beta1.ClusterRegistrationRequest{})
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeClusterRegistrationRequests) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(clusterregistrationrequestsResource, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1beta1.ClusterRegistrationRequestList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched clusterRegistrationRequest.
-func (c *FakeClusterRegistrationRequests) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.ClusterRegistrationRequest, err error) {
-	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(clusterregistrationrequestsResource, name, pt, data, subresources...), &v1beta1.ClusterRegistrationRequest{})
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1beta1.ClusterRegistrationRequest), err
-}
-
-// Apply takes the given apply declarative configuration, applies it and returns the applied clusterRegistrationRequest.
-func (c *FakeClusterRegistrationRequests) Apply(ctx context.Context, clusterRegistrationRequest *clustersv1beta1.ClusterRegistrationRequestApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
-	if clusterRegistrationRequest == nil {
-		return nil, fmt.Errorf("clusterRegistrationRequest provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(clusterRegistrationRequest)
-	if err != nil {
-		return nil, err
-	}
-	name := clusterRegistrationRequest.Name
-	if name == nil {
-		return nil, fmt.Errorf("clusterRegistrationRequest.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(clusterregistrationrequestsResource, *name, types.ApplyPatchType, data), &v1beta1.ClusterRegistrationRequest{})
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1beta1.ClusterRegistrationRequest), err
-}
-
-// ApplyStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
-func (c *FakeClusterRegistrationRequests) ApplyStatus(ctx context.Context, clusterRegistrationRequest *clustersv1beta1.ClusterRegistrationRequestApplyConfiguration, opts v1.ApplyOptions) (result *v1beta1.ClusterRegistrationRequest, err error) {
-	if clusterRegistrationRequest == nil {
-		return nil, fmt.Errorf("clusterRegistrationRequest provided to Apply must not be nil")
-	}
-	data, err := json.Marshal(clusterRegistrationRequest)
-	if err != nil {
-		return nil, err
-	}
-	name := clusterRegistrationRequest.Name
-	if name == nil {
-		return nil, fmt.Errorf("clusterRegistrationRequest.Name must be provided to Apply")
-	}
-	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(clusterregistrationrequestsResource, *name, types.ApplyPatchType, data, "status"), &v1beta1.ClusterRegistrationRequest{})
-	if obj == nil {
-		return nil, err
-	}
-	return obj.(*v1beta1.ClusterRegistrationRequest), err
 }

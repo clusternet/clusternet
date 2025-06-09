@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	appsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
+	apisappsv1alpha1 "github.com/clusternet/clusternet/pkg/apis/apps/v1alpha1"
 	versioned "github.com/clusternet/clusternet/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/clusternet/clusternet/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
+	appsv1alpha1 "github.com/clusternet/clusternet/pkg/generated/listers/apps/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // HelmCharts.
 type HelmChartInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.HelmChartLister
+	Lister() appsv1alpha1.HelmChartLister
 }
 
 type helmChartInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredHelmChartInformer(client versioned.Interface, namespace string, 
 				return client.AppsV1alpha1().HelmCharts(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&appsv1alpha1.HelmChart{},
+		&apisappsv1alpha1.HelmChart{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *helmChartInformer) defaultInformer(client versioned.Interface, resyncPe
 }
 
 func (f *helmChartInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&appsv1alpha1.HelmChart{}, f.defaultInformer)
+	return f.factory.InformerFor(&apisappsv1alpha1.HelmChart{}, f.defaultInformer)
 }
 
-func (f *helmChartInformer) Lister() v1alpha1.HelmChartLister {
-	return v1alpha1.NewHelmChartLister(f.Informer().GetIndexer())
+func (f *helmChartInformer) Lister() appsv1alpha1.HelmChartLister {
+	return appsv1alpha1.NewHelmChartLister(f.Informer().GetIndexer())
 }

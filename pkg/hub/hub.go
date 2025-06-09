@@ -197,7 +197,7 @@ func (hub *Hub) Run(ctx context.Context) error {
 			if server.GenericAPIServer != nil && utilfeature.DefaultFeatureGate.Enabled(features.ShadowAPI) {
 				klog.Infof("install shadow apis...")
 				// waits for all started informers' cache got synced
-				hub.aggregatorInformerFactory.WaitForCacheSync(postStartHookContext.StopCh)
+				hub.aggregatorInformerFactory.WaitForCacheSync(postStartHookContext.Done())
 
 				crdInformerFactory := crdinformers.NewSharedInformerFactory(
 					crdclientset.NewForConfigOrDie(hub.clientBuilder.ConfigOrDie("crd-shared-informers")),
@@ -218,12 +218,12 @@ func (hub *Hub) Run(ctx context.Context) error {
 					completeConfig.GenericConfig.OpenAPIV3Config,
 				)
 
-				crdInformerFactory.Start(postStartHookContext.StopCh)
-				return ss.InstallShadowAPIGroups(postStartHookContext.StopCh, hub.kubeClient.DiscoveryClient)
+				crdInformerFactory.Start(postStartHookContext.Done())
+				return ss.InstallShadowAPIGroups(postStartHookContext.Done(), hub.kubeClient.DiscoveryClient)
 			}
 
 			select {
-			case <-postStartHookContext.StopCh:
+			case <-postStartHookContext.Done():
 			}
 
 			return nil
@@ -280,17 +280,17 @@ func (hub *Hub) Run(ctx context.Context) error {
 			}()
 
 			go refreshingPeers(hub.electionClient, hub.peerID, hub.options.LeaderElection.ResourceNamespace,
-				server.PeerDialer, postStartHookContext.StopCh)
+				server.PeerDialer, postStartHookContext.Done())
 
 			select {
-			case <-postStartHookContext.StopCh:
+			case <-postStartHookContext.Done():
 			}
 
 			return nil
 		},
 	)
 
-	return server.GenericAPIServer.PrepareRun().Run(ctx.Done())
+	return server.GenericAPIServer.PrepareRun().RunWithContext(ctx)
 }
 
 func createPeerLease(peer peerInfo, leaderOption componentbaseconfig.LeaderElectionConfiguration,

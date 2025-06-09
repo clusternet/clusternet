@@ -17,14 +17,14 @@ limitations under the License.
 
 package v1alpha1
 
-// FeedStatusApplyConfiguration represents an declarative configuration of the FeedStatus type for use
+// FeedStatusApplyConfiguration represents a declarative configuration of the FeedStatus type for use
 // with apply.
 type FeedStatusApplyConfiguration struct {
 	Available                        *bool `json:"available,omitempty"`
 	*ReplicaStatusApplyConfiguration `json:"replicaStatus,omitempty"`
 }
 
-// FeedStatusApplyConfiguration constructs an declarative configuration of the FeedStatus type for use with
+// FeedStatusApplyConfiguration constructs a declarative configuration of the FeedStatus type for use with
 // apply.
 func FeedStatus() *FeedStatusApplyConfiguration {
 	return &FeedStatusApplyConfiguration{}
@@ -43,7 +43,7 @@ func (b *FeedStatusApplyConfiguration) WithAvailable(value bool) *FeedStatusAppl
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithObservedGeneration(value int64) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.ObservedGeneration = &value
+	b.ReplicaStatusApplyConfiguration.ObservedGeneration = &value
 	return b
 }
 
@@ -52,7 +52,7 @@ func (b *FeedStatusApplyConfiguration) WithObservedGeneration(value int64) *Feed
 // If called multiple times, the Replicas field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithReplicas(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Replicas = &value
+	b.ReplicaStatusApplyConfiguration.Replicas = &value
 	return b
 }
 
@@ -61,7 +61,7 @@ func (b *FeedStatusApplyConfiguration) WithReplicas(value int32) *FeedStatusAppl
 // If called multiple times, the UpdatedReplicas field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithUpdatedReplicas(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.UpdatedReplicas = &value
+	b.ReplicaStatusApplyConfiguration.UpdatedReplicas = &value
 	return b
 }
 
@@ -70,7 +70,7 @@ func (b *FeedStatusApplyConfiguration) WithUpdatedReplicas(value int32) *FeedSta
 // If called multiple times, the CurrentReplicas field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithCurrentReplicas(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.CurrentReplicas = &value
+	b.ReplicaStatusApplyConfiguration.CurrentReplicas = &value
 	return b
 }
 
@@ -79,7 +79,7 @@ func (b *FeedStatusApplyConfiguration) WithCurrentReplicas(value int32) *FeedSta
 // If called multiple times, the ReadyReplicas field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithReadyReplicas(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.ReadyReplicas = &value
+	b.ReplicaStatusApplyConfiguration.ReadyReplicas = &value
 	return b
 }
 
@@ -88,7 +88,7 @@ func (b *FeedStatusApplyConfiguration) WithReadyReplicas(value int32) *FeedStatu
 // If called multiple times, the AvailableReplicas field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithAvailableReplicas(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.AvailableReplicas = &value
+	b.ReplicaStatusApplyConfiguration.AvailableReplicas = &value
 	return b
 }
 
@@ -97,7 +97,7 @@ func (b *FeedStatusApplyConfiguration) WithAvailableReplicas(value int32) *FeedS
 // If called multiple times, the UnavailableReplicas field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithUnavailableReplicas(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.UnavailableReplicas = &value
+	b.ReplicaStatusApplyConfiguration.UnavailableReplicas = &value
 	return b
 }
 
@@ -106,7 +106,7 @@ func (b *FeedStatusApplyConfiguration) WithUnavailableReplicas(value int32) *Fee
 // If called multiple times, the Active field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithActive(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Active = &value
+	b.ReplicaStatusApplyConfiguration.Active = &value
 	return b
 }
 
@@ -115,7 +115,7 @@ func (b *FeedStatusApplyConfiguration) WithActive(value int32) *FeedStatusApplyC
 // If called multiple times, the Succeeded field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithSucceeded(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Succeeded = &value
+	b.ReplicaStatusApplyConfiguration.Succeeded = &value
 	return b
 }
 
@@ -124,7 +124,7 @@ func (b *FeedStatusApplyConfiguration) WithSucceeded(value int32) *FeedStatusApp
 // If called multiple times, the Failed field is set to the value of the last call.
 func (b *FeedStatusApplyConfiguration) WithFailed(value int32) *FeedStatusApplyConfiguration {
 	b.ensureReplicaStatusApplyConfigurationExists()
-	b.Failed = &value
+	b.ReplicaStatusApplyConfiguration.Failed = &value
 	return b
 }
 
