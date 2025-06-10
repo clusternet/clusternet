@@ -424,6 +424,84 @@ hole: black
 				}
 			}`),
 		},
+		{
+			name: "FieldPatch",
+			original: []byte(`{
+				"apiVersion": "v1",
+				"kind": "ConfigMap",
+				"metadata": {
+					"name": "example-configmap",
+					"namespace": "default"
+				},
+				"data": {
+					"server.conf": "{\n    \"db_address\": \"127.0.0.1:3306\",\n    \"region_id\": \"us-west-1\",\n    \"zone_id\": \"zone-1\"\n}"
+				}
+			}`),
+			overrides: []appsapi.OverrideConfig{
+				{
+					Name:  "empty override with whitespaces",
+					Type:  appsapi.MergePatchType,
+					Value: `   `,
+				},
+				{
+					Name:        "overridge db address - json format",
+					Type:        appsapi.FieldJSONPatchType,
+					FieldPath:   "/data/server.conf",
+					FieldFormat: appsapi.JSONFormat,
+					Value:       `[{"op":"replace","path": "/db_address","value":"localhost:3306"}]`,
+				},
+			},
+			want: []byte(`{
+				"apiVersion": "v1",
+				"kind": "ConfigMap",
+				"metadata": {
+					"name": "example-configmap",
+					"namespace": "default"
+				},
+				"data": {
+					"server.conf": "{\n    \"db_address\": \"localhost:3306\",\n    \"region_id\": \"us-west-1\",\n    \"zone_id\": \"zone-1\"\n}"
+				}
+			}`),
+		},
+		{
+			name: "FieldPatch",
+			original: []byte(`{
+				"apiVersion": "v1",
+				"kind": "ConfigMap",
+				"metadata": {
+					"name": "example-configmap",
+					"namespace": "default"
+				},
+				"data": {
+					"server.conf": "db_address: 127.0.0.1:5432\nregion_id: us-west-1\nzone_id: zone-1\n"
+				}
+			}`),
+			overrides: []appsapi.OverrideConfig{
+				{
+					Name:  "empty override with whitespaces",
+					Type:  appsapi.MergePatchType,
+					Value: `   `,
+				},
+				{
+					Name:        "overridge db address - json format",
+					Type:        appsapi.FieldMergePatchType,
+					FieldPath:   "/data/server.conf",
+					FieldFormat: appsapi.YAMLFormat,
+					Value:       "region_id: us-west-2\nzone_id: zone-2\n",
+				},
+			},
+			want: []byte(`{
+				"apiVersion": "v1",
+				"kind": "ConfigMap",
+				"metadata": {
+					"name": "example-configmap",
+					"namespace": "default"
+				},
+				"data": {
+					"server.conf": "db_address: 127.0.0.1:5432\nregion_id: us-west-2\nzone_id: zone-2\n"
+				}
+			}`),
+		},
 	}
 
 	for _, tt := range tests {
@@ -494,13 +572,172 @@ func TestApplyJSONPatch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := applyJSONPatch(tt.cur, tt.overrideBytes)
+			got, err := applyJSONPatch(tt.cur, tt.overrideBytes, "")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("applyJSONPatch() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("applyJSONPatch() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyFieldPatch(t *testing.T) {
+	tests := []struct {
+		name           string
+		cur            []byte
+		overrideBytes  []byte
+		fieldPatchType appsapi.OverrideType
+		fieldPath      string
+		fieldFormat    appsapi.FieldFormatType
+		want           []byte
+		wantErr        bool
+	}{
+		{
+			name:           "json patch add mysql timeout to configmap in json",
+			cur:            []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"{\"mysql\":{\"address\":\"127.0.0.1:3306\"}}"}`),
+			overrideBytes:  []byte(`[{"path":"/mysql/timeout","op":"add","value": 5}]`),
+			fieldPatchType: appsapi.FieldJSONPatchType,
+			fieldPath:      "/mydata",
+			fieldFormat:    appsapi.JSONFormat,
+			want:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"{\n    \"mysql\": {\n        \"address\": \"127.0.0.1:3306\",\n        \"timeout\": 5\n    }\n}"}`),
+			wantErr:        false,
+		},
+		{
+			name:           "merge patch mysql timeout to configmap in json",
+			cur:            []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"{\"mysql\":{\"address\":\"127.0.0.1:3306\"}}"}`),
+			overrideBytes:  []byte(`{"mysql":{"timeout":5}}`),
+			fieldPatchType: appsapi.FieldMergePatchType,
+			fieldPath:      "/mydata",
+			fieldFormat:    appsapi.JSONFormat,
+			want:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"{\n    \"mysql\": {\n        \"address\": \"127.0.0.1:3306\",\n        \"timeout\": 5\n    }\n}"}`),
+			wantErr:        false,
+		},
+		{
+			name:           "merge patch add mysql timeout to configmap in yaml",
+			cur:            []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"mysql:\n  address: 127.0.0.1:3306\n"}`),
+			overrideBytes:  []byte(`{"mysql":{"timeout":5}}`),
+			fieldPatchType: appsapi.FieldMergePatchType,
+			fieldPath:      "/mydata",
+			fieldFormat:    appsapi.YAMLFormat,
+			want:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"mysql:\n  address: 127.0.0.1:3306\n  timeout: 5\n"}`),
+			wantErr:        false,
+		},
+		{
+			name:           "json patch add mysql timeout to configmap in yaml",
+			cur:            []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"mysql:\n  address: 127.0.0.1:3306\n"}`),
+			overrideBytes:  []byte(`[{"path":"/mysql/timeout","op":"add","value": 5}]`),
+			fieldPatchType: appsapi.FieldJSONPatchType,
+			fieldPath:      "/mydata",
+			fieldFormat:    appsapi.YAMLFormat,
+			want:           []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"mysql:\n  address: 127.0.0.1:3306\n  timeout: 5\n"}`),
+			wantErr:        false,
+		},
+		{
+			name:           "add mysql timeout to configmap in yaml when field not exist",
+			cur:            []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"mysql:\n  address: 127.0.0.1:3306\n"}`),
+			overrideBytes:  []byte(`{"mysql":{"timeout":5}}`),
+			fieldPatchType: appsapi.FieldMergePatchType,
+			fieldPath:      "/field-not-exist",
+			fieldFormat:    appsapi.YAMLFormat,
+			want:           nil,
+			wantErr:        true,
+		},
+		{
+			name:           "invalid yaml field value",
+			cur:            []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"mysql:  address: 127.0.0.1:3306\n"}`),
+			overrideBytes:  []byte(`{"mysql":{"timeout":5}}`),
+			fieldPatchType: appsapi.FieldMergePatchType,
+			fieldPath:      "/mydata",
+			fieldFormat:    appsapi.YAMLFormat,
+			want:           nil,
+			wantErr:        true,
+		},
+		{
+			name:           "invalid json field value",
+			cur:            []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"mydata":"{\"mysql\"\"\"\":{\"address\":\"127.0.0.1:3306\"}}"}`),
+			overrideBytes:  []byte(`{"mysql":{"timeout":5}}`),
+			fieldPatchType: appsapi.FieldMergePatchType,
+			fieldPath:      "/mydata",
+			fieldFormat:    appsapi.JSONFormat,
+			want:           nil,
+			wantErr:        true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []byte
+			var err error
+			if tt.fieldPatchType == appsapi.FieldJSONPatchType {
+				got, err = applyFieldJSONPatch(tt.cur, tt.fieldPath, tt.fieldFormat, tt.overrideBytes)
+			}
+			if tt.fieldPatchType == appsapi.FieldMergePatchType {
+				got, err = applyFieldMergePatch(tt.cur, tt.fieldPath, tt.fieldFormat, tt.overrideBytes)
+			}
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("applyFieldPatch() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("applyFieldPatch() got = %s, want %s", string(got), string(tt.want))
+			}
+		})
+	}
+}
+
+func TestFindField(t *testing.T) {
+	testCases := []struct {
+		name      string
+		cur       []byte
+		fieldPath string
+		result    string
+		wantErr   bool
+	}{
+		{
+			name:      "find metadata.labels",
+			cur:       []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			fieldPath: "/metadata/labels",
+			result:    "",
+			wantErr:   true,
+		},
+		{
+			name:      "find metadata.labels.another-label",
+			cur:       []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"version":"1.8.0"}}`),
+			fieldPath: "/metadata/labels/another-label",
+			result:    "another-value",
+		},
+		{
+			name:      "find some field in string array",
+			cur:       []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"commands":["sleep", "999999"],"version":"1.8.0"}}`),
+			fieldPath: "/spec/commands/1",
+			result:    "999999",
+		},
+		{
+			name:      "find some field in object array",
+			cur:       []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"containers":[{"image":"nginx:latest"}, {"image":"redis:latest"}],"version":"1.8.0"}}`),
+			fieldPath: "/spec/containers/1/image",
+			result:    "redis:latest",
+		},
+		{
+			name:      "error field path",
+			cur:       []byte(`{"metadata":{"labels":{"another-label":"another-value","some-label":"some-value"}},"spec":{"containers":[{"image":"nginx:latest"}, {"image":"redis:latest"}],"version":"1.8.0"}}`),
+			fieldPath: "/spec/containers/error/image",
+			result:    "",
+			wantErr:   true,
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := findField(tt.cur, tt.fieldPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("findField() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.result {
+				t.Errorf("findField() got = %v, want %v", got, tt.result)
 			}
 		})
 	}

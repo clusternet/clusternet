@@ -24,10 +24,12 @@ import (
 // OverrideConfigApplyConfiguration represents a declarative configuration of the OverrideConfig type for use
 // with apply.
 type OverrideConfigApplyConfiguration struct {
-	Name          *string                    `json:"name,omitempty"`
-	Value         *string                    `json:"value,omitempty"`
-	Type          *appsv1alpha1.OverrideType `json:"type,omitempty"`
-	OverrideChart *bool                      `json:"overrideChart,omitempty"`
+	Name          *string                       `json:"name,omitempty"`
+	Value         *string                       `json:"value,omitempty"`
+	Type          *appsv1alpha1.OverrideType    `json:"type,omitempty"`
+	OverrideChart *bool                         `json:"overrideChart,omitempty"`
+	FieldPath     *string                       `json:"fieldPath,omitempty"`
+	FieldFormat   *appsv1alpha1.FieldFormatType `json:"fieldFormat,omitempty"`
 }
 
 // OverrideConfigApplyConfiguration constructs a declarative configuration of the OverrideConfig type for use with
@@ -65,5 +67,21 @@ func (b *OverrideConfigApplyConfiguration) WithType(value appsv1alpha1.OverrideT
 // If called multiple times, the OverrideChart field is set to the value of the last call.
 func (b *OverrideConfigApplyConfiguration) WithOverrideChart(value bool) *OverrideConfigApplyConfiguration {
 	b.OverrideChart = &value
+	return b
+}
+
+// WithFieldPath sets the FieldPath field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the FieldPath field is set to the value of the last call.
+func (b *OverrideConfigApplyConfiguration) WithFieldPath(value string) *OverrideConfigApplyConfiguration {
+	b.FieldPath = &value
+	return b
+}
+
+// WithFieldFormat sets the FieldFormat field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the FieldFormat field is set to the value of the last call.
+func (b *OverrideConfigApplyConfiguration) WithFieldFormat(value appsv1alpha1.FieldFormatType) *OverrideConfigApplyConfiguration {
+	b.FieldFormat = &value
 	return b
 }
