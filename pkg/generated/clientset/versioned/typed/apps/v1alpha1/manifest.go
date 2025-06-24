@@ -64,6 +64,7 @@ func newManifests(c *AppsV1alpha1Client, namespace string) *manifests {
 			namespace,
 			func() *appsv1alpha1.Manifest { return &appsv1alpha1.Manifest{} },
 			func() *appsv1alpha1.ManifestList { return &appsv1alpha1.ManifestList{} },
+			gentype.PrefersProtobuf[*appsv1alpha1.Manifest](),
 		),
 	}
 }

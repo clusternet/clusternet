@@ -68,6 +68,7 @@ func newHelmReleases(c *AppsV1alpha1Client, namespace string) *helmReleases {
 			namespace,
 			func() *appsv1alpha1.HelmRelease { return &appsv1alpha1.HelmRelease{} },
 			func() *appsv1alpha1.HelmReleaseList { return &appsv1alpha1.HelmReleaseList{} },
+			gentype.PrefersProtobuf[*appsv1alpha1.HelmRelease](),
 		),
 	}
 }

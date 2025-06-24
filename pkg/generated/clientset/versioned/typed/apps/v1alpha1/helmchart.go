@@ -68,6 +68,7 @@ func newHelmCharts(c *AppsV1alpha1Client, namespace string) *helmCharts {
 			namespace,
 			func() *appsv1alpha1.HelmChart { return &appsv1alpha1.HelmChart{} },
 			func() *appsv1alpha1.HelmChartList { return &appsv1alpha1.HelmChartList{} },
+			gentype.PrefersProtobuf[*appsv1alpha1.HelmChart](),
 		),
 	}
 }
