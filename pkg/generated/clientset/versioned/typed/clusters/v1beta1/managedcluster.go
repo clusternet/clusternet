@@ -68,6 +68,7 @@ func newManagedClusters(c *ClustersV1beta1Client, namespace string) *managedClus
 			namespace,
 			func() *clustersv1beta1.ManagedCluster { return &clustersv1beta1.ManagedCluster{} },
 			func() *clustersv1beta1.ManagedClusterList { return &clustersv1beta1.ManagedClusterList{} },
+			gentype.PrefersProtobuf[*clustersv1beta1.ManagedCluster](),
 		),
 	}
 }

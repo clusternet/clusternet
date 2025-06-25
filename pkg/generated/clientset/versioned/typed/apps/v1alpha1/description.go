@@ -68,6 +68,7 @@ func newDescriptions(c *AppsV1alpha1Client, namespace string) *descriptions {
 			namespace,
 			func() *appsv1alpha1.Description { return &appsv1alpha1.Description{} },
 			func() *appsv1alpha1.DescriptionList { return &appsv1alpha1.DescriptionList{} },
+			gentype.PrefersProtobuf[*appsv1alpha1.Description](),
 		),
 	}
 }

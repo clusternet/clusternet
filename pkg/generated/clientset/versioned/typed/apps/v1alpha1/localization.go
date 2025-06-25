@@ -64,6 +64,7 @@ func newLocalizations(c *AppsV1alpha1Client, namespace string) *localizations {
 			namespace,
 			func() *appsv1alpha1.Localization { return &appsv1alpha1.Localization{} },
 			func() *appsv1alpha1.LocalizationList { return &appsv1alpha1.LocalizationList{} },
+			gentype.PrefersProtobuf[*appsv1alpha1.Localization](),
 		),
 	}
 }
