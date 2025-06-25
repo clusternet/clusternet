@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
 	cliflag "k8s.io/component-base/cli/flag"
+	utilversion "k8s.io/component-base/version"
 
 	informers "github.com/clusternet/clusternet/pkg/generated/informers/externalversions"
 	clusternetopenapi "github.com/clusternet/clusternet/pkg/generated/openapi"
@@ -133,6 +134,7 @@ func (o *HubServerOptions) Config() (*apiserver.Config, error) {
 	serverConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(clusternetopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
 	serverConfig.OpenAPIV3Config.Info.Title = openAPITitle
 	serverConfig.OpenAPIV3Config.Info.Version = version.Get().GitVersion
+	serverConfig.EffectiveVersion = utilversion.DefaultKubeEffectiveVersion()
 	config := &apiserver.Config{
 		GenericConfig: serverConfig,
 		ExtraConfig:   apiserver.ExtraConfig{},
