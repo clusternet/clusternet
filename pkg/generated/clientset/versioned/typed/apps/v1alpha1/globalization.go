@@ -64,7 +64,6 @@ func newGlobalizations(c *AppsV1alpha1Client) *globalizations {
 			"",
 			func() *appsv1alpha1.Globalization { return &appsv1alpha1.Globalization{} },
 			func() *appsv1alpha1.GlobalizationList { return &appsv1alpha1.GlobalizationList{} },
-			gentype.PrefersProtobuf[*appsv1alpha1.Globalization](),
 		),
 	}
 }

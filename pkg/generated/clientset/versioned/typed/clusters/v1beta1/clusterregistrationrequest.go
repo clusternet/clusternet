@@ -72,7 +72,6 @@ func newClusterRegistrationRequests(c *ClustersV1beta1Client) *clusterRegistrati
 			func() *clustersv1beta1.ClusterRegistrationRequestList {
 				return &clustersv1beta1.ClusterRegistrationRequestList{}
 			},
-			gentype.PrefersProtobuf[*clustersv1beta1.ClusterRegistrationRequest](),
 		),
 	}
 }

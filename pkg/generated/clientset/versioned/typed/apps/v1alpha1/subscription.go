@@ -68,7 +68,6 @@ func newSubscriptions(c *AppsV1alpha1Client, namespace string) *subscriptions {
 			namespace,
 			func() *appsv1alpha1.Subscription { return &appsv1alpha1.Subscription{} },
 			func() *appsv1alpha1.SubscriptionList { return &appsv1alpha1.SubscriptionList{} },
-			gentype.PrefersProtobuf[*appsv1alpha1.Subscription](),
 		),
 	}
 }

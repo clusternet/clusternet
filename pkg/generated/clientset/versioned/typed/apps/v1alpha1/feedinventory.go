@@ -64,7 +64,6 @@ func newFeedInventories(c *AppsV1alpha1Client, namespace string) *feedInventorie
 			namespace,
 			func() *appsv1alpha1.FeedInventory { return &appsv1alpha1.FeedInventory{} },
 			func() *appsv1alpha1.FeedInventoryList { return &appsv1alpha1.FeedInventoryList{} },
-			gentype.PrefersProtobuf[*appsv1alpha1.FeedInventory](),
 		),
 	}
 }
