@@ -64,7 +64,6 @@ func newBases(c *AppsV1alpha1Client, namespace string) *bases {
 			namespace,
 			func() *appsv1alpha1.Base { return &appsv1alpha1.Base{} },
 			func() *appsv1alpha1.BaseList { return &appsv1alpha1.BaseList{} },
-			gentype.PrefersProtobuf[*appsv1alpha1.Base](),
 		),
 	}
 }
