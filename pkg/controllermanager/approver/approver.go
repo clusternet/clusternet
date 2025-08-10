@@ -585,6 +585,12 @@ func getCredentialsForChildCluster(ctx context.Context, client *kubernetes.Clien
 		if lastError != nil {
 			return false, nil
 		}
+		if secret.Data[corev1.ServiceAccountTokenKey] == nil {
+			return false, nil
+		}
+		if secret.Data[corev1.ServiceAccountRootCAKey] == nil {
+			return false, nil
+		}
 		return true, nil
 	})
 
