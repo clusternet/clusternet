@@ -25,17 +25,17 @@ A CNCF([Cloud Native Computing Foundation](https://cncf.io/)) Sandbox Project.
 Clusternet (**Cluster** Inter**net**) is an open source ***add-on*** that helps you manage thousands of millions of
 Kubernetes clusters as easily as visiting the Internet. No matter the clusters are running on public cloud, private
 cloud, hybrid cloud, or at the edge, Clusternet helps setup network tunnels in a configurable way and lets you
-manage/visit them all as if they were running locally. This also help eliminate the need to juggle different management
+manage/visit them all as if they were running locally. This also helps eliminate the need to juggle different management
 tools for each cluster.
 
 **Clusternet can also help deploy and coordinate applications to multiple clusters from a single set of APIs in a
 hosting cluster.**
 
 Clusternet also provides a Kubernetes-styled API, where you can continue using the Kubernetes way, such as KubeConfig,
-to visit a certain Managed Kubernetes cluster, or a Kubernetes service.
+to visit a certain managed Kubernetes cluster, or a Kubernetes service.
 
 Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/arm64`, `linux/ppc64le`, `linux/s390x`
-, `linux/386` and `linux/arm`;
+, `linux/386` , and `linux/arm`;
 
 ----
 
@@ -50,10 +50,10 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - managing Kubernetes clusters running at the edge
     - automatically discovering and registering clusters created by [cluster-api](https://github.com/kubernetes-sigs/cluster-api)
     - parent cluster can also register itself as a child cluster to run workloads
-    - managing Kubernetes upper than v1.17.x (Learn more
+    - managing Kubernetes above v1.17.x (Learn more
       about [Kubernetes Version Skew](https://clusternet.io/docs/introduction/#kubernetes-version-skew))
     - visiting any managed clusters with dynamic RBAC rules (Learn more
-      from [this tuorial](https://clusternet.io/docs/tutorials/cluster-management/visiting-child-clusters-with-rbac/))
+      from [this tutorial](https://clusternet.io/docs/tutorials/cluster-management/visiting-child-clusters-with-rbac/))
     - cluster auto-labelling based on [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery)
 - Application Coordinations
     - Scheduling **Framework** (`in-tree` plugins, `out-of-tree` plugins)
@@ -71,7 +71,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - Resource interpretations with `in-tree` or `out-of-tree` controllers
     - [Setting Overrides](https://clusternet.io/docs/tutorials/multi-cluster-apps/setting-overrides/)
         - two-stage priority based override strategies
-        - easy to rollback overrides
+        - enables easy rollback of overrides
         - cross-cluster canary rollout
     - Multi-Cluster Services
         - multi-cluster services discovery with [mcs-api](https://github.com/kubernetes-sigs/mcs-api)
