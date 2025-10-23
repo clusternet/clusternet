@@ -19,10 +19,12 @@ package controllermanager
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/version"
 	apiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -178,8 +180,9 @@ func (cm *ControllerManager) Run(ctx context.Context) error {
 		return nil
 	}
 	// leader election run
-	controllerLease.Run(ctx)
-	<-ctx.Done()
+	wait.UntilWithContext(ctx, func(ctx context.Context) {
+		controllerLease.Run(ctx)
+	}, time.Duration(0))
 	return nil
 }
 

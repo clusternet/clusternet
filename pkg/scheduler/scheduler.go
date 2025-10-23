@@ -276,7 +276,9 @@ func (sched *Scheduler) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	le.Run(ctx)
+	wait.UntilWithContext(ctx, func(ctx context.Context) {
+		le.Run(ctx)
+	}, time.Duration(0))
 	return nil
 }
 
