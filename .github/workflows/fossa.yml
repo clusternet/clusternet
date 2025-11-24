@@ -11,7 +11,7 @@ jobs:
     if: github.repository_owner == 'clusternet'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Get branch name
         id: branch-name
         uses: tj-actions/branch-names@v9
