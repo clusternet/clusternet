@@ -329,6 +329,7 @@ func TestTrimBatchJob(t *testing.T) {
 						"selector": map[string]interface{}{
 							"matchLabels": map[string]interface{}{
 								"controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
+								"batch.kubernetes.io/controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
 							},
 						},
 						"template": map[string]interface{}{
@@ -336,7 +337,9 @@ func TestTrimBatchJob(t *testing.T) {
 								"creationTimestamp": nil,
 								"labels": map[string]interface{}{
 									"controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
-									"job-name":       "pi",
+									"job-name": "pi",
+									"batch.kubernetes.io/controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
+									"batch.kubernetes.io/job-name": "pi",
 								},
 							},
 							"spec": map[string]interface{}{

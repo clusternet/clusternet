@@ -75,8 +75,11 @@ func trimCoreService(result *unstructured.Unstructured) {
 
 func trimBatchJob(result *unstructured.Unstructured) {
 	unstructured.RemoveNestedField(result.Object, "spec", "selector", "matchLabels", "controller-uid")
+	unstructured.RemoveNestedField(result.Object, "spec", "selector", "matchLabels", "batch.kubernetes.io/controller-uid")
 	unstructured.RemoveNestedField(result.Object, "spec", "template", "metadata", "creationTimestamp")
 	unstructured.RemoveNestedField(result.Object, "spec", "template", "metadata", "labels", "controller-uid")
+	unstructured.RemoveNestedField(result.Object, "spec", "template", "metadata", "labels", "batch.kubernetes.io/controller-uid")
+	unstructured.RemoveNestedField(result.Object, "spec", "template", "metadata", "labels", "batch.kubernetes.io/job-name")
 }
 
 func trimStatus(result *unstructured.Unstructured) {
