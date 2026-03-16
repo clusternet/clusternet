@@ -328,15 +328,18 @@ func TestTrimBatchJob(t *testing.T) {
 						"parallelism":  1,
 						"selector": map[string]interface{}{
 							"matchLabels": map[string]interface{}{
-								"controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
+								"controller-uid":                     "a2d92553-a472-4ab5-bf4b-81b654f3db39",
+								"batch.kubernetes.io/controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
 							},
 						},
 						"template": map[string]interface{}{
 							"metadata": map[string]interface{}{
 								"creationTimestamp": nil,
 								"labels": map[string]interface{}{
-									"controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
-									"job-name":       "pi",
+									"controller-uid":                     "a2d92553-a472-4ab5-bf4b-81b654f3db39",
+									"job-name":                           "pi",
+									"batch.kubernetes.io/controller-uid": "a2d92553-a472-4ab5-bf4b-81b654f3db39",
+									"batch.kubernetes.io/job-name":       "pi",
 								},
 							},
 							"spec": map[string]interface{}{
