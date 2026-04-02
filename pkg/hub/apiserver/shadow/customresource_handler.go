@@ -34,9 +34,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/managedfields"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
@@ -282,7 +284,11 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 	if !canBeAddedToStorage(crd.Spec.Group, storageVersion, crd.Spec.Names.Plural, r.apiserviceLister) {
 		return nil
 	}
-	metav1.AddToGroupVersion(Scheme, schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion})
+	groupVersion := schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion}
+	metav1.AddToGroupVersion(Scheme, groupVersion)
+	Scheme.AddKnownTypeWithName(groupVersion.WithKind(crd.Spec.Names.Kind),
+		&unstructured.Unstructured{},
+	)
 
 	r.versionDiscoveryHandler.updateCRD(crd)
 
@@ -324,6 +330,21 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		}
 	}
 
+	typeConverter := managedfields.NewDeducedTypeConverter()
+	fieldManager, err := managedfields.NewDefaultFieldManager(
+		typeConverter,
+		crdGroupInfo.Scheme,
+		crdGroupInfo.Scheme,
+		crdGroupInfo.Scheme,
+		groupVersionKind,
+		groupVersionKind.GroupVersion(),
+		"",
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create field manager for %s: %v", resource, err)
+	}
+
 	r.lock.Lock()
 	r.storages[resource] = restStorage
 	r.requestScopes[resource] = &handlers.RequestScope{
@@ -345,6 +366,7 @@ func (r *crdHandler) addStorage(crd *apiextensionsv1.CustomResourceDefinition) e
 		HubGroupVersion:          groupVersionKind.GroupVersion(),
 		MetaGroupVersion:         metav1.SchemeGroupVersion,
 		TableConvertor:           restStorage,
+		FieldManager:             fieldManager,
 		Authorizer:               r.authorizer,
 		MaxRequestBodyBytes:      r.maxRequestBodyBytes,
 	}
