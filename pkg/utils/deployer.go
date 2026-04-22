@@ -28,6 +28,7 @@ import (
 	"github.com/pkg/errors"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
+	actionkube "helm.sh/helm/v3/pkg/kube"
 	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
@@ -47,6 +48,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
@@ -133,8 +135,7 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 		return err
 	}
 
-	cfg := new(action.Configuration)
-	err = cfg.Init(deployCtx, hr.Spec.TargetNamespace, "secret", klog.V(5).Infof)
+	cfg, err := initHelmActionConfiguration(deployCtx, hr.Spec.TargetNamespace, "secret", klog.V(5).Infof)
 	if err != nil {
 		return err
 	}
@@ -272,6 +273,20 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 	return err
 }
 
+func initHelmActionConfiguration(
+	getter genericclioptions.RESTClientGetter,
+	namespace, helmDriver string,
+	log action.DebugLog,
+) (*action.Configuration, error) {
+	cfg := new(action.Configuration)
+	if err := cfg.Init(getter, namespace, helmDriver, log); err != nil {
+		return nil, err
+	}
+	if kubeClient, ok := cfg.KubeClient.(*actionkube.Client); ok {
+		kubeClient.Namespace = namespace
+	}
+	return cfg, nil
+}
 func GenerateHelmReleaseName(descName string, chartRef appsapi.ChartReference) string {
 	return fmt.Sprintf("%s-%s-%s", descName, chartRef.Namespace, chartRef.Name)
 }
