@@ -22,6 +22,7 @@ package v1alpha1
 type HelmOptionsApplyConfiguration struct {
 	Repository      *string                            `json:"repo,omitempty"`
 	ChartPullSecret *ChartPullSecretApplyConfiguration `json:"chartPullSecret,omitempty"`
+	PlainHTTP       *bool                              `json:"plainHTTP,omitempty"`
 	Chart           *string                            `json:"chart,omitempty"`
 	ChartVersion    *string                            `json:"version,omitempty"`
 	CreateNamespace *bool                              `json:"createNamespace,omitempty"`
@@ -56,6 +57,14 @@ func (b *HelmOptionsApplyConfiguration) WithRepository(value string) *HelmOption
 // If called multiple times, the ChartPullSecret field is set to the value of the last call.
 func (b *HelmOptionsApplyConfiguration) WithChartPullSecret(value *ChartPullSecretApplyConfiguration) *HelmOptionsApplyConfiguration {
 	b.ChartPullSecret = value
+	return b
+}
+
+// WithPlainHTTP sets the PlainHTTP field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PlainHTTP field is set to the value of the last call.
+func (b *HelmOptionsApplyConfiguration) WithPlainHTTP(value bool) *HelmOptionsApplyConfiguration {
+	b.PlainHTTP = &value
 	return b
 }
 

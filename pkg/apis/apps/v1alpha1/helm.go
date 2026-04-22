@@ -91,6 +91,13 @@ type HelmOptions struct {
 	// +optional
 	ChartPullSecret ChartPullSecret `json:"chartPullSecret,omitempty"`
 
+	// PlainHTTP enables plain HTTP for OCI registries.
+	// This is opt-in and should only be used for registries that do not serve HTTPS.
+	//
+	// +optional
+	// +kubebuilder:validation:Type=boolean
+	PlainHTTP *bool `json:"plainHTTP,omitempty"`
+
 	// Chart is the name of a Helm Chart in the Repository.
 	//
 	// +required

@@ -61,27 +61,47 @@ var (
 	Settings = cli.New()
 )
 
-// FindOCIChart will looks for an OCI-based helm chart from repository.
-func FindOCIChart(chartRepo, chartName, chartVersion string) (bool, error) {
-	// TODO: auth
-	registryClient, err := registry.NewClient(
+const ociRegistryRequestTimeout = 15 * time.Second
+
+type ociRegistryClient interface {
+	Tags(ref string) ([]string, error)
+}
+
+func newOCIHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: ociRegistryRequestTimeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+}
+
+var newOCIRegistryClient = func(plainHTTP bool) (ociRegistryClient, error) {
+	opts := []registry.ClientOption{
 		registry.ClientOptDebug(Settings.Debug),
 		registry.ClientOptWriter(os.Stdout),
 		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
-		registry.ClientOptHTTPClient(&http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-		}),
-	)
+		registry.ClientOptHTTPClient(newOCIHTTPClient()),
+	}
+	if plainHTTP {
+		opts = append(opts, registry.ClientOptPlainHTTP())
+	}
+	return registry.NewClient(opts...)
+}
+
+// FindOCIChart will looks for an OCI-based helm chart from repository.
+func FindOCIChart(chartRepo, chartName, chartVersion string, plainHTTP bool) (bool, error) {
+	// TODO: auth
+	registryClient, err := newOCIRegistryClient(plainHTTP)
 	if err != nil {
 		return false, err
 	}
 
 	// Retrieve list of tags for repository
 	ref := fmt.Sprintf("%s/%s", strings.TrimPrefix(chartRepo, fmt.Sprintf("%s://", registry.OCIScheme)), chartName)
+	klog.V(4).Infof("querying OCI tags for ref=%q plainHTTP=%t timeout=%s", ref, plainHTTP, ociRegistryRequestTimeout)
 	tags, err := registryClient.Tags(ref)
 	if err != nil {
 		return false, err
@@ -95,15 +115,13 @@ func FindOCIChart(chartRepo, chartName, chartVersion string) (bool, error) {
 	return false, nil
 }
 
-// LocateAuthHelmChart will looks for a chart from auth repository and load it.
-func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, password, chartName, chartVersion string) (*chart.Chart, error) {
-	client := action.NewInstall(cfg)
+func configureChartPathOptions(client *action.Install, chartRepo, username, password, chartName, chartVersion string, plainHTTP bool) string {
 	client.ChartPathOptions.RepoURL = chartRepo
 	client.ChartPathOptions.Version = chartVersion
 	client.ChartPathOptions.Username = username
 	client.ChartPathOptions.Password = password
 	client.ChartPathOptions.InsecureSkipTLSverify = true
-	// TODO: plainHTTP
+	client.ChartPathOptions.PlainHTTP = plainHTTP
 
 	if registry.IsOCI(chartRepo) {
 		/*oci based registries don't support to download index.yaml
@@ -114,6 +132,14 @@ func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, passwor
 		chartName = fmt.Sprintf("%s/%s", chartRepo, chartName)
 		klog.V(5).Infof("oci based chart, full chart path is %s", chartName)
 	}
+
+	return chartName
+}
+
+// LocateAuthHelmChart will looks for a chart from auth repository and load it.
+func LocateAuthHelmChart(cfg *action.Configuration, chartRepo, username, password, chartName, chartVersion string, plainHTTP bool) (*chart.Chart, error) {
+	client := action.NewInstall(cfg)
+	chartName = configureChartPathOptions(client, chartRepo, username, password, chartName, chartVersion, plainHTTP)
 
 	cp, err := client.ChartPathOptions.LocateChart(chartName, Settings)
 	if err != nil {

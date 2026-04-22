@@ -17,7 +17,9 @@ limitations under the License.
 package utils
 
 import (
+	"reflect"
 	"testing"
+	"time"
 
 	actionkube "helm.sh/helm/v3/pkg/kube"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -356,5 +358,34 @@ func TestInitHelmActionConfigurationSetsKubeClientNamespace(t *testing.T) {
 	}
 	if kubeClient.Namespace != "blueking" {
 		t.Fatalf("cfg.KubeClient.Namespace = %q, want %q", kubeClient.Namespace, "blueking")
+	}
+}
+
+func TestNewHelmRegistryClientUsesPlainHTTPWhenRequested(t *testing.T) {
+	client, err := newHelmRegistryClient(true)
+	if err != nil {
+		t.Fatalf("newHelmRegistryClient returned error: %v", err)
+	}
+
+	plainHTTPField := reflect.ValueOf(client).Elem().FieldByName("plainHTTP")
+	if !plainHTTPField.Bool() {
+		t.Fatalf("registry client plainHTTP = false, want true")
+	}
+}
+
+func TestNewHelmRegistryClientUsesOCIHTTPTimeout(t *testing.T) {
+	client, err := newHelmRegistryClient(false)
+	if err != nil {
+		t.Fatalf("newHelmRegistryClient returned error: %v", err)
+	}
+
+	httpClientField := reflect.ValueOf(client).Elem().FieldByName("httpClient")
+	if httpClientField.IsNil() {
+		t.Fatalf("registry client httpClient is nil, want configured timeout client")
+	}
+
+	timeout := time.Duration(httpClientField.Elem().FieldByName("Timeout").Int())
+	if timeout != ociRegistryRequestTimeout {
+		t.Fatalf("registry client timeout = %s, want %s", timeout, ociRegistryRequestTimeout)
 	}
 }
