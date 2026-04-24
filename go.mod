@@ -26,6 +26,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.32.4
 	k8s.io/apimachinery v0.32.4
 	k8s.io/apiserver v0.32.4
+	k8s.io/cli-runtime v0.32.4
 	k8s.io/client-go v0.32.4
 	k8s.io/cluster-bootstrap v0.32.4
 	k8s.io/code-generator v0.32.4
@@ -188,7 +189,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/cli-runtime v0.32.4 // indirect
 	k8s.io/gengo/v2 v2.0.0-20240911193312-2b36238f13e9 // indirect
 	k8s.io/kms v0.32.4 // indirect
 	oras.land/oras-go v1.2.5 // indirect

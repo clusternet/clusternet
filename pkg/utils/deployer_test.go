@@ -19,8 +19,10 @@ package utils
 import (
 	"testing"
 
+	actionkube "helm.sh/helm/v3/pkg/kube"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	clusterapi "github.com/clusternet/clusternet/pkg/apis/clusters/v1beta1"
 )
@@ -316,5 +318,43 @@ func TestClusterHasReadyCondition(t *testing.T) {
 				t.Errorf("ClusterHasReadyCondition() = %v, want %v", isReady, tt.clusterReady)
 			}
 		})
+	}
+}
+func TestInitHelmActionConfigurationSetsKubeClientNamespace(t *testing.T) {
+	config := &clientcmdapi.Config{
+		CurrentContext: "ctx",
+		Clusters: map[string]*clientcmdapi.Cluster{
+			"cluster": {
+				Server: "https://127.0.0.1:6443",
+			},
+		},
+		AuthInfos: map[string]*clientcmdapi.AuthInfo{
+			"user": {},
+		},
+		Contexts: map[string]*clientcmdapi.Context{
+			"ctx": {
+				Cluster:   "cluster",
+				AuthInfo:  "user",
+				Namespace: "default",
+			},
+		},
+	}
+
+	deployCtx, err := NewDeployContext(config, 5, 10)
+	if err != nil {
+		t.Fatalf("NewDeployContext() error = %v", err)
+	}
+
+	cfg, err := initHelmActionConfiguration(deployCtx, "blueking", "secret", t.Logf)
+	if err != nil {
+		t.Fatalf("initHelmActionConfiguration() error = %v", err)
+	}
+
+	kubeClient, ok := cfg.KubeClient.(*actionkube.Client)
+	if !ok {
+		t.Fatalf("cfg.KubeClient type = %T, want *kube.Client", cfg.KubeClient)
+	}
+	if kubeClient.Namespace != "blueking" {
+		t.Fatalf("cfg.KubeClient.Namespace = %q, want %q", kubeClient.Namespace, "blueking")
 	}
 }
