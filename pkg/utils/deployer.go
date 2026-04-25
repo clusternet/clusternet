@@ -126,11 +126,8 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 
 	klog.V(5).Infof("handle HelmRelease %s", klog.KObj(hr))
 
-	registryClient, err := registry.NewClient(
-		registry.ClientOptDebug(Settings.Debug),
-		registry.ClientOptWriter(os.Stdout),
-		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
-	)
+	plainHTTP := hr.Spec.PlainHTTP != nil && *hr.Spec.PlainHTTP
+	registryClient, err := newHelmRegistryClient(plainHTTP)
 	if err != nil {
 		return err
 	}
@@ -172,7 +169,15 @@ func ReconcileHelmRelease(ctx context.Context, deployCtx *DeployContext, kubeCli
 			return err
 		}
 	}
-	chart, err = LocateAuthHelmChart(cfg, hr.Spec.Repository, username, password, hr.Spec.Chart, hr.Spec.ChartVersion)
+	chart, err = LocateAuthHelmChart(
+		cfg,
+		hr.Spec.Repository,
+		username,
+		password,
+		hr.Spec.Chart,
+		hr.Spec.ChartVersion,
+		plainHTTP,
+	)
 	if err != nil {
 		recorder.Event(hr, corev1.EventTypeWarning, "ChartLocateFailure", err.Error())
 		hrStatus = &appsapi.HelmReleaseStatus{
@@ -287,6 +292,20 @@ func initHelmActionConfiguration(
 	}
 	return cfg, nil
 }
+
+func newHelmRegistryClient(plainHTTP bool) (*registry.Client, error) {
+	opts := []registry.ClientOption{
+		registry.ClientOptDebug(Settings.Debug),
+		registry.ClientOptWriter(os.Stdout),
+		registry.ClientOptCredentialsFile(Settings.RegistryConfig),
+		registry.ClientOptHTTPClient(newOCIHTTPClient()),
+	}
+	if plainHTTP {
+		opts = append(opts, registry.ClientOptPlainHTTP())
+	}
+	return registry.NewClient(opts...)
+}
+
 func GenerateHelmReleaseName(descName string, chartRef appsapi.ChartReference) string {
 	return fmt.Sprintf("%s-%s-%s", descName, chartRef.Namespace, chartRef.Name)
 }

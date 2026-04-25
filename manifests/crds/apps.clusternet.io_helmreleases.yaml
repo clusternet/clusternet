@@ -95,6 +95,11 @@ spec:
                 description: Overrides specifies the override values for this release.
                 format: byte
                 type: string
+              plainHTTP:
+                description: |-
+                  PlainHTTP enables plain HTTP for OCI registries.
+                  This is opt-in and should only be used for registries that do not serve HTTPS.
+                type: boolean
               releaseName:
                 description: |-
                   ReleaseName specifies the desired release name in child cluster.

@@ -691,6 +691,11 @@ func (in *HelmChartStatus) DeepCopy() *HelmChartStatus {
 func (in *HelmOptions) DeepCopyInto(out *HelmOptions) {
 	*out = *in
 	out.ChartPullSecret = in.ChartPullSecret
+	if in.PlainHTTP != nil {
+		in, out := &in.PlainHTTP, &out.PlainHTTP
+		*out = new(bool)
+		**out = **in
+	}
 	if in.CreateNamespace != nil {
 		in, out := &in.CreateNamespace, &out.CreateNamespace
 		*out = new(bool)

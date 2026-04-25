@@ -92,6 +92,11 @@ spec:
                   Force will, if set to `true`, ignore certain warnings and perform the upgrade anyway.
                   This should be used with caution.
                 type: boolean
+              plainHTTP:
+                description: |-
+                  PlainHTTP enables plain HTTP for OCI registries.
+                  This is opt-in and should only be used for registries that do not serve HTTPS.
+                type: boolean
               replace:
                 description: |-
                   Replace will re-use the given name, only if that name is a deleted release that remains in the history.
