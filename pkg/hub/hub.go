@@ -222,10 +222,8 @@ func (hub *Hub) Run(ctx context.Context) error {
 				return ss.InstallShadowAPIGroups(postStartHookContext.Done(), hub.kubeClient.DiscoveryClient)
 			}
 
-			select {
-			case <-postStartHookContext.Done():
-			}
-
+			// ShadowAPI feature disabled, return immediately so that /readyz
+			// can mark this post-start hook as completed.
 			return nil
 		},
 	)
@@ -250,11 +248,16 @@ func (hub *Hub) Run(ctx context.Context) error {
 				Addr:    fmt.Sprintf("%s:%d", hub.options.RecommendedOptions.SecureServing.BindAddress, hub.options.PeerPort),
 				Handler: newPeerRouter(server.PeerDialer),
 			}
-			defer func() {
+
+			// Shutdown the peer server when the apiserver is stopping.
+			// We handle this in a dedicated goroutine so that the hook function
+			// itself can return immediately (required for /readyz to become Ready).
+			go func() {
+				defer utilruntime.HandleCrash()
+				<-postStartHookContext.Done()
 				// use Close() to close all active socket connections
-				err = peerServing.Close()
-				if err != nil {
-					klog.Fatalf("failed to shutdown peer server: %v", err)
+				if closeErr := peerServing.Close(); closeErr != nil {
+					klog.Errorf("failed to shutdown peer server: %v", closeErr)
 				}
 			}()
 
@@ -272,9 +275,10 @@ func (hub *Hub) Run(ctx context.Context) error {
 			}, 0)
 
 			go func() {
+				defer utilruntime.HandleCrash()
 				klog.Info("starting serving peer connections")
-				if err = peerServing.ListenAndServeTLS(certFile, keyFile); err != http.ErrServerClosed {
-					klog.Fatalf("failed to serve peer connections: %v", err)
+				if listenErr := peerServing.ListenAndServeTLS(certFile, keyFile); listenErr != http.ErrServerClosed {
+					klog.Fatalf("failed to serve peer connections: %v", listenErr)
 					os.Exit(1)
 				}
 			}()
@@ -282,10 +286,9 @@ func (hub *Hub) Run(ctx context.Context) error {
 			go refreshingPeers(hub.electionClient, hub.peerID, hub.options.LeaderElection.ResourceNamespace,
 				server.PeerDialer, postStartHookContext.Done())
 
-			select {
-			case <-postStartHookContext.Done():
-			}
-
+			// Return immediately so that the corresponding poststarthook/serving-peer-connections
+			// readyz check can pass. The goroutines above will keep running and be
+			// gracefully stopped via postStartHookContext.Done().
 			return nil
 		},
 	)
