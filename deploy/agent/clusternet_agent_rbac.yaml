@@ -4,9 +4,14 @@ metadata:
   name: clusternet:agent:admin
   namespace: clusternet-system
 rules:
-  - apiGroups: [ "*" ]
-    resources: [ "*" ]
-    verbs: [ "*" ]
+  # Leader election: agent uses LeaseLock (CoordinationV1) to elect a leader.
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "get", "create", "update" ]
+  # Leader election events (created by client-go on leader transitions).
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "create", "patch" ]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -41,8 +46,9 @@ rules:
   - apiGroups: [ "multicluster.x-k8s.io" ]
     resources: [ "serviceexports" ]
     verbs: [ "get", "list", "watch", "update", "patch" ]
-  - nonResourceURLs: [ "*" ]
-    verbs: [ "*" ]
+  # API discovery — needed so the agent can discover API groups on the child cluster.
+  - nonResourceURLs: [ "/api", "/api/*", "/apis", "/apis/*", "/healthz", "/readyz", "/livez" ]
+    verbs: [ "get" ]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
