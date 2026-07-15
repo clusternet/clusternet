@@ -198,6 +198,8 @@ func (hub *Hub) Run(ctx context.Context) error {
 				klog.Infof("install shadow apis...")
 				// waits for all started informers' cache got synced
 				hub.aggregatorInformerFactory.WaitForCacheSync(postStartHookContext.Done())
+				hub.kubeInformerFactory.WaitForCacheSync(postStartHookContext.Done())
+				hub.clusternetInformerFactory.WaitForCacheSync(postStartHookContext.Done())
 
 				crdInformerFactory := crdinformers.NewSharedInformerFactory(
 					crdclientset.NewForConfigOrDie(hub.clientBuilder.ConfigOrDie("crd-shared-informers")),
