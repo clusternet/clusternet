@@ -11,7 +11,7 @@ require (
 	github.com/evanphx/json-patch v5.7.0+incompatible
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/mux v1.8.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/json-iterator/go v1.1.13-0.20220915233716-71ac16282d12
 	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24
 	github.com/pkg/errors v0.9.1
