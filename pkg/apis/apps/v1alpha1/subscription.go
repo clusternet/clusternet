@@ -134,6 +134,26 @@ type SubscriptionStatus struct {
 	//
 	// +optional
 	AggregatedStatuses []AggregatedStatus `json:"aggregatedStatuses,omitempty"`
+
+	// Represents the latest available observations of a subscription's current state.
+	Conditions []SubscriptionCondition `json:"conditions,omitempty"`
+}
+
+// SubscriptionConditionType defines a subscription condition.
+type SubscriptionConditionType string
+
+// SubscriptionCondition describes the state of a subscription at a certain point.
+type SubscriptionCondition struct {
+	// Type of subscription condition
+	Type SubscriptionConditionType `json:"type,omitempty"`
+	// Status of the condition, one of True, False, Unknown.
+	Status corev1.ConditionStatus `json:"status,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+	// The reason for the condition's last transition.
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	Message string `json:"message,omitempty"`
 }
 
 // AggregatedStatus contains aggregated status of current feed.
