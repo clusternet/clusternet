@@ -59,6 +59,100 @@ func TestFormatFeed(t *testing.T) {
 	}
 }
 
+func TestFeedMatches(t *testing.T) {
+	tests := []struct {
+		name   string
+		feed   appsapi.Feed
+		target appsapi.Feed
+		want   bool
+	}{
+		{
+			name: "same feed with full api version",
+			feed: appsapi.Feed{
+				Kind:       "HelmChart",
+				APIVersion: "apps.clusternet.io/v1alpha1",
+				Namespace:  "charts",
+				Name:       "nginx",
+			},
+			target: appsapi.Feed{
+				Kind:       "HelmChart",
+				APIVersion: "apps.clusternet.io/v1alpha1",
+				Namespace:  "charts",
+				Name:       "nginx",
+			},
+			want: true,
+		},
+		{
+			name: "version-only target does not match full api version",
+			feed: appsapi.Feed{
+				Kind:       "HelmChart",
+				APIVersion: "apps.clusternet.io/v1alpha1",
+				Namespace:  "charts",
+				Name:       "nginx",
+			},
+			target: appsapi.Feed{
+				Kind:       "HelmChart",
+				APIVersion: "v1alpha1",
+				Namespace:  "charts",
+				Name:       "nginx",
+			},
+			want: false,
+		},
+		{
+			name: "empty api version matches full api version",
+			feed: appsapi.Feed{
+				Kind:      "HelmChart",
+				Namespace: "charts",
+				Name:      "nginx",
+			},
+			target: appsapi.Feed{
+				Kind:       "HelmChart",
+				APIVersion: "apps.clusternet.io/v1alpha1",
+				Namespace:  "charts",
+				Name:       "nginx",
+			},
+			want: true,
+		},
+		{
+			name: "core v1 does not match custom v1",
+			feed: appsapi.Feed{
+				Kind:       "ConfigMap",
+				APIVersion: "v1",
+				Namespace:  "default",
+				Name:       "demo",
+			},
+			target: appsapi.Feed{
+				Kind:       "ConfigMap",
+				APIVersion: "example.com/v1",
+				Namespace:  "default",
+				Name:       "demo",
+			},
+			want: false,
+		},
+		{
+			name: "different namespace does not match",
+			feed: appsapi.Feed{
+				Kind:      "HelmChart",
+				Namespace: "charts",
+				Name:      "nginx",
+			},
+			target: appsapi.Feed{
+				Kind:      "HelmChart",
+				Namespace: "default",
+				Name:      "nginx",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := FeedMatches(tt.feed, tt.target); got != tt.want {
+				t.Errorf("FeedMatches() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFindObsoletedFeeds(t *testing.T) {
 	tests := []struct {
 		name     string

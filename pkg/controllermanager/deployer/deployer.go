@@ -1101,15 +1101,41 @@ func (deployer *Deployer) handleHelmChart(chartCopy *appsapi.HelmChart) error {
 		return err
 	}
 
-	// find all referred Base UIDs
-	var baseUIDs []string
-	for key, val := range chartCopy.Labels {
+	baseUIDs, err := deployer.findBaseUIDsForHelmChart(chartCopy)
+	if err != nil {
+		return err
+	}
+	return deployer.resyncBase(baseUIDs...)
+}
+
+func (deployer *Deployer) findBaseUIDsForHelmChart(chart *appsapi.HelmChart) ([]string, error) {
+	baseUIDs := sets.String{}
+	for key, val := range chart.Labels {
 		if val == baseKind.Kind {
-			baseUIDs = append(baseUIDs, key)
+			baseUIDs.Insert(key)
 		}
 	}
 
-	return deployer.resyncBase(baseUIDs...)
+	bases, err := deployer.baseLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	feed := appsapi.Feed{
+		Kind:       helmChartKind.Kind,
+		APIVersion: helmChartKind.GroupVersion().String(),
+		Namespace:  chart.Namespace,
+		Name:       chart.Name,
+	}
+	for _, base := range bases {
+		if base.DeletionTimestamp != nil || len(base.UID) == 0 {
+			continue
+		}
+		if utils.HasFeed(feed, base.Spec.Feeds) {
+			baseUIDs.Insert(string(base.UID))
+		}
+	}
+
+	return baseUIDs.List(), nil
 }
 
 func (deployer *Deployer) resyncBase(baseUIDs ...string) error {

@@ -86,6 +86,28 @@ func FormatFeed(feed appsapi.Feed) string {
 	return fmt.Sprintf("%s %s", feed.Kind, namespacedName)
 }
 
+func FeedMatches(feed, target appsapi.Feed) bool {
+	if feed.Kind != target.Kind || feed.Namespace != target.Namespace || feed.Name != target.Name {
+		return false
+	}
+	if len(feed.APIVersion) == 0 || len(target.APIVersion) == 0 || feed.APIVersion == target.APIVersion {
+		return true
+	}
+
+	feedGV, err := schema.ParseGroupVersion(feed.APIVersion)
+	if err != nil {
+		return false
+	}
+	targetGV, err := schema.ParseGroupVersion(target.APIVersion)
+	if err != nil {
+		return false
+	}
+	if feedGV.Version != targetGV.Version {
+		return false
+	}
+	return feedGV.Group == targetGV.Group
+}
+
 func RemoveFeedFromSubscription(ctx context.Context, clusternetClient *clusternetclientset.Clientset,
 	feedSourceLabels map[string]string, sub *appsapi.Subscription) error {
 	// we use JSONPatch for simplicity and efficiency
@@ -152,7 +174,7 @@ func FindBasesFromUIDs(baseIndexer cache.Indexer, uids []string) []*appsapi.Base
 
 func HasFeed(feed appsapi.Feed, feeds []appsapi.Feed) bool {
 	for _, f := range feeds {
-		if f.Kind == feed.Kind && f.Namespace == feed.Namespace && f.Name == feed.Name {
+		if FeedMatches(f, feed) {
 			return true
 		}
 	}

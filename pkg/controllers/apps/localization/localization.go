@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -109,6 +110,7 @@ func NewController(
 			// ADD/DELETE/OTHER UPDATE
 			return true, nil
 		})
+	c.yachtController = yachtController
 
 	// Manage the addition/update of Localization
 	_, err := locInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
@@ -116,7 +118,29 @@ func NewController(
 		return nil, err
 	}
 
-	c.yachtController = yachtController
+	_, err = chartInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			chart := obj.(*appsapi.HelmChart)
+			c.enqueueLocalizationsForHelmChart(chart)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldChart := oldObj.(*appsapi.HelmChart)
+			newChart := newObj.(*appsapi.HelmChart)
+			if newChart.DeletionTimestamp != nil {
+				return
+			}
+			if oldChart.UID == newChart.UID &&
+				reflect.DeepEqual(oldChart.Spec, newChart.Spec) &&
+				reflect.DeepEqual(oldChart.Labels, newChart.Labels) {
+				return
+			}
+			c.enqueueLocalizationsForHelmChart(newChart)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return c, nil
 }
 
@@ -227,6 +251,34 @@ func (c *Controller) getLabelsForPatching(loc *appsapi.Localization) (map[string
 	}
 
 	return labelsToPatch, nil
+}
+
+func (c *Controller) enqueueLocalizationsForHelmChart(chart *appsapi.HelmChart) {
+	if chart.DeletionTimestamp != nil {
+		return
+	}
+
+	locs, err := c.locLister.List(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list Localizations for HelmChart %s: %v", klog.KObj(chart), err))
+		return
+	}
+
+	feed := appsapi.Feed{
+		Kind:       chartKind.Kind,
+		APIVersion: chartKind.GroupVersion().String(),
+		Namespace:  chart.Namespace,
+		Name:       chart.Name,
+	}
+	for _, loc := range locs {
+		if loc.DeletionTimestamp != nil {
+			continue
+		}
+		if utils.FeedMatches(loc.Spec.Feed, feed) {
+			klog.V(5).Infof("enqueue Localization %s for HelmChart %s", klog.KObj(loc), klog.KObj(chart))
+			c.yachtController.Enqueue(loc)
+		}
+	}
 }
 
 func (c *Controller) patchLocalizationLabels(loc *appsapi.Localization, labels map[string]*string) (*appsapi.Localization, error) {

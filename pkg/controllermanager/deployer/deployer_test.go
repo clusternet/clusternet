@@ -71,3 +71,45 @@ func TestGetBaseForUpdateFallsBackToLiveGetWhenListerMissesAlreadyExistingBase(t
 		t.Fatalf("getBaseForUpdate() got feed name %q, want %q", base.Spec.Feeds[0].Name, "old")
 	}
 }
+
+func TestFindBaseUIDsForHelmChartFallsBackToBaseFeedsWhenChartLabelMissing(t *testing.T) {
+	chart := &appsapi.HelmChart{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nginx",
+			Namespace: "charts",
+		},
+	}
+	base := &appsapi.Base{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "demo-base",
+			Namespace: "cluster-a",
+			UID:       types.UID("d4d9da23-cd45-4c61-baf7-c39b45795ed7"),
+		},
+		Spec: appsapi.BaseSpec{
+			Feeds: []appsapi.Feed{
+				{
+					APIVersion: "apps.clusternet.io/v1alpha1",
+					Kind:       "HelmChart",
+					Namespace:  chart.Namespace,
+					Name:       chart.Name,
+				},
+			},
+		},
+	}
+
+	baseIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	if err := baseIndexer.Add(base); err != nil {
+		t.Fatalf("failed to add Base to indexer: %v", err)
+	}
+	deployer := &Deployer{
+		baseLister: applisters.NewBaseLister(baseIndexer),
+	}
+
+	got, err := deployer.findBaseUIDsForHelmChart(chart)
+	if err != nil {
+		t.Fatalf("findBaseUIDsForHelmChart() returned error: %v", err)
+	}
+	if len(got) != 1 || got[0] != string(base.UID) {
+		t.Fatalf("findBaseUIDsForHelmChart() = %v, want [%s]", got, base.UID)
+	}
+}
