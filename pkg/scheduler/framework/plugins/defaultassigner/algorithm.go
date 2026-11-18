@@ -150,9 +150,12 @@ func StaticDivideReplicas(selected *framework.TargetClusters, sub *appsapi.Subsc
 		}
 		if order != nil && order.DesiredReplicas != nil {
 			replicas := staticDivideReplicas(*order.DesiredReplicas, &wl)
-			selected.Replicas[utils.GetFeedKey(order.Feed)] = replicas
+			selected.Replicas[utils.GetFeedKey(feed)] = replicas
 		} else {
-			selected.Replicas[utils.GetFeedKey(order.Feed)] = []int32{}
+			// order may be nil when the feed is not (yet) present in the
+			// FeedInventory, so use the feed from the Subscription to build the
+			// key instead of dereferencing order.
+			selected.Replicas[utils.GetFeedKey(feed)] = []int32{}
 		}
 	}
 	return nil
