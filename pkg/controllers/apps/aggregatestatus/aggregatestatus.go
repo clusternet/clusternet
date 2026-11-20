@@ -385,7 +385,7 @@ func (c *Controller) getWorkloadReplicaStatus(manifeststatus appsapi.ManifestSta
 	case JobKind:
 		return c.getJobReplicaStatus(manifeststatus)
 	default:
-		klog.V(5).Infof("unsupport kind(%s) resource(%s/%s) current, skip.",
+		klog.V(5).Infof("unsupported kind(%s) resource(%s/%s) current, skip.",
 			manifeststatus.Kind, manifeststatus.Namespace, manifeststatus.Name)
 	}
 	return nil, nil

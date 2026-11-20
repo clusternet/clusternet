@@ -86,7 +86,7 @@ const (
 	FeedInventory featuregate.Feature = "FeedInventory"
 
 	// Predictor will predictor child cluster resource before scheduling.
-	// This feature gate needs a running predictor, either build-in or external.
+	// This feature gate needs a running predictor, either built-in or external.
 	//
 	// owner: @yinsenyan
 	// alpha: v0.10.0
