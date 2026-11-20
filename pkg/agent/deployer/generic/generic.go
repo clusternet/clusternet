@@ -246,7 +246,7 @@ func (deployer *Deployer) SyncDescriptionStatus(
 	desc *appsapi.Description,
 ) error {
 	descStatus := desc.Status.DeepCopy()
-	// descStatusMap for check and update exsit ManifestStatus
+	// descStatusMap for check and update exist ManifestStatus
 	descStatusMap := make(map[string]int)
 	for index, status := range descStatus.ManifestStatuses {
 		descStatusMap[status.Namespace+"/"+status.Name] = index
