@@ -298,7 +298,7 @@ func (l *Localizer) ApplyOverridesToDescription(desc *appsapi.Description) error
 		for idx, chartRef := range desc.Spec.Charts {
 			overrides, err := l.getOverrides(desc.Namespace, appsapi.Feed{
 				Kind:       chartKind.Kind,
-				APIVersion: chartKind.Version,
+				APIVersion: chartKind.GroupVersion().String(),
 				Namespace:  chartRef.Namespace,
 				Name:       chartRef.Name,
 			})
@@ -394,6 +394,10 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 	if err != nil {
 		return nil, err
 	}
+	feedGlobs, err = l.appendGlobalizationsMatchingFeed(feedGlobs, feed)
+	if err != nil {
+		return nil, err
+	}
 
 	globs := make([]*appsapi.Globalization, 0)
 	for _, glob := range feedGlobs {
@@ -433,6 +437,10 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 	if err != nil {
 		return nil, err
 	}
+	locs, err = l.appendLocalizationsMatchingFeed(namespace, locs, feed)
+	if err != nil {
+		return nil, err
+	}
 	sort.SliceStable(locs, func(i, j int) bool {
 		if locs[i].Spec.Priority == locs[j].Spec.Priority {
 			return locs[i].CreationTimestamp.Second() < locs[j].CreationTimestamp.Second()
@@ -456,4 +464,49 @@ func (l *Localizer) getOverrides(namespace string, feed appsapi.Feed) ([]appsapi
 	}
 
 	return allOverrideConfigs, nil
+}
+
+func (l *Localizer) appendGlobalizationsMatchingFeed(globs []*appsapi.Globalization, feed appsapi.Feed) ([]*appsapi.Globalization, error) {
+	allGlobs, err := l.globLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{}, len(globs))
+	for _, glob := range globs {
+		seen[glob.Name] = struct{}{}
+	}
+	for _, glob := range allGlobs {
+		if _, ok := seen[glob.Name]; ok {
+			continue
+		}
+		if utils.FeedMatches(glob.Spec.Feed, feed) {
+			globs = append(globs, glob)
+			seen[glob.Name] = struct{}{}
+		}
+	}
+	return globs, nil
+}
+
+func (l *Localizer) appendLocalizationsMatchingFeed(namespace string, locs []*appsapi.Localization, feed appsapi.Feed) ([]*appsapi.Localization, error) {
+	allLocs, err := l.locLister.Localizations(namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{}, len(locs))
+	for _, loc := range locs {
+		seen[klog.KObj(loc).String()] = struct{}{}
+	}
+	for _, loc := range allLocs {
+		key := klog.KObj(loc).String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		if utils.FeedMatches(loc.Spec.Feed, feed) {
+			locs = append(locs, loc)
+			seen[key] = struct{}{}
+		}
+	}
+	return locs, nil
 }

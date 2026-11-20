@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
@@ -107,6 +108,7 @@ func NewController(
 			// ADD/DELETE/OTHER UPDATE
 			return true, nil
 		})
+	c.yachtController = yachtController
 
 	// Manage the addition/update of Globalization
 	_, err := globInformer.Informer().AddEventHandler(yachtController.DefaultResourceEventHandlerFuncs())
@@ -114,7 +116,29 @@ func NewController(
 		return nil, err
 	}
 
-	c.yachtController = yachtController
+	_, err = chartInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			chart := obj.(*appsapi.HelmChart)
+			c.enqueueGlobalizationsForHelmChart(chart)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldChart := oldObj.(*appsapi.HelmChart)
+			newChart := newObj.(*appsapi.HelmChart)
+			if newChart.DeletionTimestamp != nil {
+				return
+			}
+			if oldChart.UID == newChart.UID &&
+				reflect.DeepEqual(oldChart.Spec, newChart.Spec) &&
+				reflect.DeepEqual(oldChart.Labels, newChart.Labels) {
+				return
+			}
+			c.enqueueGlobalizationsForHelmChart(newChart)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return c, nil
 }
 
@@ -229,6 +253,34 @@ func (c *Controller) getLabelsForPatching(glob *appsapi.Globalization) (map[stri
 
 	}
 	return labelsToPatch, nil
+}
+
+func (c *Controller) enqueueGlobalizationsForHelmChart(chart *appsapi.HelmChart) {
+	if chart.DeletionTimestamp != nil {
+		return
+	}
+
+	globs, err := c.globLister.List(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list Globalizations for HelmChart %s: %v", klog.KObj(chart), err))
+		return
+	}
+
+	feed := appsapi.Feed{
+		Kind:       chartKind.Kind,
+		APIVersion: chartKind.GroupVersion().String(),
+		Namespace:  chart.Namespace,
+		Name:       chart.Name,
+	}
+	for _, glob := range globs {
+		if glob.DeletionTimestamp != nil {
+			continue
+		}
+		if utils.FeedMatches(glob.Spec.Feed, feed) {
+			klog.V(5).Infof("enqueue Globalization %s for HelmChart %s", klog.KObj(glob), klog.KObj(chart))
+			c.yachtController.Enqueue(glob)
+		}
+	}
 }
 
 func (c *Controller) patchGlobalizationLabels(glob *appsapi.Globalization, labels map[string]*string) (*appsapi.Globalization, error) {
