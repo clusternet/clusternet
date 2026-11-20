@@ -428,6 +428,57 @@ func TestDivideReplicas(t *testing.T) {
 	}
 }
 
+func TestStaticDivideReplicasWithFeedMissingFromInventory(t *testing.T) {
+	desiredReplicas := int32(12)
+	// example-1 is described in the FeedInventory, example-2 is not (e.g. the
+	// FeedInventory has not been reconciled yet after example-2 was added to the
+	// Subscription). The missing feed must not panic the scheduler.
+	sub := &appsapi.Subscription{
+		Spec: appsapi.SubscriptionSpec{
+			SchedulingStrategy: appsapi.DividingSchedulingStrategyType,
+			DividingScheduling: &appsapi.DividingScheduling{Type: appsapi.StaticReplicaDividingType},
+			Subscribers: []appsapi.Subscriber{
+				{
+					ClusterAffinity: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"a": "1"},
+					},
+					Weight: 1,
+				},
+			},
+			Feeds: []appsapi.Feed{
+				newDeploymentFeed("example-1"),
+				newDeploymentFeed("example-2"),
+			},
+		},
+	}
+	finv := &appsapi.FeedInventory{
+		Spec: appsapi.FeedInventorySpec{Feeds: []appsapi.FeedOrder{
+			{
+				Feed:            newDeploymentFeed("example-1"),
+				DesiredReplicas: &desiredReplicas,
+			},
+		}},
+	}
+	clusters := []*clusterapi.ManagedCluster{
+		newClusterWithLabels("member1", "cluster-ns-01", map[string]string{"a": "1"}),
+	}
+	selected := &framework.TargetClusters{
+		BindingClusters: []string{"cluster-ns-01/member1"},
+	}
+
+	if err := StaticDivideReplicas(selected, sub, clusters, finv); err != nil {
+		t.Fatalf("StaticDivideReplicas() unexpected error = %v", err)
+	}
+
+	want := map[string][]int32{
+		utils.GetFeedKey(newDeploymentFeed("example-1")): {desiredReplicas},
+		utils.GetFeedKey(newDeploymentFeed("example-2")): {},
+	}
+	if !reflect.DeepEqual(selected.Replicas, want) {
+		t.Errorf("StaticDivideReplicas() got = %v, want %v", selected.Replicas, want)
+	}
+}
+
 func TestDynamicDivideReplicas(t *testing.T) {
 	tests := []struct {
 		name                 string
