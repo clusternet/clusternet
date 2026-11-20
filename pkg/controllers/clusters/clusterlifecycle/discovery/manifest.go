@@ -185,6 +185,20 @@ subjects:
   - kind: ServiceAccount
     name: clusternet-app-deployer
     namespace: {{ .Namespace }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clusternet:agent:deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: clusternet-agent
+    namespace: {{ .Namespace }}
 `
 )
 
