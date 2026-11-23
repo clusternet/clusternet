@@ -2158,7 +2158,7 @@ func extractCSRStatus(csr *certificatesv1.CertificateSigningRequest) string {
 		}
 	}
 	var status string
-	// must be in order of presidence
+	// must be in order of precedence
 	if denied {
 		status += "Denied"
 	} else if approved {

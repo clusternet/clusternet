@@ -62,7 +62,7 @@ type SchedulingQueue interface {
 	// the backoff queue.
 	AddUnschedulableIfNotPresent(sInfo *framework.SubscriptionInfo) error
 
-	// Add adds a subscription to the active queu
+	// Add adds a subscription to the active queue
 	Add(sub *appsapi.Subscription) error
 
 	Update(oldSub, newSub *appsapi.Subscription) error

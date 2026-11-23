@@ -82,7 +82,7 @@ Clusternet is multiple platforms supported now, including `linux/amd64`, `linux/
     - interacting with any child clusters the same as local cluster
 - Client-go
     - easy to integrate via
-      a [client-go wrapper](https://github.com/clusternet/clusternet/blob/main/examples/clientgo/READEME.md)
+      a [client-go wrapper](https://github.com/clusternet/clusternet/blob/main/examples/clientgo/README.md)
 
 ## Architecture
 

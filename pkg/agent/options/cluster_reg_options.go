@@ -95,7 +95,7 @@ func (opts *ClusterRegistrationOptions) AddFlagSets(fss *cliflag.NamedFlagSets) 
 	crfs.StringVar(&opts.ParentURL, ClusterRegistrationURL, opts.ParentURL,
 		"The parent cluster url you want to register to")
 	crfs.StringVar(&opts.BootstrapToken, ClusterRegistrationToken, opts.BootstrapToken,
-		"The boostrap token is used to temporarily authenticate with parent cluster while registering "+
+		"The bootstrap token is used to temporarily authenticate with parent cluster while registering "+
 			"a unregistered child cluster. On success, parent cluster credentials will be stored to a secret "+
 			"in child cluster. On every restart, this credentials will be firstly used if found")
 	crfs.StringVar(&opts.ClusterName, ClusterRegistrationName, opts.ClusterName,
@@ -188,7 +188,7 @@ func (opts *ClusterRegistrationOptions) Validate() []error {
 	case string(clusterapi.Push):
 		if !utilfeature.DefaultFeatureGate.Enabled(features.AppPusher) {
 			allErrs = append(allErrs,
-				fmt.Errorf("inconsitent setting: FeatureGate %s is disbled, while syncMode is set to %s",
+				fmt.Errorf("inconsistent setting: FeatureGate %s is disabled, while syncMode is set to %s",
 					features.AppPusher, opts.ClusterSyncMode))
 		}
 	case string(clusterapi.Pull), string(clusterapi.Dual):

@@ -126,7 +126,7 @@ func configureChartPathOptions(client *action.Install, chartRepo, username, pass
 	if registry.IsOCI(chartRepo) {
 		/*oci based registries don't support to download index.yaml
 		set RepoURL as an empty string to avoid downloading index.yaml
-		in LocateChart() bellow
+		in LocateChart() below
 		*/
 		client.ChartPathOptions.RepoURL = ""
 		chartName = fmt.Sprintf("%s/%s", chartRepo, chartName)
